@@ -24,7 +24,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Dialog,
   DialogClose,
@@ -203,7 +203,7 @@ export function Flashcard() {
     );
 
   return (
-    <div className="flex h-full flex-col overflow-hidden bg-muted/15 [&_button:not(:disabled)]:cursor-pointer [&_button:disabled]:cursor-not-allowed">
+    <div className="relative flex h-full flex-col overflow-hidden bg-muted/15 [&_button:not(:disabled)]:cursor-pointer [&_button:disabled]:cursor-not-allowed">
       <div className="border-b bg-background/80 px-6 py-5 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-start justify-between gap-4">
           <div className="flex items-start gap-3">

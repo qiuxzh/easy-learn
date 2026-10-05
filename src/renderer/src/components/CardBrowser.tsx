@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
+  Bot,
   ChevronLeft,
   ChevronRight,
   GalleryHorizontalEnd,
@@ -13,6 +14,9 @@ import {
 import { toast } from 'sonner';
 import { CardEditDialog } from '@/components/CardEditDialog';
 import { CardEditor } from '@/components/CardEditor';
+import { FloatingPanel } from '@/components/FloatingPanel';
+import { Chat } from '@/pages/Chat';
+import { useTabsStore } from '@/stores/tabs-store';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -46,14 +50,18 @@ const CARD_COLUMNS = [
 
 /** 卡片浏览页属性。 */
 interface CardBrowserProps {
+  /** 本 Tab 的实例 id，用于判断自身是否为当前激活页。 */
+  tabId?: string;
   groupId?: string;
   /** 请求打开新增卡片弹窗的时间戳。 */
   createCardAt?: number;
 }
 
 /** 三栏卡片浏览页。 */
-export function CardBrowser({ groupId, createCardAt }: CardBrowserProps) {
+export function CardBrowser({ tabId, groupId, createCardAt }: CardBrowserProps) {
   const browserRootRef = useRef<HTMLDivElement>(null);
+  /** 本页是否为当前激活的 Tab；TabContent 用 hidden 保留其他页，这里据此收起浮层。 */
+  const isActiveTab = useTabsStore(s => s.activeTabId === tabId);
   const [groups, setGroups] = useState<CardGroupSummary[]>([]);
   const [cards, setCards] = useState<CardRecord[]>([]);
   const [tags, setTags] = useState<string[]>([]);
@@ -66,6 +74,12 @@ export function CardBrowser({ groupId, createCardAt }: CardBrowserProps) {
     [cards, selectedCardId]
   );
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  /** 是否已创建过 AI 助手浮层；一旦为 true 就不再复位，使 Chat 组件常驻并保留会话。 */
+  const [assistantMounted, setAssistantMounted] = useState(false);
+  /** 用户是否主动打开了 AI 助手；关闭只隐藏组件，会话留到下次打开。 */
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  /** 浮层实际可见性：切离本页时自动收起，组件仍挂载，会话不丢。 */
+  const assistantVisible = assistantOpen && isActiveTab;
   const editorVisible = Boolean(selectedCard);
   const [page, setPage] = useState(1);
   const filteredCards = useMemo(() => {
@@ -177,6 +191,12 @@ export function CardBrowser({ groupId, createCardAt }: CardBrowserProps) {
     setPage(1);
   }
 
+  /** 打开 AI 助手浮层：首次打开才创建，之后复用同一个 Chat 实例以保留会话。 */
+  function handleOpenAssistant() {
+    setAssistantMounted(true);
+    setAssistantOpen(true);
+  }
+
   /** 打开新增卡片弹窗。 */
   function handleCreateCard() {
     setSelectedCardId(null);
@@ -214,7 +234,7 @@ export function CardBrowser({ groupId, createCardAt }: CardBrowserProps) {
   return (
     <div
       ref={browserRootRef}
-      className="flex h-full min-h-0 flex-col overflow-hidden bg-muted/15 [&_button:not(:disabled)]:cursor-pointer [&_button:disabled]:cursor-not-allowed"
+      className="relative flex h-full min-h-0 flex-col overflow-hidden bg-muted/15 [&_button:not(:disabled)]:cursor-pointer [&_button:disabled]:cursor-not-allowed"
     >
       <div className="flex items-center justify-between gap-4 border-b bg-background/80 px-5 py-3 backdrop-blur">
         <div className="flex shrink-0 items-center gap-3">
@@ -241,6 +261,15 @@ export function CardBrowser({ groupId, createCardAt }: CardBrowserProps) {
           <Button size="sm" onClick={handleCreateCard}>
             <Plus />
             新增卡片
+          </Button>
+          <Button
+            size="sm"
+            variant={assistantVisible ? 'secondary' : 'outline'}
+            aria-pressed={assistantVisible}
+            onClick={handleOpenAssistant}
+          >
+            <Bot />
+            AI 助手
           </Button>
         </div>
       </div>
@@ -307,6 +336,17 @@ export function CardBrowser({ groupId, createCardAt }: CardBrowserProps) {
           onOpenChange={setCreateDialogOpen}
           onSaved={handleDialogSaved}
         />
+      )}
+      {/* AI 助手浮层：挂载后不再卸载，关闭只是隐藏，从而保留对话进度 */}
+      {assistantMounted && (
+        <FloatingPanel
+          open={assistantVisible}
+          onClose={() => setAssistantOpen(false)}
+          title="AI 助手"
+          storageKey="flashcard-assistant-size"
+        >
+          <Chat />
+        </FloatingPanel>
       )}
     </div>
   );

@@ -25,14 +25,14 @@ import { SessionOccupiedError } from '@/hooks/use-chat';
  * 数据源：useSessions()（后端 DB）+ activeSessionId（高亮用）
  * 主要职责：
  *   1. 按最近活跃时间分组展示（今天 / 昨天 / 前天 / 一周内 / 一个月内 / 更早）
- *   2. 点击会话 → switchSession；被其他 tab 占用时弹 alert
+ *   2. 点击会话 → switchSession；已被其他 Chat 组件占有时弹 alert
  *   3. 重命名 / 删除单条会话
  * 加载策略：组件首次挂载时拉取一次；open 从 false 变 true 时再拉一次
  */
 interface SessionSummaryListProps {
   /** 当前激活的会话 id（用于高亮） */
   activeSessionId: string | null;
-  /** 切换到指定会话的函数，可能抛出 SessionOccupiedError（被其他 tab 占用） */
+  /** 切换到指定会话的函数，可能抛出 SessionOccupiedError（已被其他 Chat 组件占有） */
   switchSession: (sessionId: string) => Promise<void>;
   /** 点击某条会话后的回调（通常用于关闭列表面板） */
   onSelect?: () => void;
@@ -122,7 +122,7 @@ export function SessionSummaryList({
   /**
    * 点击会话条目
    * - 处于重命名态时点击不切换（避免误触）
-   * - 调用 switchSession：成功则关闭面板；被其他 tab 占用则弹 alert
+   * - 调用 switchSession：成功则关闭面板；已被其他 Chat 组件占有则弹 alert
    */
   const handleSelect = async (id: string) => {
     if (renamingId === id) return;

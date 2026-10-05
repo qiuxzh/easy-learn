@@ -55,7 +55,7 @@ export interface SessionData {
   messages: AppUIMessage[];
   /** 当前是否处于流式响应中。 */
   isStreaming: boolean;
-  /** 是否被某个 chat tab 占用。具体哪个 tab 占用由 useChat hook 自行追踪。 */
+  /** 是否正被某个 Chat 组件占有。同一会话同一时刻只允许一个 Chat 组件显示。 */
   isOccupied: boolean;
 }
 
@@ -66,7 +66,7 @@ interface SessionState {
   // ───────── 会话生命周期 ─────────
   /** 从主进程载入该会话的完整日志并转换为 UI 消息。 */
   loadSession: (sessionId: string) => Promise<void>;
-  /** 标记会话被当前 tab 占用；已被占用时返回 false。 */
+  /** 标记会话被当前 Chat 组件占有；已被占有则返回 false。 */
   claimSession: (sessionId: string) => boolean;
   /** 解除占用；若会话为空闲且无消息，则一并删除该条目。 */
   releaseSession: (sessionId: string) => boolean;

@@ -8,10 +8,10 @@ import { abortChatStream, sendChatMessage } from '@/stores/chat-requests';
 /** 稳定的空数组引用，避免 zustand selector 每次返回新数组导致无限渲染 */
 const EMPTY_MESSAGES: AppUIMessage[] = [];
 
-/** 会话被其他 tab 占用时抛出 */
+/** 会话已被另一个 Chat 组件占有（如阅读页侧栏或闪卡助手）时抛出 */
 export class SessionOccupiedError extends Error {
   constructor() {
-    super('该会话正在被其他标签页占用');
+    super('该会话正在别处使用');
     this.name = 'SessionOccupiedError';
   }
 }
@@ -45,7 +45,7 @@ export function useChat() {
     };
   }, []);
 
-  /** 切到指定会话。被其他 tab 占用时抛 SessionOccupiedError */
+  /** 切到指定会话。已被其他 Chat 组件占有时抛 SessionOccupiedError */
   const switchSession = useCallback(async (sessionId: string) => {
     const oldId = activeRef.current;
     if (oldId === sessionId) return;
@@ -72,7 +72,7 @@ export function useChat() {
       throw new Error('加载会话失败，请重试');
     }
 
-    // 加载成功后再占用，避免同一会话被多个 tab 同时打开
+    // 加载成功后再占有，避免同一会话被多个 Chat 组件同时打开
     if (!useSessionStore.getState().claimSession(sessionId)) {
       throw new SessionOccupiedError();
     }

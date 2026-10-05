@@ -36,6 +36,17 @@
     0 1px 3px 0 hsl(var(--shadow-color) / 0.08), 0 1px 2px -1px hsl(var(--shadow-color) / 0.06);
   --shadow-card-hover:
     0 4px 12px -2px hsl(var(--shadow-color) / 0.15), 0 2px 4px -2px hsl(var(--shadow-color) / 0.1);
+
+  /*
+   * 层级令牌（Tailwind v4 会据此生成 z-panel / z-popover 等工具类）。
+   *
+   * 只用于「跨层级竞争」的场景，即两个元素在不同的层叠上下文里争夺同一块屏幕区域。
+   * 同一父容器内兄弟元素的先后顺序属于局部层叠，直接写 z-10/z-20 即可，不必也不应起全局名。
+   *
+   * 值留有空隙，便于将来在两层之间插入新层而不必改动其它层。
+   */
+  --z-index-panel: 40; /* 常驻浮层：可移动/缩放的"窗口"，如闪卡助手 */
+  --z-index-popover: 50; /* 依附触发器的临时弹层：popover / dropdown / select / tooltip */
 }
 
 :root {

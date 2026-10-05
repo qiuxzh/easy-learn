@@ -46,7 +46,13 @@ export function Popover({
         )}
       />
       <BasePopover.Portal>
-        <BasePopover.Positioner side={side} align={align} sideOffset={sideOffset}>
+        {/* 弹层要压在常驻浮层（z-panel）之上，故用 z-popover */}
+        <BasePopover.Positioner
+          side={side}
+          align={align}
+          sideOffset={sideOffset}
+          className="z-popover"
+        >
           <BasePopover.Popup
             className={cn(
               'min-w-[180px] rounded-[10px] border border-border bg-popover p-1 shadow-lg outline-none',

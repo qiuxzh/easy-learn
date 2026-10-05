@@ -173,7 +173,7 @@ export function CardEditor({ card, onClose, onSaved, onDeleted }: CardEditorProp
             <SelectContent
               position="popper"
               align="start"
-              className="z-[60] w-[var(--radix-select-trigger-width)] min-w-[var(--radix-select-trigger-width)]"
+              className="z-popover w-[var(--radix-select-trigger-width)] min-w-[var(--radix-select-trigger-width)]"
             >
               {groups.map(group => (
                 <SelectItem key={group.id} value={group.id} className="cursor-pointer">

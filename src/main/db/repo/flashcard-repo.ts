@@ -1,4 +1,4 @@
-﻿import { asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, lte, sql } from 'drizzle-orm';
 import { getDatabase } from '..';
 import { cardGroupTable, cardTable } from '../schema';
 import type { CardGroupRow, CardRow } from '../schema';
@@ -35,6 +35,43 @@ export interface CardWriteData {
   lapses: number;
   state: CardState;
   lastReview: number | null;
+}
+
+/** 卡片列表可排序的字段，均为 cards 表上的普通列。 */
+export type CardSortField = 'createdAt' | 'updatedAt' | 'due' | 'difficulty' | 'reps';
+
+/** 单个排序规则。 */
+export interface CardSortRule {
+  /** 排序字段。 */
+  field: CardSortField;
+  /** 排序方向。 */
+  order: 'asc' | 'desc';
+}
+
+/** 卡片列表查询条件。各条件之间是「且」的关系，省略则不参与过滤。 */
+export interface CardQueryOptions {
+  /** 所属牌组 id。 */
+  groupId?: string;
+  /** 标签，需同时命中全部标签。 */
+  tags?: string[];
+  /** FSRS 卡片状态。 */
+  state?: CardState;
+  /** 只返回该时间戳之前到期的卡片。 */
+  dueBefore?: number;
+  /** 多级排序规则，省略时按最后修改时间降序。 */
+  sort?: CardSortRule[];
+  /** 跳过的卡片数量。 */
+  offset?: number;
+  /** 返回的卡片数量上限。 */
+  length?: number;
+}
+
+/** 卡片列表查询结果。 */
+export interface CardQueryResult {
+  /** 当前页的卡片行。 */
+  cards: CardRow[];
+  /** 满足条件的卡片总数，不受分页影响。 */
+  total: number;
 }
 
 /** 将数据库卡片行转换为渲染层使用的领域记录。 */
@@ -125,6 +162,50 @@ export class FlashcardRepo {
   /** 查询指定卡片。 */
   findCardById(id: string): CardRow | undefined {
     return getDatabase().select().from(cardTable).where(eq(cardTable.id, id)).get();
+  }
+
+  /**
+   * 按条件分页查询卡片，并返回满足条件的总数。
+   * 过滤、排序与分页都在 SQL 层完成，total 单独统计，因此不受分页影响。
+   */
+  queryCards(options: CardQueryOptions = {}): CardQueryResult {
+    const conditions = [];
+    if (options.groupId !== undefined) {
+      conditions.push(eq(cardTable.groupId, options.groupId));
+    }
+    if (options.state !== undefined) {
+      conditions.push(eq(cardTable.state, options.state));
+    }
+    if (options.dueBefore !== undefined) {
+      conditions.push(lte(cardTable.due, options.dueBefore));
+    }
+    for (const tag of options.tags ?? []) {
+      // tags 是 JSON 文本数组，用引号锚定标签边界，避免 "js" 命中 "xjs"。
+      // 必须显式声明 ESCAPE 子句：否则反斜杠不具备转义含义，标签含 _ 或 % 时会匹配不到。
+      conditions.push(
+        sql`${cardTable.tags} LIKE ${'%"' + escapeLikePattern(tag) + '"%'} ESCAPE '\\'`
+      );
+    }
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const total =
+      getDatabase().select({ value: count() }).from(cardTable).where(where).get()?.value ?? 0;
+
+    const orderBy = toOrderBy(options.sort);
+    let query = getDatabase()
+      .select()
+      .from(cardTable)
+      .where(where)
+      .orderBy(...orderBy)
+      .$dynamic();
+    if (options.length !== undefined) {
+      query = query.limit(options.length);
+    }
+    if (options.offset !== undefined) {
+      query = query.offset(options.offset);
+    }
+
+    return { cards: query.all(), total };
   }
 
   /** 查询指定牌组中的卡片。 */
@@ -244,3 +325,27 @@ export class FlashcardRepo {
 }
 
 export const flashcardRepo = new FlashcardRepo();
+/** 排序字段到数据库列的映射。 */
+const CARD_SORT_COLUMNS = {
+  createdAt: cardTable.createdAt,
+  updatedAt: cardTable.updatedAt,
+  due: cardTable.due,
+  difficulty: cardTable.difficulty,
+  reps: cardTable.reps,
+} as const;
+
+/** 把排序规则转换成 Drizzle 的 orderBy 参数，省略时按最后修改时间降序。 */
+function toOrderBy(sort?: CardSortRule[]) {
+  const rules = sort && sort.length > 0 ? sort : [{ field: 'updatedAt', order: 'desc' } as const];
+  return rules.map(rule =>
+    rule.order === 'desc' ? desc(CARD_SORT_COLUMNS[rule.field]) : asc(CARD_SORT_COLUMNS[rule.field])
+  );
+}
+
+/**
+ * 转义 LIKE 模式中的通配符。
+ * 标签里的 % 和 _ 是普通字符，但在 LIKE 中是通配符，不转义会造成误命中。
+ */
+function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, character => '\\' + character);
+}
