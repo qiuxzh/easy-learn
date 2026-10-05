@@ -1,0 +1,186 @@
+@import 'tailwindcss'; /*Tailwind v4 新语法，替代 v3 的 @tailwind base/components/utilities*/
+@import './components/ui/scrollbar.css';
+@import './components/chat/chat.css';
+@import './components/chat/markdown/markdown.css';
+
+/* 类名切换暗色模式，而非跟随系统 */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --radius: 0.5rem;
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+
+  /* 卡片阴影：浅色模式用深色阴影，深色模式用浅色阴影模拟光晕 */
+  --shadow-card:
+    0 1px 3px 0 hsl(var(--shadow-color) / 0.08), 0 1px 2px -1px hsl(var(--shadow-color) / 0.06);
+  --shadow-card-hover:
+    0 4px 12px -2px hsl(var(--shadow-color) / 0.15), 0 2px 4px -2px hsl(var(--shadow-color) / 0.1);
+}
+
+:root {
+  /* 页面背景色 */
+  --background: 0 0% 100%;
+  /* 页面文字前景色 */
+  --foreground: 0 0% 10%;
+  /* 卡片背景色 */
+  --card: 0 0% 100%;
+  /* 卡片上的文字前景色 */
+  --card-foreground: 0 0% 10%;
+  /* 弹窗/浮层背景色 */
+  --popover: 0 0% 100%;
+  /* 弹窗/浮层上的文字前景色 */
+  --popover-foreground: 0 0% 10%;
+  /* 主色调（按钮、链接等强调元素） */
+  --primary: 0 0% 9%;
+  /* 主色调元素上的文字前景色 */
+  --primary-foreground: 0 0% 98%;
+  /* 次要色（次级按钮、辅助背景） */
+  --secondary: 0 0% 96%;
+  /* 次要色元素上的文字前景色 */
+  --secondary-foreground: 0 0% 10%;
+  /* 弱化背景色（占位符、禁用状态） */
+  --muted: 0 0% 96%;
+  /* 弱化背景上的次级文字前景色 */
+  --muted-foreground: 0 0% 45%;
+  /* 强调色（hover 高亮、选中状态） */
+  --accent: 0 0% 88%;
+  /* 强调色元素上的文字前景色 */
+  --accent-foreground: 0 0% 10%;
+  /* 危险/错误色（删除按钮、报错） */
+  --destructive: 0 84.2% 60.2%;
+  /* 危险/错误元素上的文字前景色 */
+  --destructive-foreground: 0 0% 98%;
+  /* 通用边框色 */
+  --border: 0 0% 90%;
+  /* 表单输入控件边框色 */
+  --input: 0 0% 90%;
+  /* 键盘焦点环色 */
+  --ring: 0 0% 10%;
+  /* 圆角基础值 */
+  --radius: 0.5rem;
+  /* 阴影色：浅色模式下用深色阴影 */
+  --shadow-color: 0 0% 15%;
+}
+
+.dark {
+  --background: 0 0% 4%;
+  --foreground: 0 0% 98%;
+  --card: 0 0% 9%;
+  --card-foreground: 0 0% 98%;
+  --popover: 0 0% 9%;
+  --popover-foreground: 0 0% 98%;
+  --primary: 0 0% 98%;
+  --primary-foreground: 0 0% 4%;
+  --secondary: 0 0% 14%;
+  --secondary-foreground: 0 0% 98%;
+  --muted: 0 0% 14%;
+  --muted-foreground: 0 0% 55%;
+  --accent: 0 0% 18%;
+  --accent-foreground: 0 0% 98%;
+  --destructive: 0 70% 50%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 0 0% 16%;
+  --input: 0 0% 16%;
+  --ring: 0 0% 80%;
+  /* 阴影色：深色模式下用浅色"光晕"模拟阴影效果，避免深色阴影被深色背景吞没 */
+  --shadow-color: 0 0% 100%;
+}
+
+/* 全局基础样式 */
+* {
+  border-color: hsl(var(--border));
+}
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family:
+    'Segoe UI Variable Display', 'Segoe UI', system-ui, 'Microsoft YaHei UI', 'PingFang SC',
+    sans-serif;
+}
+
+/* 替换 tailwindcss-animate 的动画工具类 */
+@keyframes enter {
+  from {
+    opacity: var(--tw-enter-opacity, 1);
+    transform: translate3d(var(--tw-enter-translate-x, 0), var(--tw-enter-translate-y, 0), 0)
+      scale3d(var(--tw-enter-scale, 1), var(--tw-enter-scale, 1), 1)
+      rotate(var(--tw-enter-rotate, 0));
+  }
+}
+@keyframes exit {
+  to {
+    opacity: var(--tw-exit-opacity, 1);
+    transform: translate3d(var(--tw-exit-translate-x, 0), var(--tw-exit-translate-y, 0), 0)
+      scale3d(var(--tw-exit-scale, 1), var(--tw-exit-scale, 1), 1) rotate(var(--tw-exit-rotate, 0));
+  }
+}
+
+@utility animate-in {
+  animation: enter 150ms ease-out;
+}
+@utility animate-out {
+  animation: exit 150ms ease-in;
+}
+@utility fade-in {
+  --tw-enter-opacity: 0;
+}
+@utility fade-out {
+  --tw-exit-opacity: 0;
+}
+@utility zoom-in {
+  --tw-enter-scale: 0;
+}
+@utility zoom-out {
+  --tw-exit-scale: 0;
+}
+@utility spin-in {
+  --tw-enter-rotate: 30deg;
+}
+@utility spin-out {
+  --tw-exit-rotate: 30deg;
+}
+@utility slide-in-from-top {
+  --tw-enter-translate-y: -100%;
+}
+@utility slide-in-from-bottom {
+  --tw-enter-translate-y: 100%;
+}
+@utility slide-in-from-left {
+  --tw-enter-translate-x: -100%;
+}
+@utility slide-in-from-right {
+  --tw-enter-translate-x: 100%;
+}
+@utility slide-out-to-top {
+  --tw-exit-translate-y: -100%;
+}
+@utility slide-out-to-bottom {
+  --tw-exit-translate-y: 100%;
+}
+@utility slide-out-to-left {
+  --tw-exit-translate-x: -100%;
+}
+@utility slide-out-to-right {
+  --tw-exit-translate-x: 100%;
+}

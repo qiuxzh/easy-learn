@@ -1,0 +1,23 @@
+node_modules
+out
+dist
+*.log
+.DS_Store
+Thumbs.db
+*.local
+.env
+.env.*
+!.env.example
+.vscode
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# pnpm store（误配 store-dir 时会在项目里生成）
+.pnpm-store/
+
+# 临时脚本、调试日志与截图
+temp_script/

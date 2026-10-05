@@ -1,0 +1,30 @@
+diff --git a/paginator.js b/paginator.js
+index 95c4d0dae16bd96c3ace91bbd87fd1bea1c9f571..1a7aa666a599d073f5cdce9346a2460ec208690d 100644
+--- a/paginator.js
++++ b/paginator.js
+@@ -231,7 +231,7 @@ class View {
+         })
+         // `allow-scripts` is needed for events because of WebKit bug
+         // https://bugs.webkit.org/show_bug.cgi?id=218086
+-        this.#iframe.setAttribute('sandbox', 'allow-same-origin allow-scripts')
++        this.#iframe.setAttribute('sandbox', 'allow-same-origin')
+         this.#iframe.setAttribute('scrolling', 'no')
+     }
+     get element() {
+@@ -275,7 +275,7 @@ class View {
+         })
+     }
+     render(layout) {
+-        if (!layout || !this.document) return
++        if (!layout || !this.document || !this.document.documentElement || !this.document.body) return
+         this.#column = layout.flow !== 'scrolled'
+         this.#layout = layout
+         if (this.#column) this.columnize(layout)
+@@ -352,6 +352,7 @@ class View {
+         }
+     }
+     expand() {
++        if (!this.document || !this.document.documentElement) return
+         const { documentElement } = this.document
+         if (this.#column) {
+             const side = this.#vertical ? 'height' : 'width'

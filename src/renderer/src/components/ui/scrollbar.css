@@ -1,0 +1,48 @@
+:root {
+  --scrollbar-size: 8px;
+  --scrollbar-thumb: hsl(var(--muted-foreground) / 0.4);
+  --scrollbar-thumb-hover: hsl(var(--muted-foreground) / 0.6);
+}
+
+*::-webkit-scrollbar {
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+  border-radius: 9999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+[data-radix-scroll-area-viewport]::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+}
+
+.scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+}
+
+/* Radix ScrollArea 默认给视口内容注入 table 布局。
+   需要随面板收窄并显示省略号时，用 scroll-area-fit 让内容跟随视口宽度。 */
+.scroll-area-fit [data-radix-scroll-area-viewport] > div {
+  display: block !important;
+  min-width: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}

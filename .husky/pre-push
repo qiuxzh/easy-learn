@@ -1,0 +1,3 @@
+# 推送前：完整类型检查 + ESLint（pnpm lint），再跑一遍单元测试，避免把坏代码推到远端
+pnpm lint
+pnpm test

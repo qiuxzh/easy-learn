@@ -1,0 +1,151 @@
+:root {
+  --sdm-c: inherit;
+  --sdm-tbg: transparent;
+  --shiki-dark: inherit;
+  --shiki-dark-bg: transparent;
+}
+
+/* === Streamdown 必需样式 === */
+/* streamdown 会把代码块渲染成嵌套结构，外层 [data-streamdown='code-block']，
+   header / actions / body 各自是固定子元素。这些选择器无法用 Tailwind 类名表达，
+   必须留在 CSS 中。 */
+/* Mermaid SVG 的尺寸由外层容器控制，避免内联宽高导致图表被强制放大。 */
+.chat-markdown [data-mermaid-svg] > svg {
+  display: block;
+  width: 100% !important;
+  max-width: none !important;
+  height: auto;
+}
+
+.chat-markdown [data-mermaid-svg][data-sized='true'] > svg {
+  height: 100% !important;
+}
+
+/* Mermaid 使用自身多色 palette；CSS 只处理背景和语义高亮。 */
+.chat-markdown [data-mermaid-svg] > svg {
+  background: transparent !important;
+}
+
+.chat-markdown [data-mermaid-svg] .edgeLabel rect {
+  fill: hsl(var(--background)) !important;
+}
+
+.chat-markdown [data-mermaid-svg] .edgeLabel,
+.chat-markdown [data-mermaid-svg] .edgeLabel text,
+.chat-markdown [data-mermaid-svg] .edgeLabel span {
+  color: hsl(var(--foreground)) !important;
+  fill: hsl(var(--foreground)) !important;
+}
+
+.chat-markdown [data-mermaid-svg] .node.highlight rect,
+.chat-markdown [data-mermaid-svg] .node.active rect,
+.chat-markdown [data-mermaid-svg] .node.current rect,
+.chat-markdown [data-mermaid-svg] .node.selected rect,
+.chat-markdown [data-mermaid-svg] .node.special rect {
+  fill: hsl(var(--primary)) !important;
+  stroke: hsl(var(--primary)) !important;
+}
+
+.chat-markdown [data-mermaid-svg] .node.highlight .nodeLabel,
+.chat-markdown [data-mermaid-svg] .node.active .nodeLabel,
+.chat-markdown [data-mermaid-svg] .node.current .nodeLabel,
+.chat-markdown [data-mermaid-svg] .node.selected .nodeLabel,
+.chat-markdown [data-mermaid-svg] .node.special .nodeLabel {
+  color: hsl(var(--primary-foreground)) !important;
+  fill: hsl(var(--primary-foreground)) !important;
+}
+.chat-markdown [data-streamdown='code-block'] {
+  padding: 0;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.5rem;
+  background: transparent;
+  gap: 0;
+  margin-top: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.chat-markdown [data-streamdown='code-block-header'] {
+  padding: 0 10px 0 8px;
+  height: 28px;
+  font-size: 12px;
+  border-bottom: 1px solid hsl(var(--border));
+  background-color: hsl(var(--muted));
+  position: relative;
+}
+
+.chat-markdown div:has(> [data-streamdown='code-block-actions']) {
+  position: absolute;
+  margin: 0;
+  top: 0;
+  right: 0;
+  height: 28px;
+  padding-right: 8px;
+}
+
+.chat-markdown [data-streamdown='code-block-actions'] {
+  background: transparent;
+  border: none;
+  backdrop-filter: none;
+  padding: 0;
+}
+
+.chat-markdown [data-streamdown='code-block-actions'] button > svg {
+  width: 14px;
+  height: 14px;
+}
+
+.chat-markdown [data-streamdown='code-block-body'] {
+  margin: 0;
+  padding: 8px 12px;
+  background: transparent;
+  border: transparent;
+  overflow-x: auto;
+}
+
+.chat-markdown [data-streamdown='code-block'] pre,
+.chat-markdown [data-streamdown='code-block'] code {
+  font-size: 14px; /* 代码字号 */
+  background: transparent;
+}
+
+/* 重置 streamdown 注入的行号 */
+.chat-markdown pre code {
+  counter-reset: none !important;
+}
+.chat-markdown pre code > span::before {
+  content: none !important;
+  display: none !important;
+}
+.chat-markdown pre code > span {
+  padding-left: 0 !important;
+}
+
+/* === Shiki 代码语法高亮颜色 === */
+/* streamdown 通过 inline style 把 token 颜色写到 --sdm-c / --shiki-dark 等变量，
+   Tailwind 不会扫描 node_modules，因此这里手动把变量应用回 span。 */
+.chat-markdown [data-streamdown='code-block'] pre code span {
+  color: var(--sdm-c, inherit);
+  background-color: var(--sdm-tbg, transparent);
+}
+.dark .chat-markdown [data-streamdown='code-block'] pre code span {
+  color: var(--shiki-dark, var(--sdm-c, inherit));
+  background-color: var(--shiki-dark-bg, var(--sdm-tbg, transparent));
+}
+
+/* ===== Markdown 公式间距（chat 模块专用） ===== */
+/* 多行公式块未被识别为块级时，会渲染为 <p><span class="katex">，
+   给这类段落加上下间距。:has(> .katex:only-child) 仅匹配子元素全为 katex 的 p */
+.chat-markdown p:has(> .katex:only-child) {
+  margin-top: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+/* 备选：公式被识别为 katex-display 块时也加间距 */
+.chat-markdown .katex-display {
+  margin-top: 1.5rem !important;
+  margin-bottom: 1.5rem !important;
+}
+/* 行内公式（$...$）与前后文字加微小间距 */
+.chat-markdown .katex {
+  margin-left: 0.125rem;
+  margin-right: 0.125rem;
+}

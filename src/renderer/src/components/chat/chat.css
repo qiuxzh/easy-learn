@@ -1,0 +1,55 @@
+/* chat 模块的 CSS 变量与关键样式。
+ * 大部分样式已用 Tailwind 类名表达，仅保留聊天布局和共享交互样式。
+ */
+
+/* 以下变量由 JS 运行时动态设置，此处声明仅用于满足 IDE 的 CSS linter */
+:root {
+  --chat-shimmer-duration: 2s;
+}
+
+/* === TextShimmer 流光动画 === */
+@keyframes chat-shimmer {
+  from {
+    background-position: 100% center;
+  }
+  to {
+    background-position: 0% center;
+  }
+}
+
+.chat-shimmer {
+  display: inline-block;
+  background-size: 250% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  background-image: linear-gradient(
+    90deg,
+    hsl(var(--muted-foreground) / 0.5) 0%,
+    hsl(var(--muted-foreground) / 0.5) 40%,
+    hsl(var(--foreground) / 0.7) 50%,
+    hsl(var(--muted-foreground) / 0.5) 60%,
+    hsl(var(--muted-foreground) / 0.5) 100%
+  );
+  background-repeat: no-repeat;
+  animation: chat-shimmer var(--chat-shimmer-duration, 2s) linear infinite;
+}
+
+/* === Radix ScrollArea wrapper 重置 === */
+/* Radix 默认给滚动视口注入 display:table + min-width:100% 的 wrapper，
+   会让容器变窄时内容被裁掉。强制重置为 block + 跟随父容器。
+   适用于 chat 里用到 Radix ScrollArea 的容器（会话列表、消息内的内联滚动区）；
+   .chat-message-list 已切换为原生 div（避免与 virtualizer 竞争）。 */
+.chat-session-summary-list [data-radix-scroll-area-viewport] > div,
+.chat-inline-scroll [data-radix-scroll-area-viewport] > div {
+  display: block !important;
+  min-width: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+/* 消息里的内联滚动区：视口限高，Root 随内容收缩。
+   限高只能放在视口上——视口自带 h-full，把 max-height 放在 Root 上撑不出滚动。 */
+.chat-inline-scroll [data-radix-scroll-area-viewport] {
+  max-height: 175px;
+}

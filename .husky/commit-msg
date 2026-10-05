@@ -1,0 +1,2 @@
+# 提交信息校验：遵循 Conventional Commits 规范，规则见 commitlint.config.mjs
+pnpm exec commitlint --edit "$1"
