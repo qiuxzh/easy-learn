@@ -12,9 +12,9 @@ import {
   Tag,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { CardEditDialog } from '@/components/CardEditDialog';
 import { CardEditor } from '@/components/CardEditor';
 import { FloatingPanel } from '@/components/FloatingPanel';
+import { useCardEditDialog } from '@/hooks/use-card-edit-dialog';
 import { Chat } from '@/pages/Chat';
 import { useTabsStore } from '@/stores/tabs-store';
 import { Badge } from '@/components/ui/badge';
@@ -53,12 +53,10 @@ interface CardBrowserProps {
   /** 本 Tab 的实例 id，用于判断自身是否为当前激活页。 */
   tabId?: string;
   groupId?: string;
-  /** 请求打开新增卡片弹窗的时间戳。 */
-  createCardAt?: number;
 }
 
 /** 三栏卡片浏览页。 */
-export function CardBrowser({ tabId, groupId, createCardAt }: CardBrowserProps) {
+export function CardBrowser({ tabId, groupId }: CardBrowserProps) {
   const browserRootRef = useRef<HTMLDivElement>(null);
   /** 本页是否为当前激活的 Tab；TabContent 用 hidden 保留其他页，这里据此收起浮层。 */
   const isActiveTab = useTabsStore(s => s.activeTabId === tabId);
@@ -73,7 +71,6 @@ export function CardBrowser({ tabId, groupId, createCardAt }: CardBrowserProps) 
     () => cards.find(card => card.id === selectedCardId),
     [cards, selectedCardId]
   );
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
   /** 是否已创建过 AI 助手浮层；一旦为 true 就不再复位，使 Chat 组件常驻并保留会话。 */
   const [assistantMounted, setAssistantMounted] = useState(false);
   /** 用户是否主动打开了 AI 助手；关闭只隐藏组件，会话留到下次打开。 */
@@ -82,6 +79,8 @@ export function CardBrowser({ tabId, groupId, createCardAt }: CardBrowserProps) 
   const assistantVisible = assistantOpen && isActiveTab;
   const editorVisible = Boolean(selectedCard);
   const [page, setPage] = useState(1);
+  // 新增卡片后回到第一页，列表由 flashcards:changed 事件刷新
+  const { openCreateCard, cardEditDialog } = useCardEditDialog({ onSaved: () => setPage(1) });
   const filteredCards = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     if (!query) return cards;
@@ -129,15 +128,6 @@ export function CardBrowser({ tabId, groupId, createCardAt }: CardBrowserProps) 
     }, 0);
     return () => window.clearTimeout(timer);
   }, [groupId]);
-
-  useEffect(() => {
-    if (!createCardAt) return;
-    const timer = window.setTimeout(() => {
-      setSelectedCardId(null);
-      setCreateDialogOpen(true);
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [createCardAt]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void load(), 0);
@@ -197,10 +187,10 @@ export function CardBrowser({ tabId, groupId, createCardAt }: CardBrowserProps) 
     setAssistantOpen(true);
   }
 
-  /** 打开新增卡片弹窗。 */
+  /** 打开新增卡片弹窗，同时关闭右侧编辑栏。 */
   function handleCreateCard() {
     setSelectedCardId(null);
-    setCreateDialogOpen(true);
+    openCreateCard(groupId ?? selectedGroupId ?? groups[0]?.id);
   }
 
   /** 点击卡片后直接进入编辑栏。 */
@@ -223,12 +213,6 @@ export function CardBrowser({ tabId, groupId, createCardAt }: CardBrowserProps) 
     setSelectedCardId(null);
     setPage(1);
     void load();
-  }
-
-  /** 新增卡片后回到第一页，等待列表刷新。 */
-  function handleDialogSaved() {
-    setCreateDialogOpen(false);
-    setPage(1);
   }
 
   return (
@@ -329,14 +313,7 @@ export function CardBrowser({ tabId, groupId, createCardAt }: CardBrowserProps) 
           )}
         </ResizablePanelGroup>
       </div>
-      {createDialogOpen && (
-        <CardEditDialog
-          key={`create-${createCardAt ?? 'manual'}`}
-          groupId={groupId ?? selectedGroupId ?? groups[0]?.id}
-          onOpenChange={setCreateDialogOpen}
-          onSaved={handleDialogSaved}
-        />
-      )}
+      {cardEditDialog}
       {/* AI 助手浮层：挂载后不再卸载，关闭只是隐藏，从而保留对话进度 */}
       {assistantMounted && (
         <FloatingPanel

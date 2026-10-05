@@ -94,19 +94,28 @@ export function CardEditDialog({ card, groupId, onOpenChange, onSaved }: CardEdi
     toast.success(isEditing ? '卡片已保存' : '卡片已创建');
     window.dispatchEvent(new Event('flashcards:changed'));
     onSaved(result.card);
-    onOpenChange(false);
+
+    if (isEditing) {
+      onOpenChange(false);
+      return;
+    }
+
+    // 新增模式保留弹窗并清空内容，便于连续添加多张卡片；牌组选择保留，方便继续添加到同一牌组
+    setFront('');
+    setBack('');
+    setTags('');
   }
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[calc(100%-2rem)] w-[calc(100%-2rem)] max-w-3xl flex-col overflow-hidden">
+      <DialogContent className="flex max-h-[calc(100%-4rem)] w-[calc(100%-2rem)] max-w-3xl flex-col overflow-hidden">
         <DialogHeader className="shrink-0">
           <DialogTitle>{isEditing ? '编辑卡片' : '新增卡片'}</DialogTitle>
           <DialogDescription>
             {isEditing ? '修改后保存，会立即更新当前内容。' : '填写问题和答案后创建卡片。'}
           </DialogDescription>
         </DialogHeader>
-        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto pr-1">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
           <div className="space-y-2">
             <p className="text-sm font-medium">问题</p>
             <MarkdownEditor
@@ -114,7 +123,7 @@ export function CardEditDialog({ card, groupId, onOpenChange, onSaved }: CardEdi
               onChange={setFront}
               placeholder="输入问题或提示"
               className="focus-within:border-input focus-within:ring-0"
-              minHeightClassName="min-h-40"
+              minHeightClassName="min-h-28"
             />
           </div>
           <div className="space-y-2">
@@ -124,7 +133,7 @@ export function CardEditDialog({ card, groupId, onOpenChange, onSaved }: CardEdi
               onChange={setBack}
               placeholder="输入答案或解释"
               className="focus-within:border-input focus-within:ring-0"
-              minHeightClassName="min-h-40"
+              minHeightClassName="min-h-28"
             />
           </div>
           <div className="space-y-2">

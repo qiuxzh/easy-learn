@@ -1,4 +1,4 @@
-﻿import { memo, type ComponentType, type ReactElement } from 'react';
+import { memo, type ComponentType, type ReactElement } from 'react';
 import { Chat } from '@/pages/Chat';
 import { BookShelf } from '@/pages/BookShelf';
 import { Flashcard } from '@/pages/Flashcard';
@@ -13,7 +13,6 @@ type TabContentProps = {
   tabId?: string;
   bookId?: string;
   groupId?: string;
-  createCardAt?: number;
 };
 
 /** Tab 类型到内容组件的映射。 */
@@ -38,12 +37,7 @@ export const TabContent = memo(function TabContent(): ReactElement {
         const Component = TAB_COMPONENTS[tab.type];
         return (
           <div key={tab.id} className={`h-full w-full ${tab.id === activeTabId ? '' : 'hidden'}`}>
-            <Component
-              tabId={tab.id}
-              bookId={tab.params?.bookId}
-              createCardAt={tab.params?.createCardAt}
-              groupId={tab.params?.groupId}
-            />
+            <Component tabId={tab.id} bookId={tab.params?.bookId} groupId={tab.params?.groupId} />
           </div>
         );
       })}

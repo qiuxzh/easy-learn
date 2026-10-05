@@ -16,8 +16,6 @@ export interface AddTabParams {
   title?: string;
 
   bookId?: string;
-  /** 请求闪卡浏览页打开新增编辑栏的时间戳。 */
-  createCardAt?: number;
   groupId?: string;
 }
 

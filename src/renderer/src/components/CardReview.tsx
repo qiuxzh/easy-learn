@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Check, Eye, FilePenLine } from 'lucide-react';
 import { toast } from 'sonner';
-import { CardEditDialog } from '@/components/CardEditDialog';
 import { Markdown } from '@/components/chat/markdown/Markdown';
+import { useCardEditDialog } from '@/hooks/use-card-edit-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -20,7 +20,6 @@ export function CardReview({ groupId }: CardReviewProps) {
   const [showAnswer, setShowAnswer] = useState(false);
   const [loading, setLoading] = useState(true);
   const [reviewing, setReviewing] = useState(false);
-  const [editOpen, setEditOpen] = useState(false);
 
   /** 加载牌组信息和复习队列。 */
   const load = useCallback(async () => {
@@ -80,6 +79,8 @@ export function CardReview({ groupId }: CardReviewProps) {
     setShowAnswer(false);
   }
 
+  const { openEditCard, cardEditDialog } = useCardEditDialog({ onSaved: handleCardSaved });
+
   if (loading)
     return (
       <div className="flex h-full items-center justify-center bg-muted/15 text-sm text-muted-foreground">
@@ -100,7 +101,14 @@ export function CardReview({ groupId }: CardReviewProps) {
         <h1 className="text-lg font-semibold">复习</h1>
         <div className="flex items-center gap-2">
           <Badge variant="secondary">剩余 {queue.length} 张</Badge>
-          <Button variant="outline" size="sm" disabled={!current} onClick={() => setEditOpen(true)}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!current}
+            onClick={() => {
+              if (current) openEditCard(current);
+            }}
+          >
             <FilePenLine />
             编辑
           </Button>
@@ -159,9 +167,7 @@ export function CardReview({ groupId }: CardReviewProps) {
           </div>
         )}
       </div>
-      {editOpen && current && (
-        <CardEditDialog card={current} onOpenChange={setEditOpen} onSaved={handleCardSaved} />
-      )}
+      {cardEditDialog}
     </div>
   );
 }

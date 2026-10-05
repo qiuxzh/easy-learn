@@ -11,6 +11,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useCardEditDialog } from '@/hooks/use-card-edit-dialog';
 import { useTabsStore } from '@/stores/tabs-store';
 import {
   AlertDialog,
@@ -64,6 +65,7 @@ export function Flashcard() {
   const [renameTarget, setRenameTarget] = useState<CardGroupSummary | null>(null);
   const [renameName, setRenameName] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<CardGroupSummary | null>(null);
+  const { openCreateCard, cardEditDialog } = useCardEditDialog();
   const selectedGroup = useMemo(
     () => groups.find(group => group.id === selectedGroupId),
     [groups, selectedGroupId]
@@ -116,19 +118,9 @@ export function Flashcard() {
     });
   }
 
-  /** 打开牌组浏览页并直接弹出新增卡片窗口。 */
-  function openCreateCard(groupId?: string) {
-    const targetGroupId = groupId ?? selectedGroupId ?? groups[0]?.id;
-    if (!targetGroupId) {
-      toast.error('请先创建牌组');
-      return;
-    }
-
-    addTab('card-browser', {
-      groupId: targetGroupId,
-      createCardAt: Date.now(),
-      title: '闪卡浏览',
-    });
+  /** 在当前页直接弹出新增卡片窗口。 */
+  function handleCreateCard(groupId?: string) {
+    openCreateCard(groupId ?? selectedGroupId ?? groups[0]?.id);
   }
 
   /** 打开选中牌组的复习 Tab。 */
@@ -227,7 +219,7 @@ export function Flashcard() {
               <Plus />
               新建牌组
             </Button>
-            <Button onClick={() => openCreateCard()}>
+            <Button onClick={() => handleCreateCard()}>
               <Sparkles />
               新增卡片
             </Button>
@@ -297,7 +289,7 @@ export function Flashcard() {
                           selected={selectedGroupId === group.id}
                           onSelect={() => setSelectedGroupId(group.id)}
                           onBrowse={() => openBrowser(group.id)}
-                          onCreateCard={() => openCreateCard(group.id)}
+                          onCreateCard={() => handleCreateCard(group.id)}
                           onReview={() =>
                             addTab('card-review', {
                               groupId: group.id,
@@ -318,6 +310,7 @@ export function Flashcard() {
           </div>
         </div>
       </ScrollArea>
+      {cardEditDialog}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
           <DialogHeader>
