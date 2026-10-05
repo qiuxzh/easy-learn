@@ -201,7 +201,7 @@ export const InputBar = memo(function InputBar({
     <div className="shrink-0 px-3 pb-3">
       <div
         role="presentation"
-        className="relative cursor-text rounded-2xl bg-background shadow-2xs ring-1 ring-foreground/10"
+        className="relative cursor-text rounded-2xl bg-background shadow-input-bar ring-1 ring-foreground/10"
         onClick={handleContainerClick}
         onKeyDown={handleContainerKeyDown}
       >
