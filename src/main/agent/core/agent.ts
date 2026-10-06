@@ -51,10 +51,8 @@ export type ToolExecutionMode = 'sequential' | 'parallel';
 /** Agent 运行时使用的工具定义。 */
 export interface AgentTool<
   TParameters extends TSchema = TSchema,
-  TDetails = any,
+  TDetails = unknown,
 > extends Tool<TParameters> {
-  /** 用于 UI 显示的可读标签。 */
-  label: string;
   /** 执行工具调用。失败时抛出异常，而不要将错误编码进 `content`。 */
   execute: (
     toolCallId: string,

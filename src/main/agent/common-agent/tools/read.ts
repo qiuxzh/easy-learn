@@ -94,7 +94,6 @@ export function createReadTool(
 ): SessionTool<typeof readSchema, undefined> {
   return defineSessionTool({
     name: 'read',
-    label: '读取文件',
     description:
       `读取应用数据目录（data）下的文本文件内容。offset 指定起始行号（从 1 开始），limit 指定最多读取多少行；` +
       `单次输出最多 ${DEFAULT_MAX_LINES} 行或 ${DEFAULT_MAX_BYTES / 1024}KB，超出时保留头部与尾部、省略中间，并给出继续读取的 offset。`,

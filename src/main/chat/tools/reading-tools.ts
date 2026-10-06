@@ -58,7 +58,6 @@ function limitBm25ToolContext(searchResults: BookBm25SearchResult[]) {
 /** 书的目录：按 bookId 返回嵌套的 TOCItem 树。 */
 const getBookTocsTool = defineSessionTool({
   name: 'get_book_tocs',
-  label: '读取目录',
   description:
     '根据书的 id 获取该书的完整目录（嵌套结构，含 id、层级、子章节、href 等），用于回答用户关于书籍章节结构的问题',
   promptSnippet: '查看某本书的目录结构',
@@ -81,7 +80,6 @@ const getBookTocsTool = defineSessionTool({
 /** 章节正文：按 tocId 读取该目录项自己的正文范围（到下一个同级或更高层目录项之前为止）。 */
 const readBookTocSectionTool = defineSessionTool({
   name: 'read_book_toc_section',
-  label: '读取章节',
   description:
     '根据书的 id 和目录 toc id 读取该目录项对应的正文，范围从该目录项开头到下一个同级或更高层目录项之前。' +
     '可使用 offset 和 length 分段读取；返回 truncated 为 true 时表示后面还有正文。',
@@ -125,7 +123,6 @@ const readBookTocSectionTool = defineSessionTool({
 /** 正文检索：关键词命中片段，附带可直接跳转阅读器的 CFI。 */
 const searchBookBm25Tool = defineSessionTool({
   name: 'search_book_bm25',
-  label: '检索书中内容',
   description:
     '根据关键词或问题在指定书籍的正文中检索最相关的片段。返回片段正文、BM25 分数和 startCfi。' +
     '回答书中具体内容前，应优先调用此工具定位相关段落；如片段不足，再调用 read_book_toc_section 阅读完整章节。',
@@ -167,7 +164,6 @@ const searchBookBm25Tool = defineSessionTool({
 /** 阅读状态：用户最近一次同步到主进程的进度，可据此拿到当前章节的 tocId。 */
 const getUserReadingStateTool = defineSessionTool({
   name: 'get_user_reading_state',
-  label: '获取阅读状态',
   description:
     '获取用户最近一次同步到主进程的阅读状态，包含当前书籍、目录 tocId、章节标题、章节 href 和阅读进度。',
   promptSnippet: '获取用户当前阅读状态',

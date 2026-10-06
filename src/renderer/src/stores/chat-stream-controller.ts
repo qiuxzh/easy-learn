@@ -31,6 +31,15 @@ function toolResultToText(result: unknown): string {
   return JSON.stringify(result ?? null);
 }
 
+/**
+ * 尽力取出工具结果里的结构化详情。
+ * details 的类型由各工具自行决定，这里不做任何形状假设——
+ */
+function toolResultDetails(result: unknown): unknown {
+  if (result === null || result === undefined) return undefined;
+  return (result as { details?: unknown }).details;
+}
+
 /** 从 agent_end 携带的消息列表推断本次运行的结局。 */
 function readRunOutcome(messages: AgentMessage[]): RunOutcome {
   const last = messages[messages.length - 1];
@@ -131,6 +140,7 @@ function handleSessionEvent({ sessionId, event }: ChatEventPayload): void {
         input: '',
         output: toolResultToText(event.result),
         success: !event.isError,
+        details: toolResultDetails(event.result),
       });
       return;
     case 'compaction_start':

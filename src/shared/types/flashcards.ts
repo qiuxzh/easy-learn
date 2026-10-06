@@ -1,4 +1,4 @@
-﻿/** 闪卡支持的卡片类型。当前只实现 Basic，保留后续扩展入口。 */
+/** 闪卡支持的卡片类型。当前只实现 Basic，保留后续扩展入口。 */
 export type CardType = 'basic';
 
 /** FSRS 卡片状态。数值与 ts-fsrs 的 State 枚举保持一致。 */
@@ -150,4 +150,38 @@ export interface CardResult {
   success: boolean;
   card?: CardRecord;
   error?: string;
+}
+
+/** 闪卡写入操作的类型，与三个写入工具一一对应。 */
+export type FlashcardChangeAction = 'create' | 'update' | 'delete';
+
+/** 可被写入工具修改的卡片字段。 */
+export type FlashcardChangeField = 'front' | 'back' | 'tags' | 'groupName';
+
+/** 卡片在变更那一刻的快照。字段保存的是可直接展示的值，不保存 ID。 */
+export interface FlashcardChangeSnapshot {
+  /** 卡片唯一标识。 */
+  id: string;
+  /** 所属牌组名；记录变更当时牌组的名称。 */
+  groupName: string;
+  /** 正面 Markdown 全文。 */
+  front: string;
+  /** 反面 Markdown 全文。 */
+  back: string;
+  /** 卡片标签。 */
+  tags: string[];
+}
+
+/**
+ * 一次闪卡写入操作的详情，供渲染层展示本轮改动。
+ */
+export interface FlashcardChangeDetail {
+  /** 本次操作类型。 */
+  action: FlashcardChangeAction;
+  /** 操作完成后的卡片快照；delete 时为删除前的快照。 */
+  card: FlashcardChangeSnapshot;
+  /** update 时实际发生变化的字段；create/delete 时省略。 */
+  changedFields?: FlashcardChangeField[];
+  /** update 时变化字段的旧值，用于展示前后对比；create/delete 时省略。 */
+  previous?: Partial<Pick<FlashcardChangeSnapshot, FlashcardChangeField>>;
 }

@@ -7,7 +7,7 @@ import type { AgentTool } from '../core/agent';
  */
 export interface SessionTool<
   TParameters extends TSchema = TSchema,
-  TDetails = any,
+  TDetails = unknown,
 > extends AgentTool<TParameters, TDetails> {
   /** 一句话摘要，进系统提示的可用工具列表；省略则该工具不出现在列表里。 */
   promptSnippet?: string;

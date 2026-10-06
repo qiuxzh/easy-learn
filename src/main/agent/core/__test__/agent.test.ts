@@ -98,7 +98,6 @@ describe('Agent', () => {
     const weatherParameters = Type.Object({ city: Type.String() });
     const weatherTool: AgentTool<typeof weatherParameters> = {
       name: 'get_weather',
-      label: '查询天气',
       description: '查询指定城市当前的天气',
       parameters: weatherParameters,
       execute: async (_toolCallId, params) => ({

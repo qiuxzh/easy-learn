@@ -36,6 +36,12 @@ export interface AppToolResultPart {
   input: string;
   output: string;
   success: boolean;
+  /**
+   * 工具返回的结构化详情，供界面渲染。
+   * 形状随工具而异，读取方需按 toolName 判断并做防御性解析；
+   * 历史会话里的旧记录没有该字段，为 undefined。
+   */
+  details?: unknown;
 }
 
 /** App 层图片 part：只保存落盘路径，渲染时拼成 app:// 地址 */

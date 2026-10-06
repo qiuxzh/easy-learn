@@ -59,7 +59,6 @@ export function createReadImageTool(
 ): SessionTool<typeof readImageSchema, undefined> {
   return defineSessionTool({
     name: 'read_image',
-    label: '读取图片',
     description:
       '读取应用数据目录（data）下的图片，把图片本身交给模型查看。只能读图片，不能读文本文件。',
     promptSnippet: '查看图片内容',

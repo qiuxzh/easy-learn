@@ -10,6 +10,7 @@ import { AssistantParts } from './AssistantParts';
 import { CompactionNotice } from './CompactionNotice';
 import { MessageToolbar, formatTimestamp } from './MessageToolbar';
 import { TraceUsage } from './TraceUsage';
+import { FlashcardChangesBlock } from './FlashcardChangesBlock';
 import {
   ChatStatus,
   getAssistantText,
@@ -51,8 +52,8 @@ export type MessageListProps = {
  * 按顺序渲染用户气泡、助手内容（含夹在中间的系统提示）、以及末尾的"思考中"提示。
  */
 function TraceItem({
-  trace,
-  isLastTrace,
+  trace, // 数据
+  isLastTrace, // 标记是否是最后一个trace，用于一些特殊的展示效果
   showPlanning,
   isStreaming,
   activeCopyId,
@@ -131,6 +132,13 @@ function TraceItem({
               )
             )}
           </div>
+          {/* 本轮闪卡改动汇总：跑完才显示，运行中还会继续产生改动；
+              最新一条默认展开改动详情，历史记录默认折叠 */}
+          {!isTraceStreaming && (
+            <div className="mt-2">
+              <FlashcardChangesBlock messages={assistantMsgs} defaultExpanded={isLastTrace} />
+            </div>
+          )}
           {/* 复制按钮靠左，统计靠右；两者都不渲染时该行高度为 0 */}
           <div className="mt-2 flex items-center gap-1.5">
             {/* 默认只在有正文且非流式时显示；刚复制过时即使处于流式也保留，便于连续复制 */}

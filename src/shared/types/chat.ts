@@ -160,7 +160,7 @@ export interface AssistantMessage {
   timestamp: number; // Unix timestamp in milliseconds
 }
 
-export interface ToolResultMessage<TDetails = any> {
+export interface ToolResultMessage<TDetails = unknown> {
   role: 'toolResult';
   toolCallId: string;
   toolName: string;
@@ -246,7 +246,8 @@ export type AgentEvent =
       type: 'tool_execution_end';
       toolCallId: string;
       toolName: string;
-      result: any;
+      /** 工具执行结果，形状由各工具决定；消费方需自行收窄后再读。 */
+      result: unknown;
       isError: boolean;
     };
 

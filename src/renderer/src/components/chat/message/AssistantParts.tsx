@@ -3,6 +3,12 @@ import { IconTool } from '@tabler/icons-react';
 import { cn } from '@/lib/utils';
 import { Markdown } from '@/components/chat/markdown/Markdown';
 import { ToolRowBase } from '../tools/ToolRowBase';
+import { FlashcardToolRow } from '@/components/chat/tools/FlashcardToolRow';
+import { TOOL_PRESENTATION } from '@/components/chat/tools/tool-presentation';
+import {
+  isFlashcardWriteTool,
+  parseFlashcardChange,
+} from '@/components/chat/tools/FlashcardChangeView';
 import { ReasoningBlock } from './ReasoningBlock';
 import {
   isAbortPart,
@@ -38,28 +44,21 @@ function toMonoText(raw: string): string {
   return parsed === null ? raw : JSON.stringify(parsed, null, 2);
 }
 
-/** 从工具入参里挑一段能一眼看懂的一行摘要，作为工具行的 detail */
-function summarizeToolInput(raw: string): string | undefined {
+/** 行摘要的最大字符数，超长时截断避免撑爆单行。 */
+const MAX_SUMMARY_LENGTH = 80;
+
+/**
+ * 读取入参里被显式声明的那个字段作为行摘要。
+ * 字段缺失或不是字符串时返回 undefined——不做任何猜测，宁可没有摘要。
+ */
+function readSummaryField(raw: string, field: string): string | undefined {
   const parsed = tryParseJson(raw);
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
-  const record = parsed as Record<string, unknown>;
-  const preferred = [
-    'command',
-    'file_path',
-    'filePath',
-    'path',
-    'pattern',
-    'query',
-    'url',
-    'prompt',
-    'description',
-  ];
-  const key =
-    preferred.find(k => typeof record[k] === 'string') ??
-    Object.keys(record).find(k => typeof record[k] === 'string');
-  if (!key) return undefined;
-  const value = String(record[key]).replace(/\s+/g, ' ').trim();
-  return value.length > 80 ? `${value.slice(0, 80)}…` : value;
+  const value = (parsed as Record<string, unknown>)[field];
+  if (typeof value !== 'string') return undefined;
+  const text = value.replace(/\s+/g, ' ').trim();
+  if (!text) return undefined;
+  return text.length > MAX_SUMMARY_LENGTH ? `${text.slice(0, MAX_SUMMARY_LENGTH)}…` : text;
 }
 
 /** 用户主动中止时显示的提示 */
@@ -90,7 +89,7 @@ function toOutputText(result: AppToolResultPart): string {
 
 /**
  * 工具调用 + 工具结果合并成一行：
- * 运行中标签流光，右侧是"工具名 · 入参摘要"；
+ * 标题与摘要都取自渲染层的展示表，未登记的工具回退显示原始工具名；
  * 展开后是等宽正文（上为入参、下为输出）。
  */
 function ToolCallRow({
@@ -103,17 +102,20 @@ function ToolCallRow({
   const isPending = !toolResult;
   const isError = toolResult ? !toolResult.success : false;
   const inputText = toMonoText(toolCall.input);
-  // 行上只写"调用工具"，具体是哪个工具放在 detail 里
-  const summary = summarizeToolInput(toolCall.input);
-  const detail = summary ? `${toolCall.toolName} · ${summary}` : toolCall.toolName;
+  // 标题与摘要都来自展示表；未登记的工具只显示原始工具名，不显示摘要
+  const presentation = TOOL_PRESENTATION[toolCall.toolName];
+  const label = presentation?.label ?? toolCall.toolName;
+  const detail = presentation?.summaryFrom
+    ? readSummaryField(toolCall.input, presentation.summaryFrom)
+    : undefined;
 
   return (
     // min-w-0 避免 flex item 默认 min-width: auto 在父容器被压窄时把行撑成不可收缩
     <div className="min-w-0">
       <ToolRowBase
         icon={<IconTool className="size-3" />}
-        shimmerLabel="调用工具"
-        completeLabel="调用工具"
+        shimmerLabel={label}
+        completeLabel={label}
         isAnimating={isPending}
         detail={detail}
         trailingContent={
@@ -148,6 +150,23 @@ function ToolCallRow({
         </div>
       </ToolRowBase>
     </div>
+  );
+}
+
+/**
+ * 按工具类型选择渲染方式：闪卡写入工具用富内容展示改动，
+ * 其余情况（含运行中、失败、以及旧日志里没有 details 的记录）走通用工具行。
+ */
+function renderToolRow(key: string, toolCall: AppToolCallPart, toolResult?: AppToolResultPart) {
+  const change =
+    toolResult && isFlashcardWriteTool(toolCall.toolName)
+      ? parseFlashcardChange(toolResult.details)
+      : null;
+
+  return change ? (
+    <FlashcardToolRow key={key} change={change} />
+  ) : (
+    <ToolCallRow key={key} toolCall={toolCall} toolResult={toolResult} />
   );
 }
 
@@ -191,7 +210,7 @@ export const AssistantParts = memo(function AssistantParts({ msg }: { msg: AppUI
       if (isToolCallPart(part)) {
         const toolResult = resultByCallId.get(part.toolCallId);
         if (toolResult) consumedResults.add(part.toolCallId);
-        elems.push(<ToolCallRow key={key} toolCall={part} toolResult={toolResult} />);
+        elems.push(renderToolRow(key, part, toolResult));
         return;
       }
 
@@ -200,16 +219,16 @@ export const AssistantParts = memo(function AssistantParts({ msg }: { msg: AppUI
         if (consumedResults.has(part.toolCallId)) return;
         // 孤儿 result（缺少对应 tool-call）：用占位 call 渲染
         elems.push(
-          <ToolCallRow
-            key={key}
-            toolCall={{
+          renderToolRow(
+            key,
+            {
               type: 'tool-call',
               toolCallId: part.toolCallId,
               toolName: part.toolName,
               input: part.input,
-            }}
-            toolResult={part}
-          />
+            },
+            part
+          )
         );
         return;
       }

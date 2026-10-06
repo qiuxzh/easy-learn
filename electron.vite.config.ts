@@ -68,7 +68,17 @@ export default defineConfig({
     // 这些目录仅作为参考文档/备份/临时脚本使用，无需参与热更新
     server: {
       watch: {
-        ignored: ['**/docs/**', '**/temp_script/**'],
+        ignored: [
+          '**/docs/**',
+          '**/temp_script/**',
+          // 编辑器/工具做原子写入时会在同级目录建隐藏临时目录
+          // （.<文件名>.<pid>.<uuid>.tmpdir/<文件名>.tmp），写完即删。
+          // Windows 上监听这种瞬时文件会抛 EBUSY，chokidar 把错误抛给未监听的
+          // error 事件会直接终止 dev 进程，故整体排除；目录名以点开头，
+          // 普通 * 不匹配点开头，模式里需显式写 .*.tmpdir
+          '**/.*.tmpdir',
+          '**/.*.tmpdir/**',
+        ],
       },
     },
   },

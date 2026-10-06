@@ -85,11 +85,3 @@ export function traceHasContent(trace: Trace): boolean {
     )
   );
 }
-
-export function getLastUserMessageId(messages: AppUIMessage[]): string | null {
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
-    const msg = messages[i];
-    if (msg && msg.role === 'user') return msg.id;
-  }
-  return null;
-}

@@ -246,6 +246,8 @@ export function sessionEntriesToAppMessages(entries: SessionEntry[]): AppUIMessa
       input: '',
       output: toolResultToText(message),
       success: !message.isError,
+      // 详情随消息一起落在会话日志里，回放历史会话时同样能拿到快照
+      details: message.details,
     };
     last.parts.push(resultPart);
   }

@@ -1,7 +1,14 @@
 import { Type } from 'typebox';
 import { defineSessionTool } from '@main/agent/common-agent/agent-definition';
 import { flashcardService } from '@main/service/flashcard-service';
-import type { CardFields, CardRecord, CardResult } from '@shared/types/flashcards';
+import type {
+  CardFields,
+  CardRecord,
+  CardResult,
+  FlashcardChangeDetail,
+  FlashcardChangeField,
+  FlashcardChangeSnapshot,
+} from '@shared/types/flashcards';
 import { flashcardRepo, toCardRecord } from '@main/db/repo/flashcard-repo';
 import { formatTimestamp } from '@shared/utils/time-util';
 
@@ -39,10 +46,67 @@ function unwrap(result: CardResult, fallbackMessage: string): CardRecord {
   return result.card;
 }
 
+/**
+ * 查牌组名并作为快照的一部分保存。
+ * 快照只存名称不存 ID：渲染层要显示的就是名称，牌组不存在时回退到 ID 保证有可展示的值。
+ */
+function resolveGroupName(groupId: string): string {
+  return flashcardRepo.findGroupById(groupId)?.name ?? groupId;
+}
+
+/** 从卡片记录提取渲染层展示用的快照，保留正反面全文。 */
+function toChangeSnapshot(card: CardRecord): FlashcardChangeSnapshot {
+  return {
+    id: card.id,
+    groupName: resolveGroupName(card.groupId),
+    front: card.fields.front,
+    back: card.fields.back,
+    tags: card.tags,
+  };
+}
+
+/** 判断两个标签数组是否等价，忽略顺序。 */
+function isSameTags(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) return false;
+  const sortedRight = [...right].sort();
+  return [...left].sort().every((tag, index) => tag === sortedRight[index]);
+}
+
+/**
+ * 比较修改前后的卡片，得出实际变化的字段及其旧值。
+ * 用保存后的结果与修改前比较，因此能反映标签去空格、去重等归一化带来的真实变化。
+ */
+function diffCard(
+  before: CardRecord,
+  after: CardRecord
+): Pick<FlashcardChangeDetail, 'changedFields' | 'previous'> {
+  const changedFields: FlashcardChangeField[] = [];
+  const previous: FlashcardChangeDetail['previous'] = {};
+
+  if (before.fields.front !== after.fields.front) {
+    changedFields.push('front');
+    previous.front = before.fields.front;
+  }
+  if (before.fields.back !== after.fields.back) {
+    changedFields.push('back');
+    previous.back = before.fields.back;
+  }
+  // 按 ID 判断是否换了牌组，但存进快照的是名称（渲染层只认名称）
+  if (before.groupId !== after.groupId) {
+    changedFields.push('groupName');
+    previous.groupName = resolveGroupName(before.groupId);
+  }
+  if (!isSameTags(before.tags, after.tags)) {
+    changedFields.push('tags');
+    previous.tags = before.tags;
+  }
+
+  return { changedFields, previous };
+}
+
 /** 新增闪卡：复习进度由服务层按 FSRS 初始化。 */
 const createFlashcardTool = defineSessionTool({
   name: 'create_flashcard',
-  label: '新增闪卡',
   description:
     '在指定牌组中新建一张闪卡，正反面内容使用 Markdown。复习进度由系统按 FSRS 自动初始化，无需提供。' +
     '需要新增多张时应逐张调用本工具。',
@@ -69,9 +133,11 @@ const createFlashcardTool = defineSessionTool({
       '新增闪卡失败'
     );
 
+    const details: FlashcardChangeDetail = { action: 'create', card: toChangeSnapshot(card) };
+
     return {
       content: [{ type: 'text' as const, text: JSON.stringify(toCardSummary(card)) }],
-      details: undefined,
+      details,
     };
   },
 });
@@ -81,7 +147,6 @@ const createFlashcardTool = defineSessionTool({
  * */
 const updateFlashcardTool = defineSessionTool({
   name: 'update_flashcard',
-  label: '编辑闪卡',
   description:
     '修改已有闪卡的正面、反面、标签或所属牌组。只需传入要改动的字段，未传入的字段保持原值；' +
     '标签一经传入即整体替换，不传则保留原标签。无法修改复习进度。',
@@ -132,9 +197,15 @@ const updateFlashcardTool = defineSessionTool({
       '保存闪卡失败'
     );
 
+    const details: FlashcardChangeDetail = {
+      action: 'update',
+      card: toChangeSnapshot(card),
+      ...diffCard(current, card),
+    };
+
     return {
       content: [{ type: 'text' as const, text: JSON.stringify(toCardSummary(card)) }],
-      details: undefined,
+      details,
     };
   },
 });
@@ -142,7 +213,6 @@ const updateFlashcardTool = defineSessionTool({
 /** 删除闪卡：硬删除，删除后不可恢复。 */
 const deleteFlashcardTool = defineSessionTool({
   name: 'delete_flashcard',
-  label: '删除闪卡',
   description: '永久删除一张闪卡，删除后无法恢复。仅应在用户明确要求删除卡片时调用。危险操作！',
   promptSnippet: '删除一张闪卡',
   parameters: Type.Object({
@@ -156,6 +226,9 @@ const deleteFlashcardTool = defineSessionTool({
       throw new Error(result.error ?? '删除闪卡失败');
     }
 
+    // 删除后卡片已不存在，details 里保存删除前的快照供界面展示
+    const details: FlashcardChangeDetail = { action: 'delete', card: toChangeSnapshot(card) };
+
     return {
       content: [
         {
@@ -167,7 +240,7 @@ const deleteFlashcardTool = defineSessionTool({
           }),
         },
       ],
-      details: undefined,
+      details,
     };
   },
 });
@@ -187,7 +260,6 @@ const SORT_FIELD_VALUES = ['createdAt', 'updatedAt', 'due', 'difficulty', 'reps'
 /** 查看闪卡列表：按条件过滤、排序并分页，只返回摘要。 */
 const listFlashcardsTool = defineSessionTool({
   name: 'list_flashcards',
-  label: '查看闪卡列表',
   description:
     '按条件列出闪卡，返回卡片 id、所属牌组、正面摘要、标签、状态与到期时间，用于定位卡片 id。' +
     `支持按牌组、标签、状态、到期时间过滤，支持多级排序，以及 offset/length 分页；` +
@@ -275,7 +347,6 @@ const listFlashcardsTool = defineSessionTool({
 /** 查看闪卡详情：唯一返回正反面全文的工具。 */
 const getFlashcardTool = defineSessionTool({
   name: 'get_flashcard',
-  label: '查看闪卡',
   description:
     '根据卡片 id 获取一张闪卡的完整内容，包含正面和反面的 Markdown 全文、标签、所属牌组和复习状态。' +
     '需要阅读或核对卡片正文时使用；只想浏览卡片概要时用列表类工具即可。',
@@ -320,7 +391,6 @@ const getFlashcardTool = defineSessionTool({
 /** 查看牌组列表：返回每个牌组的 id 与名称，供后续增删改卡片时取用 groupId。 */
 const listCardGroupsTool = defineSessionTool({
   name: 'list_card_groups',
-  label: '查看牌组列表',
   description:
     '列出全部闪卡牌组，返回每个牌组的 id、名称和卡片数量统计。牌组数量少，一次性全部返回，不需要分页。',
   promptSnippet: '查看全部闪卡牌组（id 与名称）',
