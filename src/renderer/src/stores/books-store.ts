@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { BookDoc } from '@shared/types/books';
+import type { BookDoc, BookUpdateRequest } from '@shared/types/books';
 
 interface BooksState {
   books: BookDoc[];
@@ -10,6 +10,8 @@ interface BooksState {
   loadBooks: () => Promise<string | null>;
   importBook: () => Promise<string | null>;
   deleteBook: (id: string) => Promise<string | null>;
+  /** 更新书名 / 作者 / 封面，成功后把返回的最新书籍写回列表 */
+  updateBook: (id: string, patch: Omit<BookUpdateRequest, 'id'>) => Promise<string | null>;
 }
 
 export const useBooksStore = create<BooksState>((set, get) => ({
@@ -68,6 +70,22 @@ export const useBooksStore = create<BooksState>((set, get) => ({
       return null;
     } catch (e) {
       set({ deletingId: null });
+      return String(e);
+    }
+  },
+
+  updateBook: async (id, patch) => {
+    try {
+      const res = await window.api.updateBook({ id, ...patch });
+      if (!res.success || !res.book) {
+        throw new Error(res.error ?? '保存失败');
+      }
+      const updated = res.book;
+      set(state => ({
+        books: state.books.map(book => (book.id === id ? updated : book)),
+      }));
+      return null;
+    } catch (e) {
       return String(e);
     }
   },

@@ -63,6 +63,8 @@ export interface BookDoc {
   description: string | null;
   author: string | null;
   createdAt: number;
+  /** 书籍源文件大小（字节）。文件缺失时为 null */
+  fileSize: number | null;
 }
 
 /** 导入书籍响应（main 端完成 dialog + 解析 + 写库后返回） */
@@ -96,6 +98,34 @@ export interface BookDeleteResult {
 /** 获取书籍文件路径请求（阅读器打开书时使用） */
 export interface BookGetRequest {
   id: string;
+}
+
+/** 选取封面图片响应：只返回图片字节供渲染层预览，由更新书籍时再落盘 */
+export interface BookPickCoverResult {
+  success: boolean;
+  /** 用户取消选择时为 true 且无 error */
+  canceled?: boolean;
+  cover?: CoverImage;
+  error?: string;
+}
+
+/**
+ * 更新书籍信息请求。
+ * 各字段省略表示不修改；author 传 null 表示清空作者；
+ * cover 传 CoverImage 表示换成新封面，传 null 表示移除封面。
+ */
+export interface BookUpdateRequest {
+  id: string;
+  booksName?: string;
+  author?: string | null;
+  cover?: CoverImage | null;
+}
+
+/** 更新书籍信息响应 */
+export interface BookUpdateResult {
+  success: boolean;
+  book?: BookDoc;
+  error?: string;
 }
 
 /** 获取书籍文件路径响应 */

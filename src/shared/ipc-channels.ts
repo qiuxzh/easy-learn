@@ -1,4 +1,4 @@
-﻿// 井号开头表示是后端向前端发送的消息
+// 井号开头表示是后端向前端发送的消息
 export enum IpcChannel {
   // 会话管理（模块 src/main/chat）
   /** 会话摘要列表，按最近活跃倒序，含运行态 */
@@ -33,6 +33,10 @@ export enum IpcChannel {
   Book_PickAndImport = 'book:pickAndImport',
   Book_GetAllBooks = 'book:getAllBooks',
   Book_DeleteBook = 'book:deleteBook',
+  /** main 端弹框选取封面图片，只返回字节给渲染层预览 */
+  Book_PickCover = 'book:pickCover',
+  /** 更新书名 / 作者 / 封面 */
+  Book_UpdateBook = 'book:updateBook',
 
   /** 阅读器打开书时，根据 id 拿 app:// 协议 URL */
   Book_GetBook = 'book:getBook',

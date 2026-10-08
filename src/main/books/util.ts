@@ -15,8 +15,8 @@ interface TextNodeLike {
   removeChild?: (child: TextNodeLike) => TextNodeLike;
 }
 
-/** 将 DB 行转换为渲染端 Book 实体 */
-export function toBook(row: BookRow): BookDoc {
+/** 将 DB 行转换为渲染端 Book 实体；fileSize 由调用方读取书籍文件得到 */
+export function toBook(row: BookRow, fileSize: number | null): BookDoc {
   return {
     id: row.id,
     booksName: row.booksName,
@@ -27,6 +27,7 @@ export function toBook(row: BookRow): BookDoc {
     description: row.description,
     author: row.author,
     createdAt: row.createdAt,
+    fileSize,
   };
 }
 

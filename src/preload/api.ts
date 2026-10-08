@@ -1,4 +1,4 @@
-﻿import type {
+import type {
   ChatEventPayload,
   DeleteSessionRequest,
   ImageContent,
@@ -24,6 +24,9 @@ import type {
   BookGetResult,
   BookImportResult,
   BookListResult,
+  BookPickCoverResult,
+  BookUpdateRequest,
+  BookUpdateResult,
 } from '@shared/types/books';
 import type { ReadingStatePayload } from '@shared/types/reader';
 import type {
@@ -126,6 +129,12 @@ export const api = {
     } as BookDeleteRequest) as Promise<BookDeleteResult>,
   getBook: (id: string) =>
     ipcRenderer.invoke(IpcChannel.Book_GetBook, { id } as BookGetRequest) as Promise<BookGetResult>,
+  /** 弹框选取封面图片，返回字节供渲染层预览（此时还未落盘） */
+  pickBookCover: () =>
+    ipcRenderer.invoke(IpcChannel.Book_PickCover) as Promise<BookPickCoverResult>,
+  /** 更新书名 / 作者 / 封面，返回更新后的 BookDoc */
+  updateBook: (request: BookUpdateRequest) =>
+    ipcRenderer.invoke(IpcChannel.Book_UpdateBook, request) as Promise<BookUpdateResult>,
   pushReadingState: (payload: ReadingStatePayload) =>
     ipcRenderer.invoke(IpcChannel.Reading_PushState, payload) as Promise<void>,
   // 闪卡

@@ -29,6 +29,12 @@ export class BookRepo {
     db.update(bookTable).set({ coverImg }).where(eq(bookTable.id, id)).run();
   }
 
+  /** 更新界面上可编辑的元信息字段（书名 / 作者） */
+  updateMeta(id: string, data: Pick<InsertBookRow, 'booksName' | 'author'>): void {
+    const db = getDatabase();
+    db.update(bookTable).set(data).where(eq(bookTable.id, id)).run();
+  }
+
   /** 删除书籍 */
   delete(id: string): void {
     const db = getDatabase();

@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState, memo } from 'react';
-import { BookOpen, Loader2, MoreVertical, Trash2 } from 'lucide-react';
+import { BookOpen, Info, Loader2, MoreVertical, Trash2 } from 'lucide-react';
 import { IconFileImport } from '@tabler/icons-react';
+import { BookDetailDialog } from '@/components/BookDetailDialog';
 import { useBooksStore } from '@/stores/books-store';
 import { useTabsStore } from '@/stores/tabs-store';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { fallbackCoverText } from '@/utils/book-cover';
 import type { BookDoc } from '@shared/types/books';
 import {
   AlertDialog,
@@ -20,25 +22,22 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-
-/** 用书名前 8 字符生成默认封面 */
-function fallbackCoverText(name: string): string {
-  const trimmed = name.trim();
-  return trimmed.slice(0, 8) || '未命名';
-}
 
 /** 单本书卡片 */
 function BookCard({
   book,
   deleting,
   onDelete,
+  onOpenDetail,
   onClick,
 }: {
   book: BookDoc;
   deleting: boolean;
   onDelete: (book: BookDoc) => void;
+  onOpenDetail: (book: BookDoc) => void;
   onClick: () => void;
 }) {
   const hasCover = !!book.coverUrl;
@@ -86,23 +85,34 @@ function BookCard({
         </div>
       </button>
 
-      {/* 悬停才显示的左上角菜单按钮 */}
+      {/* 悬停才显示的右下角菜单按钮 */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
             type="button"
             aria-label="书籍操作菜单"
             disabled={deleting}
-            className="absolute top-1.5 left-1.5 h-7 w-7 rounded-full bg-background/80 backdrop-blur-sm border border-border/60 shadow-sm flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-background opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity cursor-pointer disabled:cursor-not-allowed"
+            className="absolute bottom-1.5 right-1.5 h-7 w-7 rounded-full bg-background/80 backdrop-blur-sm border border-border/60 shadow-sm flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-background opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity cursor-pointer disabled:cursor-not-allowed"
           >
             <MoreVertical className="h-4 w-4" />
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" sideOffset={4}>
+        <DropdownMenuContent align="end" side="top" sideOffset={4}>
           <DropdownMenuItem
             onSelect={() => {
-              // 等 DropdownMenu 关闭动画完成再开 AlertDialog，
+              // 等 DropdownMenu 关闭动画完成再开 Dialog，
               // 避免两个 Radix Portal 的 FocusScope 共存造成焦点死锁。
+              setTimeout(() => onOpenDetail(book), 200);
+            }}
+            className="cursor-pointer"
+          >
+            <Info className="h-4 w-4 mr-2" />
+            详情
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onSelect={() => {
+              // 同上：等 DropdownMenu 关闭动画完成再开 AlertDialog。
               setTimeout(() => onDelete(book), 200);
             }}
             className="text-destructive focus:text-destructive cursor-pointer"
@@ -151,6 +161,8 @@ export const BookShelf = memo(function BookShelf() {
     useBooksStore();
   const addTab = useTabsStore(s => s.addTab);
   const [pendingDelete, setPendingDelete] = useState<BookDoc | null>(null);
+  // 详情弹窗以打开时的书籍快照为准：store 更新后不会打断弹窗里的输入
+  const [detailBook, setDetailBook] = useState<BookDoc | null>(null);
 
   useEffect(() => {
     if (loaded) return;
@@ -164,6 +176,11 @@ export const BookShelf = memo(function BookShelf() {
     const book = books.find(b => b.id === id);
     if (!book) return;
     addTab('reader', { bookId: id, title: book.booksName });
+  };
+
+  /** 打开书籍详情弹窗 */
+  const handleOpenDetail = (book: BookDoc) => {
+    setDetailBook(book);
   };
 
   /** 打开删除确认弹窗 */
@@ -223,6 +240,7 @@ export const BookShelf = memo(function BookShelf() {
               book={book}
               deleting={deletingId === book.id}
               onDelete={handleOpenDelete}
+              onOpenDetail={handleOpenDetail}
               onClick={() => handleClickBook(book.id)}
             />
           ))}
@@ -255,6 +273,17 @@ export const BookShelf = memo(function BookShelf() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* 书籍详情弹窗 */}
+      {detailBook && (
+        <BookDetailDialog
+          key={detailBook.id}
+          book={detailBook}
+          onOpenChange={open => {
+            if (!open) setDetailBook(null);
+          }}
+        />
+      )}
     </div>
   );
 });

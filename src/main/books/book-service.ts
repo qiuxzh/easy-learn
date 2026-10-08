@@ -11,6 +11,10 @@ import type {
   BookGetResult,
   BookImportResult,
   BookListResult,
+  BookPickCoverResult,
+  BookUpdateRequest,
+  BookUpdateResult,
+  CoverImage,
   TOCItem,
 } from '@shared/types/books';
 import { parseEpubFromBuffer } from '@shared/utils/book-parser';
@@ -29,7 +33,7 @@ import {
 import { BaseService } from '../service/base-service';
 import { Constants } from '../constants';
 import { bookChunkRepo, bookRepo } from '../db/repo';
-import type { BookRow, InsertBookChunkRow } from '../db/schema';
+import type { BookRow, InsertBookChunkRow, InsertBookRow } from '../db/schema';
 import { initFoliatePolyfill } from './foliate-polyfill';
 import { parseEpubFile } from './book-parser';
 import {
@@ -46,6 +50,21 @@ export const DEFAULT_READ_OFFSET = 0;
 export const DEFAULT_READ_LENGTH = 12000;
 /** 章节正文单次读取的硬上限，防止超长章节塞爆 LLM 上下文窗口。 */
 export const MAX_READ_LENGTH = 30000;
+
+/** 允许用作封面的图片扩展名。白名单同时用于校验用户传入的扩展名，避免被拼进路径 */
+const COVER_EXTENSIONS: string[] = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'];
+
+/** 封面图片体积上限 */
+const MAX_COVER_BYTES = 10 * 1024 * 1024;
+
+/**
+ * 归一化封面扩展名：去掉前导点、统一小写。
+ * 不在白名单内时返回 null，调用方按不支持处理。
+ */
+function normalizeCoverExt(ext: string): string | null {
+  const normalized = ext.replace(/^\./, '').toLowerCase();
+  return COVER_EXTENSIONS.includes(normalized) ? normalized : null;
+}
 
 /**
  * 解析后 EPUB 的内存缓存项。
@@ -92,13 +111,14 @@ export interface ReadBookTocTextResult {
  * 书籍领域服务。
  *
  * 职责：
- * - 导入 / 列表 / 删除书籍（IPC 给渲染层调用）
+ * - 导入 / 列表 / 删除 / 更新书籍（IPC 给渲染层调用）
  * - 解析后的书籍内存缓存（getParsedBook），供 AI 工具链路复用
  * - 按 TOC 项读取章节正文（readBookTocText），供 AI reading-tools 工具使用
  *
  * 文件布局（相对 Constants.dataDir）：
- * - books/{booksStoreName}     拷贝后的源 epub 文件
- * - books/cover/{id}{ext}      封面图
+ * - books/{booksStoreName}         拷贝后的源 epub 文件
+ * - books/cover/{id}{ext}          导入时从元信息抽出的封面图
+ * - books/cover/{id}-{时间戳}{ext}  用户手动更换的封面图（带时间戳避免命中旧图缓存）
  * - DB 中存 books + book_chunks 两张表，book_chunks 没有级联删除，必须显式清理
  */
 export class BookService extends BaseService {
@@ -119,6 +139,8 @@ export class BookService extends BaseService {
    * - Book_GetAllBooks     渲染层拉取书库列表
    * - Book_DeleteBook      渲染层删除指定书籍
    * - Book_GetBook         渲染层打开书时调用：返回 app:// 协议 URL + 类型
+   * - Book_PickCover       渲染层弹框选取封面图片（只读字节，不落盘）
+   * - Book_UpdateBook      渲染层更新书名 / 作者 / 封面
    */
   setupIpcHandlers(): void {
     ipcMain.handle(IpcChannel.Book_PickAndImport, async (): Promise<BookImportResult> => {
@@ -127,7 +149,7 @@ export class BookService extends BaseService {
         if (!picked) return { success: false, canceled: true };
 
         const row = await this.importBook(picked.filePath);
-        return { success: true, book: toBook(row) };
+        return { success: true, book: toBook(row, this.readBookFileSize(row)) };
       } catch (e) {
         log.error('[BookService] pickAndImport failed:', e);
         return { success: false, error: String(e) };
@@ -137,7 +159,7 @@ export class BookService extends BaseService {
     ipcMain.handle(IpcChannel.Book_GetAllBooks, async (): Promise<BookListResult> => {
       try {
         const rows = bookRepo.findAll();
-        return { success: true, books: rows.map(toBook) };
+        return { success: true, books: rows.map(row => toBook(row, this.readBookFileSize(row))) };
       } catch (e) {
         log.error('[BookService] getAllBooks failed:', e);
         return { success: false, error: String(e) };
@@ -170,6 +192,30 @@ export class BookService extends BaseService {
           return { success: true, url, type: row.booksType };
         } catch (e) {
           log.error('[BookService] getBook failed:', e);
+          return { success: false, error: String(e) };
+        }
+      }
+    );
+
+    ipcMain.handle(IpcChannel.Book_PickCover, async (): Promise<BookPickCoverResult> => {
+      try {
+        const cover = await this.pickCoverFile();
+        if (!cover) return { success: false, canceled: true };
+        return { success: true, cover };
+      } catch (e) {
+        log.error('[BookService] pickCover failed:', e);
+        return { success: false, error: String(e) };
+      }
+    });
+
+    ipcMain.handle(
+      IpcChannel.Book_UpdateBook,
+      async (_e, req: BookUpdateRequest): Promise<BookUpdateResult> => {
+        try {
+          const row = this.updateBook(req);
+          return { success: true, book: toBook(row, this.readBookFileSize(row)) };
+        } catch (e) {
+          log.error('[BookService] updateBook failed:', e);
           return { success: false, error: String(e) };
         }
       }
@@ -271,13 +317,7 @@ export class BookService extends BaseService {
     }
     this.parsedBookCache.delete(id);
 
-    if (row.coverImg) {
-      try {
-        fs.unlinkSync(path.join(Constants.dataDir, row.coverImg));
-      } catch (e) {
-        log.warn(`[BookService] deleteBook: cover not found (${row.coverImg}):`, e);
-      }
-    }
+    this.removeCoverFile(row.coverImg);
 
     try {
       fs.unlinkSync(path.join(this.bookDir, row.booksStoreName));
@@ -289,6 +329,132 @@ export class BookService extends BaseService {
     bookChunkRepo.deleteByBookId(id);
     bookBm25SearchService.invalidateBook(id);
     bookRepo.delete(id);
+  }
+
+  /**
+   * 更新书籍信息（书名 / 作者 / 封面），返回更新后的行。
+   * 未出现在请求里的字段保持不变；书名去掉首尾空白后不允许为空，
+   * 作者去掉首尾空白后为空则存 null，避免库里同时存在 '' 和 null 两种"无作者"。
+   */
+  private updateBook(req: BookUpdateRequest): BookRow {
+    const row = bookRepo.findById(req.id);
+    if (!row) {
+      throw new Error(`Book not found: ${req.id}`);
+    }
+
+    const meta: Pick<InsertBookRow, 'booksName' | 'author'> = {
+      booksName: row.booksName,
+      author: row.author,
+    };
+    let metaChanged = false;
+
+    if (req.booksName !== undefined) {
+      const booksName = req.booksName.trim();
+      if (!booksName) {
+        throw new Error('书名不能为空');
+      }
+      meta.booksName = booksName;
+      metaChanged = true;
+    }
+
+    if (req.author !== undefined) {
+      const author = req.author?.trim();
+      meta.author = author ? author : null;
+      metaChanged = true;
+    }
+
+    if (metaChanged) {
+      bookRepo.updateMeta(req.id, meta);
+    }
+
+    if (req.cover !== undefined) {
+      this.replaceCover(req.id, req.cover, row.coverImg);
+    }
+
+    const updated = bookRepo.findById(req.id);
+    if (!updated) {
+      throw new Error(`Book not found after update: ${req.id}`);
+    }
+    return updated;
+  }
+
+  /**
+   * 替换或移除封面：cover 为 null 表示移除。
+   * 新封面使用带时间戳的文件名，避免沿用同名文件时被浏览器缓存命中而仍显示旧图；
+   * 数据库写入成功后再删除旧封面文件。
+   */
+  private replaceCover(bookId: string, cover: CoverImage | null, oldCoverImg: string | null): void {
+    if (!cover) {
+      bookRepo.updateCoverImg(bookId, null);
+      this.removeCoverFile(oldCoverImg);
+      return;
+    }
+
+    const ext = normalizeCoverExt(cover.ext);
+    if (!ext) {
+      throw new Error('封面仅支持 PNG / JPG / WebP / GIF / BMP 格式');
+    }
+    const bytes = Buffer.from(cover.bytes);
+    if (bytes.length === 0) {
+      throw new Error('封面图片内容为空');
+    }
+    if (bytes.length > MAX_COVER_BYTES) {
+      throw new Error('封面图片过大，请选择 10MB 以内的图片');
+    }
+
+    const coverRelPath = `books/cover/${bookId}-${Date.now()}${ext}`;
+    fs.mkdirSync(path.join(this.bookDir, 'cover'), { recursive: true });
+    fs.writeFileSync(path.join(Constants.dataDir, coverRelPath), bytes);
+
+    bookRepo.updateCoverImg(bookId, coverRelPath);
+    if (oldCoverImg && oldCoverImg !== coverRelPath) {
+      this.removeCoverFile(oldCoverImg);
+    }
+  }
+
+  /** 删除封面文件；文件缺失只记日志，不影响数据库状态 */
+  private removeCoverFile(coverRelPath: string | null): void {
+    if (!coverRelPath) return;
+    try {
+      fs.unlinkSync(path.join(Constants.dataDir, coverRelPath));
+    } catch (e) {
+      log.warn(`[BookService] cover file not found (${coverRelPath}):`, e);
+    }
+  }
+
+  /**
+   * 弹出文件选择框读取封面图片的字节与扩展名（不落盘）。
+   * 渲染层拿到字节后用 Blob URL 预览，用户点击保存时才真正写入磁盘。
+   */
+  private async pickCoverFile(): Promise<CoverImage | null> {
+    const result = await dialog.showOpenDialog({
+      title: '选择封面图片',
+      properties: ['openFile'],
+      filters: [{ name: '图片', extensions: COVER_EXTENSIONS }],
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+
+    const filePath = result.filePaths[0];
+    const ext = normalizeCoverExt(path.extname(filePath));
+    if (!ext) {
+      throw new Error('封面仅支持 PNG / JPG / WebP / GIF / BMP 格式');
+    }
+
+    const bytes = fs.readFileSync(filePath);
+    if (bytes.length > MAX_COVER_BYTES) {
+      throw new Error('封面图片过大，请选择 10MB 以内的图片');
+    }
+    return { bytes, ext };
+  }
+
+  /** 读取书籍源文件大小（字节）；文件缺失时返回 null，不影响列表展示 */
+  private readBookFileSize(row: BookRow): number | null {
+    try {
+      return fs.statSync(path.join(this.bookDir, row.booksStoreName)).size;
+    } catch (e) {
+      log.warn(`[BookService] stat book file failed (${row.booksStoreName}):`, e);
+      return null;
+    }
   }
 
   /**
