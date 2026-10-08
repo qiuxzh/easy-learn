@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from 'react';
 import {
   Bot,
   ChevronLeft,
@@ -454,40 +462,74 @@ function CardListPanel({
   const [columnWidths, setColumnWidths] = useState<number[]>(() =>
     CARD_COLUMNS.map(column => column.width)
   );
+  /** 正在拖动的列索引，仅用于拖动期间锁住全局光标 */
   const [resizingColumn, setResizingColumn] = useState<number | null>(null);
-  const [resizeStartX, setResizeStartX] = useState(0);
-  const [resizeStartWidth, setResizeStartWidth] = useState(0);
   const tableWidth = columnWidths.reduce((total, width) => total + width, 0);
 
+  // 拖动期间锁住全局光标并禁止选中文本，指针移出表格时状态也不会丢
   useEffect(() => {
     if (resizingColumn === null) return;
 
-    const column = CARD_COLUMNS[resizingColumn];
     const previousCursor = document.body.style.cursor;
     const previousUserSelect = document.body.style.userSelect;
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
+    return () => {
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+    };
+  }, [resizingColumn]);
 
-    function handlePointerMove(event: PointerEvent) {
-      const nextWidth = Math.max(column.minWidth, resizeStartWidth + event.clientX - resizeStartX);
+  /**
+   * 拖动两列之间的竖线：左列加宽多少，右列就收窄多少，两列宽度之和保持不变。
+   * 表格总宽不变，其余列的宽度也不变，所以整张表只有被拖的这条竖线会移动。
+   */
+  function handleColumnResizeStart(index: number, event: ReactPointerEvent<HTMLSpanElement>) {
+    event.preventDefault();
+
+    const column = CARD_COLUMNS[index];
+    const nextColumn = CARD_COLUMNS[index + 1];
+    const startX = event.clientX;
+    const startWidth = columnWidths[index];
+    const pairWidth = startWidth + columnWidths[index + 1];
+    // 列宽之和小于面板宽度时，表格会被按比例拉伸到面板宽度，此时逻辑宽度与渲染宽度不成 1:1。
+    // 用表头单元格的实际渲染宽度反推拉伸系数，保证指针移动多少像素、竖线就移动多少像素。
+    const renderedWidth =
+      event.currentTarget.parentElement?.getBoundingClientRect().width ?? startWidth;
+    const scale = renderedWidth > 0 ? startWidth / renderedWidth : 1;
+
+    setResizingColumn(index);
+
+    /** 拖动中：把指针位移换算成左列宽度，右列取这一对列剩下的额度 */
+    function handlePointerMove(moveEvent: PointerEvent) {
+      const delta = (moveEvent.clientX - startX) * scale;
+      const nextWidth = Math.min(
+        pairWidth - nextColumn.minWidth,
+        Math.max(column.minWidth, startWidth + delta)
+      );
       setColumnWidths(current =>
-        current.map((width, index) => (index === resizingColumn ? nextWidth : width))
+        current.map((width, columnIndex) => {
+          if (columnIndex === index) return nextWidth;
+          if (columnIndex === index + 1) return pairWidth - nextWidth;
+          return width;
+        })
       );
     }
 
-    function handlePointerUp() {
+    /** 收尾：摘下监听，让光标锁定的 effect 复位 */
+    function cleanup() {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', cleanup);
+      window.removeEventListener('pointercancel', cleanup);
+      window.removeEventListener('blur', cleanup);
       setResizingColumn(null);
     }
 
     window.addEventListener('pointermove', handlePointerMove);
-    window.addEventListener('pointerup', handlePointerUp);
-    return () => {
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerup', handlePointerUp);
-      document.body.style.cursor = previousCursor;
-      document.body.style.userSelect = previousUserSelect;
-    };
-  }, [resizingColumn, resizeStartWidth, resizeStartX]);
+    window.addEventListener('pointerup', cleanup);
+    window.addEventListener('pointercancel', cleanup);
+    window.addEventListener('blur', cleanup);
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -514,18 +556,15 @@ function CardListPanel({
                       } ${index < CARD_COLUMNS.length - 1 ? 'border-r border-border/60' : ''}`}
                     >
                       {column.label}
-                      <span
-                        aria-hidden="true"
-                        data-card-browser-resize-handle
-                        className="absolute inset-y-0 right-0 z-10 w-1.5 cursor-col-resize select-none after:absolute after:inset-y-1 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-transparent hover:after:bg-border"
-                        onPointerDown={event => {
-                          event.preventDefault();
-                          event.currentTarget.setPointerCapture(event.pointerId);
-                          setResizingColumn(index);
-                          setResizeStartX(event.clientX);
-                          setResizeStartWidth(columnWidths[index]);
-                        }}
-                      />
+                      {/* 最后一列右侧就是表格边缘，没有右邻列可以让出宽度，因此不放手柄 */}
+                      {index < CARD_COLUMNS.length - 1 && (
+                        <span
+                          aria-hidden="true"
+                          data-card-browser-resize-handle
+                          className="absolute inset-y-0 right-0 z-10 w-1.5 cursor-col-resize select-none after:absolute after:inset-y-1 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-transparent hover:after:bg-border"
+                          onPointerDown={event => handleColumnResizeStart(index, event)}
+                        />
+                      )}
                     </TableHead>
                   ))}
                 </TableRow>
