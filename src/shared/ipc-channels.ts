@@ -59,4 +59,8 @@ export enum IpcChannel {
   Config_Remove = 'config:remove',
   /** 后端向前端推送的配置快照 */
   Config_Changed = '#config:changed',
+
+  // 向量模型
+  /** 调用 embeddings 接口发一条测试文本，返回向量维度 */
+  Embedding_TestEndpoint = 'embedding:testEndpoint',
 }

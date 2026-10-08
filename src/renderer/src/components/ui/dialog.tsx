@@ -32,12 +32,14 @@ interface DialogContentProps extends React.ComponentPropsWithoutRef<
 > {
   /** 覆盖默认遮罩样式。 */
   overlayClassName?: string;
+  /** 覆盖默认关闭按钮样式，内容区没有内边距时可以用它把按钮挪到更贴角的位置。 */
+  closeButtonClassName?: string;
 }
 
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   DialogContentProps
->(({ className, overlayClassName, children, ...props }, ref) => (
+>(({ className, overlayClassName, closeButtonClassName, children, ...props }, ref) => (
   <DialogPortal>
     <DialogOverlay className={overlayClassName} />
     <DialogPrimitive.Content
@@ -49,7 +51,12 @@ const DialogContent = React.forwardRef<
       {...props}
     >
       {children}
-      <DialogPrimitive.Close className="absolute right-4 top-4 cursor-pointer rounded-md p-1 text-muted-foreground opacity-70 transition-colors hover:bg-accent hover:text-foreground hover:opacity-100 focus-visible:bg-accent focus-visible:text-foreground focus-visible:outline-none disabled:pointer-events-none">
+      <DialogPrimitive.Close
+        className={cn(
+          'absolute right-4 top-4 cursor-pointer rounded-md p-1 text-muted-foreground opacity-70 transition-colors hover:bg-accent hover:text-foreground hover:opacity-100 focus-visible:bg-accent focus-visible:text-foreground focus-visible:outline-none disabled:pointer-events-none',
+          closeButtonClassName
+        )}
+      >
         <X className="h-4 w-4" />
         <span className="sr-only">Close</span>
       </DialogPrimitive.Close>

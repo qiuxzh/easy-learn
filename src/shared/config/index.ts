@@ -1,4 +1,5 @@
-﻿export * from './app-config-schema';
+﻿export * from './schema/app-config-schema';
 export * from './config-defaults';
 export * from './config-ipc';
-export * from './models-config-schema';
+export * from './schema/embedding-config-schema';
+export * from './schema/models-config-schema';

@@ -14,6 +14,10 @@
 } from '@shared/types/chat';
 import type { FileOpenRequest, FileOpenResult } from '@shared/types/file';
 import type {
+  TestEmbeddingEndpointRequest,
+  TestEmbeddingEndpointResult,
+} from '@shared/types/embedding';
+import type {
   BookDeleteRequest,
   BookDeleteResult,
   BookGetRequest,
@@ -82,6 +86,15 @@ export const api = {
       ipcRenderer.on(IpcChannel.Config_Changed, listener);
       return () => ipcRenderer.removeListener(IpcChannel.Config_Changed, listener);
     },
+  },
+
+  // 向量模型
+  embedding: {
+    testEndpoint: (request: TestEmbeddingEndpointRequest) =>
+      ipcRenderer.invoke(
+        IpcChannel.Embedding_TestEndpoint,
+        request
+      ) as Promise<TestEmbeddingEndpointResult>,
   },
   // 窗口相关的内容
   minimize: () => ipcRenderer.send(IpcChannel.Window_Minimize),

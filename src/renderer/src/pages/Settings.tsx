@@ -1,6 +1,7 @@
 ﻿import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { EmbeddingModelSettings } from '@/components/settings/EmbeddingModelSettings';
 import { cn } from '@/lib/utils';
 
 /** 配置页左侧的分组类型。 */
@@ -27,6 +28,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       <DialogContent
         overlayClassName="bg-black/40"
         className="flex h-[min(640px,calc(100vh-3rem))] w-[min(960px,calc(100vw-3rem))] max-w-none gap-0 overflow-hidden p-0"
+        closeButtonClassName="right-2 top-2"
       >
         <DialogTitle className="sr-only">设置</DialogTitle>
 
@@ -59,9 +61,11 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
 
         <section
           id={`settings-panel-${activeSection}`}
-          className="min-w-0 flex-1"
+          className="min-w-0 flex-1 overflow-y-auto p-4"
           role="tabpanel"
-        />
+        >
+          {activeSection === 'models' && <EmbeddingModelSettings />}
+        </section>
       </DialogContent>
     </Dialog>
   );

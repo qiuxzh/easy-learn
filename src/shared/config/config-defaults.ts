@@ -1,9 +1,15 @@
-﻿import type { AppConfig } from './app-config-schema';
-import type { ModelsConfig } from './models-config-schema';
+﻿import type { AppConfig } from './schema/app-config-schema';
+import type { EmbeddingConfig } from './schema/embedding-config-schema';
+import type { ModelsConfig } from './schema/models-config-schema';
 
 /** models 区块的默认内容。 */
 export const DEFAULT_MODELS_CONFIG: ModelsConfig = {
   providers: {},
+};
+
+/** embedding 区块的默认内容：未配置任何向量模型。 */
+export const DEFAULT_EMBEDDING_CONFIG: EmbeddingConfig = {
+  models: {},
 };
 
 /** config.json 的默认内容。 */
@@ -13,7 +19,8 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
       token: '',
     },
   },
-  models: { providers: {} },
+  models: DEFAULT_MODELS_CONFIG,
+  embedding: DEFAULT_EMBEDDING_CONFIG,
 };
 
 /** 模型字段未声明时使用的默认值。 */

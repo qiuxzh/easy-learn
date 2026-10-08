@@ -1,4 +1,4 @@
-﻿import type { AppConfig } from './app-config-schema';
+﻿import type { AppConfig } from './schema/app-config-schema';
 
 type DeepPartial<T> = T extends readonly (infer U)[]
   ? U[]
