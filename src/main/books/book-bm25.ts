@@ -1,4 +1,4 @@
-﻿import { cut_for_search } from 'jieba-wasm';
+import { cut_for_search } from 'jieba-wasm';
 import type { BookChunkRow } from '../db/schema';
 import { bookChunkRepo } from '../db/repo';
 
@@ -297,8 +297,8 @@ export function searchBookBm25Index(
     })
     .sort((left, right) => {
       if (right.score !== left.score) return right.score - left.score;
-      if (left.chunk.sectionIndex !== right.chunk.sectionIndex) {
-        return left.chunk.sectionIndex - right.chunk.sectionIndex;
+      if (left.chunk.segmentIndex !== right.chunk.segmentIndex) {
+        return left.chunk.segmentIndex - right.chunk.segmentIndex;
       }
       return left.chunk.chunkIndex - right.chunk.chunkIndex;
     })

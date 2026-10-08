@@ -1,4 +1,4 @@
-﻿import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { BookChunkRow } from '../../db/schema';
 
 const { findByBookId } = vi.hoisted(() => ({ findByBookId: vi.fn() }));
@@ -19,13 +19,12 @@ function createChunk(id: string, content: string, chunkIndex: number): BookChunk
   return {
     id,
     bookId: 'book-1',
-    sectionIndex: 0,
-    sectionId: 'chapter-1.xhtml',
-    href: 'chapter-1.xhtml',
+    segmentIndex: 0,
+    segmentId: 'chapter-1.xhtml',
     chunkIndex,
     content,
-    startCfi: `epubcfi(/6/2[chapter-1]!/4/2/1:${chunkIndex})`,
-    endCfi: `epubcfi(/6/2[chapter-1]!/4/2/1:${chunkIndex + content.length})`,
+    locatorStart: `epubcfi(/6/2[chapter-1]!/4/2/1:${chunkIndex})`,
+    locatorEnd: `epubcfi(/6/2[chapter-1]!/4/2/1:${chunkIndex + content.length})`,
   };
 }
 

@@ -1,4 +1,4 @@
-﻿import fs from 'node:fs';
+import fs from 'node:fs';
 import path from 'node:path';
 import log from 'electron-log';
 import { dialog, ipcMain } from 'electron';
@@ -18,7 +18,7 @@ import {
   clampReadLength,
   clampReadOffset,
   clipDocumentRange,
-  extractSectionText,
+  extractSegmentText,
   findNextTocItem,
   findTocById,
   resolveAnchorElement,
@@ -32,20 +32,25 @@ import { bookChunkRepo, bookRepo } from '../db/repo';
 import type { BookRow, InsertBookChunkRow } from '../db/schema';
 import { initFoliatePolyfill } from './foliate-polyfill';
 import { parseEpubFile } from './book-parser';
-import { buildBookChunks } from './book-chunker';
+import {
+  DEFAULT_CHUNK_OPTIONS,
+  chunkDocument,
+  createEpubSource,
+  type ChunkDraft,
+} from './etl/chunking';
 import { bookBm25SearchService } from './book-bm25';
 
 /** 章节正文分段读取的默认起始下标。 */
-export const DEFAULT_READ_SECTION_OFFSET = 0;
+export const DEFAULT_READ_OFFSET = 0;
 /** 章节正文分段读取的默认长度。 */
-export const DEFAULT_READ_SECTION_LENGTH = 12000;
+export const DEFAULT_READ_LENGTH = 12000;
 /** 章节正文单次读取的硬上限，防止超长章节塞爆 LLM 上下文窗口。 */
-export const MAX_READ_SECTION_LENGTH = 30000;
+export const MAX_READ_LENGTH = 30000;
 
 /**
  * 解析后 EPUB 的内存缓存项。
  * 解析 EPUB 涉及 foliate-js init + zip 加载，单本约 100-500ms，
- * AI 工具链路（readBookTocSection 等）会按章节反复读同一本书，缓存避免重复 IO。
+ * AI 工具链路（readBookTocText 等）会按章节反复读同一本书，缓存避免重复 IO。
  */
 interface ParsedBookCacheEntry {
   bookId: string;
@@ -59,12 +64,12 @@ interface ParsedBookCacheEntry {
  * AI 工具读取指定章节的返回结果。
  * 失败也返回结构化对象（error 字段说明原因），不抛错中断 AI 调用链。
  */
-export interface ReadBookTocSectionResult {
+export interface ReadBookTocTextResult {
   success: boolean;
   /** 命中的 TOC 项（用于回显给 AI / UI） */
   toc: Pick<TOCItem, 'id' | 'title' | 'level' | 'href'> | null;
-  /** foliate-js 的章节元信息，index 是 spine 顺序下标 */
-  section: {
+  /** 命中文档单元的元信息，index 是阅读顺序下标 */
+  segment: {
     index: number;
     id: string;
     linear?: string;
@@ -89,7 +94,7 @@ export interface ReadBookTocSectionResult {
  * 职责：
  * - 导入 / 列表 / 删除书籍（IPC 给渲染层调用）
  * - 解析后的书籍内存缓存（getParsedBook），供 AI 工具链路复用
- * - 按 TOC 项读取章节正文（readBookTocSection），供 AI reading-tools 工具使用
+ * - 按 TOC 项读取章节正文（readBookTocText），供 AI reading-tools 工具使用
  *
  * 文件布局（相对 Constants.dataDir）：
  * - books/{booksStoreName}     拷贝后的源 epub 文件
@@ -101,7 +106,7 @@ export class BookService extends BaseService {
   bookDir: string;
   /** 解析后的 FoliateBook 缓存，key 是 bookId。
    *  简单 Map（无 LRU）：deleteBook / app 退出时清空；导入新书不清旧缓存。
-   *  单本解析约 100-500ms，缓存命中后 readBookTocSection 几乎零开销。 */
+   *  单本解析约 100-500ms，缓存命中后 readBookTocText 几乎零开销。 */
   private parsedBookCache = new Map<string, ParsedBookCacheEntry>();
 
   constructor() {
@@ -199,9 +204,10 @@ export class BookService extends BaseService {
     // Chunk 化失败不影响导入，chunks 留空表示该书没有可检索分片
     let chunks: InsertBookChunkRow[] = [];
     try {
-      chunks = await buildBookChunks({ bookId: id, book: info.rawBook });
+      const drafts = await chunkDocument(createEpubSource(info.rawBook), DEFAULT_CHUNK_OPTIONS);
+      chunks = toChunkRows(id, drafts);
     } catch (e) {
-      log.error(`[BookService] buildBookChunks failed, book imported without chunks: ${id}`, e);
+      log.error(`[BookService] chunkDocument failed, book imported without chunks: ${id}`, e);
     }
 
     // 2. 确保目录存在
@@ -301,13 +307,13 @@ export class BookService extends BaseService {
    * 流程：
    * 1. getParsedBook 命中缓存直接复用，未命中则解析 epub 并写入缓存
    * 2. findTocById 在扁平化的 TOC 树里定位目标项
-   * 3. resolveHref(toc.href) → spine 下标 + 锚点，sections[index] 拿到 foliate-js Section
+   * 3. resolveHref(toc.href) → 阅读顺序下标 + 锚点，sections[index] 拿到对应的文档单元
    * 4. findNextTocItem 取阅读顺序里的下一个同级或更高层目录项，作为结束边界
-   * 5. section.createDocument() 拿到 Document → clipDocumentRange 按两个锚点裁出本讲范围
-   *    （下一项不在同一节、或本节没有锚点时，退化为读到节尾）→ extractSectionText 取纯文本
-   * 6. 按 offset（默认 0）和 length（默认 DEFAULT_READ_SECTION_LENGTH，硬上限 MAX_READ_SECTION_LENGTH）截取
+   * 5. 单元的 createDocument() 拿到 Document → clipDocumentRange 按两个锚点裁出本讲范围
+   *    （下一项不在同一节、或本节没有锚点时，退化为读到节尾）→ extractSegmentText 取纯文本
+   * 6. 按 offset（默认 0）和 length（默认 DEFAULT_READ_LENGTH，硬上限 MAX_READ_LENGTH）截取
    *
-   * 失败（书不存在 / TOC 找不到 / section 不存在 / createDocument 缺失 / 异常）
+   * 失败（书不存在 / TOC 找不到 / segment 不存在 / createDocument 缺失 / 异常）
    * 一律返回结构化错误结果（success: false + error 字段），不抛错中断 AI 调用链。
    *
    * @example 成功返回值（读取"反脆弱"第 5 章）：
@@ -320,8 +326,8 @@ export class BookService extends BaseService {
    *     level: 2,
    *     href: 'OEBPS/Text/part0007.xhtml#ch05',     // 可能带 fragment
    *   },
-   *   section: {
-   *     index: 6,                                   // spine 下标
+   *   segment: {
+   *     index: 6,                                   // 阅读顺序下标
    *     id: 'OEBPS/Text/part0007.xhtml',            // 同 toc.href 去掉 fragment
    *     linear: 'yes',
    *     size: 12345,
@@ -337,18 +343,18 @@ export class BookService extends BaseService {
    * @param offset 从章节纯文本第几个字符开始读取，默认 0
    * @param length 本次最多返回的字符数，默认 12000，最大 30000
    */
-  async readBookTocSection(
+  async readBookTocText(
     bookId: string,
     tocId: string,
     offset?: number,
     length?: number
-  ): Promise<ReadBookTocSectionResult> {
+  ): Promise<ReadBookTocTextResult> {
     const parsed = await this.getParsedBook(bookId);
     if (!parsed) {
       return {
         success: false,
         toc: null,
-        section: null,
+        segment: null,
         text: '',
         startHref: null,
         endHref: null,
@@ -363,7 +369,7 @@ export class BookService extends BaseService {
       return {
         success: false,
         toc: null,
-        section: null,
+        segment: null,
         text: '',
         startHref: null,
         endHref: null,
@@ -376,7 +382,7 @@ export class BookService extends BaseService {
       return {
         success: false,
         toc: toResultToc(toc),
-        section: null,
+        segment: null,
         text: '',
         startHref: null,
         endHref: null,
@@ -387,82 +393,78 @@ export class BookService extends BaseService {
     }
 
     try {
-      // 把 toc.href（EPUB 内部相对路径）解析为 spine 下标 + 锚点
+      // 把 toc.href（EPUB 内部相对路径）解析为阅读顺序下标 + 锚点
       const target = parsed.rawBook.resolveHref?.(toc.href);
       if (!target) {
         return {
           success: false,
           toc: toResultToc(toc),
-          section: null,
+          segment: null,
           text: '',
           startHref: toc.href,
           endHref: null,
           truncated: false,
           truncatedChars: 0,
-          error: `TOC href cannot resolve to section: ${toc.href}`,
+          error: `TOC href cannot resolve to segment: ${toc.href}`,
         };
       }
 
-      const section = parsed.rawBook.sections[target.index];
-      if (!section) {
+      const segment = parsed.rawBook.sections[target.index];
+      if (!segment) {
         return {
           success: false,
           toc: toResultToc(toc),
-          section: null,
+          segment: null,
           text: '',
           startHref: toc.href,
           endHref: null,
           truncated: false,
           truncatedChars: 0,
-          error: `Section not found: ${target.index}`,
+          error: `Segment not found: ${target.index}`,
         };
       }
-      if (!section.createDocument) {
+      if (!segment.createDocument) {
         // 部分非标准 EPUB 章节没有 createDocument，无法取正文；
-        // 仍返回 section 元信息，方便 AI 知道"这章节存在但取不到文本"
+        // 仍返回 segment 元信息，方便 AI 知道"这章节存在但取不到文本"
         return {
           success: false,
           toc: toResultToc(toc),
-          section: {
+          segment: {
             index: target.index,
-            id: section.id,
-            linear: section.linear,
-            size: section.size ?? null,
+            id: segment.id,
+            linear: segment.linear,
+            size: segment.size ?? null,
           },
           text: '',
           startHref: toc.href,
           endHref: null,
           truncated: false,
           truncatedChars: 0,
-          error: `Section document loader missing: ${target.index}`,
+          error: `Segment document loader missing: ${target.index}`,
         };
       }
 
-      const doc = await section.createDocument();
+      const doc = await segment.createDocument();
       // 一个 xhtml 里常常塞着好几讲，必须按锚点把本节裁成当前目录项自己的范围
       const nextToc = findNextTocItem(parsed.tocs, tocId);
       const startEl = resolveAnchorElement(target.anchor, doc);
       const endEl = resolveNextTocAnchorElement(parsed.rawBook, nextToc, target.index, doc);
       clipDocumentRange(doc, startEl, endEl);
 
-      const fullText = extractSectionText(doc);
-      const start = clampReadOffset(offset, DEFAULT_READ_SECTION_OFFSET);
-      const readLength = clampReadLength(
-        length,
-        DEFAULT_READ_SECTION_LENGTH,
-        MAX_READ_SECTION_LENGTH
-      );
+      const fullText = extractSegmentText(doc);
+      const start = clampReadOffset(offset, DEFAULT_READ_OFFSET);
+      const readLength = clampReadLength(length, DEFAULT_READ_LENGTH, MAX_READ_LENGTH);
       const limitedText = fullText.slice(start, start + readLength);
       const truncatedChars = Math.max(0, fullText.length - (start + limitedText.length));
 
       return {
         success: true,
         toc: toResultToc(toc),
-        section: {
+        segment: {
           index: target.index,
-          id: section.id,
-          linear: section.linear,
-          size: section.size ?? null,
+          id: segment.id,
+          linear: segment.linear,
+          size: segment.size ?? null,
         },
         text: limitedText,
         startHref: toc.href,
@@ -472,11 +474,11 @@ export class BookService extends BaseService {
         truncatedChars,
       };
     } catch (e) {
-      log.error(`[BookService] readBookTocSection failed for ${bookId}/${tocId}:`, e);
+      log.error(`[BookService] readBookTocText failed for ${bookId}/${tocId}:`, e);
       return {
         success: false,
         toc: toResultToc(toc),
-        section: null,
+        segment: null,
         text: '',
         startHref: toc.href,
         endHref: null,
@@ -521,6 +523,25 @@ export class BookService extends BaseService {
       return null;
     }
   }
+}
+
+/**
+ * 把格式无关的切分产物映射为 book_chunk 行，并补上书籍维度与主键。
+ *
+ * segment 与 locator 都是格式中立命名：EPUB 的 segment 是 spine section，
+ * locator 是 CFI 或节级兜底定位串；后续 HTML / PDF 源复用同一张表。
+ */
+function toChunkRows(bookId: string, drafts: ChunkDraft[]): InsertBookChunkRow[] {
+  return drafts.map(draft => ({
+    id: `${bookId}:${draft.segmentIndex}:${draft.chunkIndex}`,
+    bookId,
+    segmentIndex: draft.segmentIndex,
+    segmentId: draft.segmentId,
+    chunkIndex: draft.chunkIndex,
+    content: draft.content,
+    locatorStart: draft.locatorStart,
+    locatorEnd: draft.locatorEnd,
+  }));
 }
 
 export const bookService = new BookService();

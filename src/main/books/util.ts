@@ -1,49 +1,7 @@
 import type { FoliateBook, FoliateDestination } from '@/components/reader/foliate-types';
 import type { BookRow } from '../db/schema';
 import type { BookDoc, TOCItem } from '@shared/types/books';
-import { extractMathFormula, formatMathFormula, isDisplayMath, isMathElement } from './formula';
-
-const TEXTLESS_TAGS = new Set(['script', 'style', 'noscript']);
-const BLOCK_TAGS = new Set([
-  'address',
-  'article',
-  'aside',
-  'blockquote',
-  'body',
-  'br',
-  'caption',
-  'dd',
-  'div',
-  'dl',
-  'dt',
-  'figcaption',
-  'figure',
-  'footer',
-  'form',
-  'h1',
-  'h2',
-  'h3',
-  'h4',
-  'h5',
-  'h6',
-  'header',
-  'hr',
-  'li',
-  'main',
-  'nav',
-  'ol',
-  'p',
-  'pre',
-  'section',
-  'table',
-  'tbody',
-  'td',
-  'tfoot',
-  'th',
-  'thead',
-  'tr',
-  'ul',
-]);
+import { collectPlainText } from './etl/chunking/html-text';
 
 interface TextNodeLike {
   nodeType: number;
@@ -151,12 +109,12 @@ export function resolveAnchorElement(
 export function resolveNextTocAnchorElement(
   book: FoliateBook,
   nextToc: TOCItem | null,
-  sectionIndex: number,
+  segmentIndex: number,
   doc: Document
 ): Element | null {
   if (!nextToc?.href) return null;
   const target = book.resolveHref?.(nextToc.href);
-  if (!target || target.index !== sectionIndex) return null;
+  if (!target || target.index !== segmentIndex) return null;
   return resolveAnchorElement(target.anchor, doc);
 }
 
@@ -164,7 +122,7 @@ export function resolveNextTocAnchorElement(
  * 把整篇正文裁成目录项自己的范围：`from` 之前、`to` 及其之后的节点全部摘掉。
  *
  * 主进程用的 xmldom 没有 Range / TreeWalker，无法"就地取区间"，
- * 所以这里直接改树——之所以安全，是因为 `section.createDocument()`
+ * 所以这里直接改树——之所以安全，是因为 `createDocument()`
  * 每次调用都重新解析一份新的 Document，裁掉的不是共享数据。
  *
  * 越界保护：先摘 `from` 之前的部分，若 `to` 已经不在树上（两个锚点顺序颠倒），
@@ -184,9 +142,9 @@ export function clipDocumentRange(doc: Document, from: Element | null, to: Eleme
   }
 }
 
-export function extractSectionText(doc: Document): string {
-  const root = ((doc as unknown as TextNodeLike).documentElement ?? doc) as unknown as TextNodeLike;
-  const text = collectNodeText(root);
+/** 提取文档单元正文：保留软换行的 DOM 遍历，再做空白归一化。 */
+export function extractSegmentText(doc: Document): string {
+  const text = collectPlainText(doc.documentElement ?? doc);
   return text
     .replace(/\r/g, '')
     .replace(/[ \t\f\v\u00a0]+/g, ' ')
@@ -244,35 +202,4 @@ function isUnderRoot(root: TextNodeLike, node: TextNodeLike): boolean {
     if (cur === root) return true;
   }
   return false;
-}
-
-function collectNodeText(node: TextNodeLike | null | undefined): string {
-  if (!node) return '';
-  if (node.nodeType === 3 || node.nodeType === 4) {
-    return node.nodeValue ?? '';
-  }
-  if (node.nodeType !== 1 && node.nodeType !== 9 && node.nodeType !== 11) {
-    return '';
-  }
-
-  const tagName = node.nodeName?.toLowerCase() ?? '';
-  if (TEXTLESS_TAGS.has(tagName)) return '';
-  if (tagName === 'br') return '\n';
-  if (isMathElement(tagName)) {
-    const latex = extractMathFormula(node);
-    if (latex) {
-      const formula = formatMathFormula(node, latex);
-      return isDisplayMath(node) ? `\n${formula}\n` : formula;
-    }
-  }
-
-  let content = '';
-  for (let child = node.firstChild ?? null; child; child = child.nextSibling ?? null) {
-    content += collectNodeText(child);
-  }
-
-  if (BLOCK_TAGS.has(tagName)) {
-    return `\n${content}\n`;
-  }
-  return content;
 }

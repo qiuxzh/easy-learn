@@ -1,9 +1,9 @@
-﻿import { asc, eq } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 import { getDatabase } from '..';
 import { bookChunkTable } from '../schema';
 import type { InsertBookChunkRow } from '../schema';
 
-/** 每行包含 9 个字段；限制批次大小以兼容 SQLite 的 SQL 参数上限。 */
+/** 每行包含 8 个字段；限制批次大小以兼容 SQLite 的 SQL 参数上限。 */
 const INSERT_BATCH_SIZE = 80;
 
 export class BookChunkRepo {
@@ -27,7 +27,7 @@ export class BookChunkRepo {
       .select()
       .from(bookChunkTable)
       .where(eq(bookChunkTable.bookId, bookId))
-      .orderBy(asc(bookChunkTable.sectionIndex), asc(bookChunkTable.chunkIndex))
+      .orderBy(asc(bookChunkTable.segmentIndex), asc(bookChunkTable.chunkIndex))
       .all();
   }
 
