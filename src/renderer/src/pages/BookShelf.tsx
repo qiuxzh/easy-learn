@@ -1,8 +1,16 @@
 import { useCallback, useEffect, useState, memo } from 'react';
-import { BookOpen, Info, Loader2, MoreVertical, Trash2 } from 'lucide-react';
+import { BookOpen, Info, Loader2, MoreVertical, Play, RotateCcw, Trash2 } from 'lucide-react';
 import { IconFileImport } from '@tabler/icons-react';
 import { BookDetailDialog } from '@/components/BookDetailDialog';
+import { BookIndexBadge } from '@/components/BookIndexBadge';
 import { useBooksStore } from '@/stores/books-store';
+import { useEmbeddingStore } from '@/stores/embedding-store';
+import {
+  isStale,
+  resolveDisplayCounts,
+  resolveEmbeddingState,
+} from '@shared/utils/embedding-state';
+import type { EmbeddingState } from '@shared/utils/embedding-state';
 import { useTabsStore } from '@/stores/tabs-store';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -30,14 +38,32 @@ import {
 function BookCard({
   book,
   deleting,
+  indexState,
+  indexCounts,
+  stale,
+  embedDisabled,
+  canRebuild,
   onDelete,
   onOpenDetail,
+  onEmbed,
+  onRebuild,
   onClick,
 }: {
   book: BookDoc;
   deleting: boolean;
+  /** 展示状态：入库状态叠加运行态。只有「生成中」会在卡片上挂角标 */
+  indexState: EmbeddingState;
+  indexCounts: { total: number; done: number };
+  /** 现有向量不是当前模型生成的 */
+  stale: boolean;
+  /** 没有配置模型、或这本书正在处理时，向量化入口不可用 */
+  embedDisabled: boolean;
+  /** 这本书有向量，才谈得上「重新向量化」 */
+  canRebuild: boolean;
   onDelete: (book: BookDoc) => void;
   onOpenDetail: (book: BookDoc) => void;
+  onEmbed: (book: BookDoc) => void;
+  onRebuild: (book: BookDoc) => void;
   onClick: () => void;
 }) {
   const hasCover = !!book.coverUrl;
@@ -75,6 +101,16 @@ function BookCard({
               {fallbackCoverText(book.booksName)}
             </div>
           )}
+          {/* 状态放在封面右上角：卡片正文只留书名与作者两行，整屏书才不会显得很长。
+              环形图标由角标自己决定——只有正在生成时才有 */}
+          {!deleting && (
+            <BookIndexBadge
+              state={indexState}
+              counts={indexCounts}
+              stale={stale}
+              className="absolute right-1.5 top-1.5"
+            />
+          )}
         </div>
         {/* 标题区 */}
         <div className="px-2 py-1.5 flex flex-col gap-0.5 min-w-0">
@@ -108,6 +144,28 @@ function BookCard({
           >
             <Info className="h-4 w-4 mr-2" />
             详情
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            disabled={embedDisabled}
+            onSelect={() => {
+              // 同上：等 DropdownMenu 关闭动画完成再执行。
+              setTimeout(() => onEmbed(book), 200);
+            }}
+            className="cursor-pointer"
+          >
+            <Play className="h-4 w-4 mr-2" />
+            {indexCounts.done > 0 ? '继续向量化' : '开始向量化'}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={!canRebuild}
+            onSelect={() => {
+              setTimeout(() => onRebuild(book), 200);
+            }}
+            className="cursor-pointer"
+          >
+            <RotateCcw className="h-4 w-4 mr-2" />
+            重新向量化
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
@@ -159,8 +217,12 @@ function ImportCard({ importing, onClick }: { importing: boolean; onClick: () =>
 export const BookShelf = memo(function BookShelf() {
   const { books, importing, loaded, deletingId, loadBooks, importBook, deleteBook } =
     useBooksStore();
+  const embeddingRuntime = useEmbeddingStore(s => s.runtime);
+  const currentModel = useEmbeddingStore(s => s.current);
   const addTab = useTabsStore(s => s.addTab);
   const [pendingDelete, setPendingDelete] = useState<BookDoc | null>(null);
+  // 重新向量化会清掉已有的向量，从卡片菜单直接触发时必须先确认
+  const [pendingRebuild, setPendingRebuild] = useState<BookDoc | null>(null);
   // 详情弹窗以打开时的书籍快照为准：store 更新后不会打断弹窗里的输入
   const [detailBook, setDetailBook] = useState<BookDoc | null>(null);
 
@@ -212,6 +274,28 @@ export const BookShelf = memo(function BookShelf() {
     if (err) toast.error(err);
   }, [importBook]);
 
+  /** 从卡片菜单直接开始 / 继续向量化，不必先打开详情页 */
+  const handleEmbed = useCallback(async (book: BookDoc) => {
+    const res = await window.api.startEmbedding({ bookId: book.id, mode: 'resume' });
+    if (!res.success) {
+      toast.error(res.error ?? '启动失败');
+      return;
+    }
+    toast.success(`《${book.booksName}》已加入向量化队列`);
+  }, []);
+
+  /** 确认后重新向量化：会先清空这本书在当前模型下的向量 */
+  const handleConfirmRebuild = useCallback(async () => {
+    const book = pendingRebuild;
+    if (!book) return;
+    const res = await window.api.startEmbedding({ bookId: book.id, mode: 'rebuild' });
+    if (!res.success) {
+      toast.error(res.error ?? '启动失败');
+      return;
+    }
+    toast.success(`《${book.booksName}》开始重新向量化`);
+  }, [pendingRebuild]);
+
   return (
     <div className="flex flex-col h-full">
       {/* 顶部标题栏 */}
@@ -234,16 +318,42 @@ export const BookShelf = memo(function BookShelf() {
           )}
         >
           <ImportCard importing={importing} onClick={handleImport} />
-          {books.map(book => (
-            <BookCard
-              key={book.id}
-              book={book}
-              deleting={deletingId === book.id}
-              onDelete={handleOpenDelete}
-              onOpenDetail={handleOpenDetail}
-              onClick={() => handleClickBook(book.id)}
-            />
-          ))}
+          {books.map(book => {
+            const indexState = resolveEmbeddingState(
+              book.embedding,
+              book.id,
+              currentModel,
+              embeddingRuntime
+            );
+            const indexCounts = resolveDisplayCounts(
+              book.embedding,
+              book.id,
+              currentModel,
+              embeddingRuntime
+            );
+            // 不管属于哪个模型，只要有向量就谈得上「重新向量化」
+            const hasVectors = book.embedding.done > 0;
+            const stale = isStale(book.embedding, currentModel);
+            const busy =
+              indexState === 'running' || indexState === 'queued' || indexState === 'paused';
+            return (
+              <BookCard
+                key={book.id}
+                book={book}
+                deleting={deletingId === book.id}
+                indexState={indexState}
+                indexCounts={indexCounts}
+                stale={stale}
+                embedDisabled={currentModel === null || busy || indexCounts.total === 0}
+                canRebuild={hasVectors && !busy}
+                onDelete={handleOpenDelete}
+                onOpenDetail={handleOpenDetail}
+                onEmbed={book => void handleEmbed(book)}
+                onRebuild={setPendingRebuild}
+                onClick={() => handleClickBook(book.id)}
+              />
+            );
+          })}
         </div>
 
         {loaded && books.length === 0 && !importing && (
@@ -270,6 +380,30 @@ export const BookShelf = memo(function BookShelf() {
           <AlertDialogFooter>
             <AlertDialogCancel onClick={handleCancel}>取消</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmDelete}>删除</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* 重新向量化确认弹窗：从卡片菜单直接触发时会清空已有向量，必须先确认 */}
+      <AlertDialog
+        open={!!pendingRebuild}
+        onOpenChange={open => {
+          if (!open) setPendingRebuild(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>重新向量化</AlertDialogTitle>
+            <AlertDialogDescription>
+              会清空《{pendingRebuild?.booksName ?? ''}》在当前模型下已有的向量，再重新生成一遍。
+              已经花掉的额度不会退回，确定要继续吗？
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>稍后</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void handleConfirmRebuild()}>
+              开始重建
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

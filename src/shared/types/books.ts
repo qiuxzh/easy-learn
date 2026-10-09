@@ -52,6 +52,27 @@ export interface BookMetadata {
   type: BookType;
 }
 
+/**
+ * 一本书的向量化信息。
+ *
+ * 只描述**持久事实**：切成几片、几片有向量、这些向量是谁生成的、上次为什么停下。
+ * 运行态（排队 / 向量化中 / 已暂停）不在这里——它只活在主进程内存里，见 EmbeddingRuntime。
+ *
+ * 「这本书该显示成未向量化还是已向量化」还要看用户当前选中了哪个模型，那是渲染层的判断：
+ * 拿 modelFingerprint 和当前配置算出来的指纹比一次。后端不参与那个判断，
+ * 否则换模型就得回写每本书的状态。
+ */
+export interface BookEmbedding {
+  /** 需要向量化的分片总数 */
+  total: number;
+  /** 已有向量的分片数 */
+  done: number;
+  /** 生成这些向量的模型指纹；从没索引过时为 null */
+  modelFingerprint: string | null;
+  /** 最近一次停下的原因。任务开始时清空，所以它非空就等于「上次是失败停的」 */
+  lastError: string | null;
+}
+
 /** 渲染端展示用的书籍实体 */
 export interface BookDoc {
   id: string;
@@ -65,6 +86,8 @@ export interface BookDoc {
   createdAt: number;
   /** 书籍源文件大小（字节）。文件缺失时为 null */
   fileSize: number | null;
+  /** 向量化信息。永远是对象、不判空：没做过也是一种信息 */
+  embedding: BookEmbedding;
 }
 
 /** 导入书籍响应（main 端完成 dialog + 解析 + 写库后返回） */
@@ -92,6 +115,14 @@ export interface BookDeleteRequest {
 /** 删除书籍响应 */
 export interface BookDeleteResult {
   success: boolean;
+  error?: string;
+}
+
+/** 重新切分正文的响应 */
+export interface BookRechunkResult {
+  success: boolean;
+  /** 重切之后的分片数，成功时存在 */
+  total?: number;
   error?: string;
 }
 

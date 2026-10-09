@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ImageUp, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { BookIndexSection } from '@/components/BookIndexSection';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -216,6 +217,8 @@ export function BookDetailDialog({ book, onOpenChange }: BookDetailDialogProps) 
             </div>
           </div>
         </div>
+
+        <BookIndexSection bookId={book.id} />
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

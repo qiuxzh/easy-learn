@@ -41,6 +41,20 @@ export enum IpcChannel {
   /** 阅读器打开书时，根据 id 拿 app:// 协议 URL */
   Book_GetBook = 'book:getBook',
 
+  /** 重新切分正文：重解析原文件、替换分片、清空该书全部向量 */
+  Book_RechunkBook = 'book:rechunkBook',
+
+  // 书籍的向量化任务。运行态只活在主进程内存里，所以命令与查询都挂在 book 下——
+  // 它们操作的是「某本书正在被向量化」这件事，不是模型配置
+  Book_EmbeddingStart = 'book:embeddingStart',
+  Book_EmbeddingPause = 'book:embeddingPause',
+  Book_EmbeddingResume = 'book:embeddingResume',
+  Book_EmbeddingCancel = 'book:embeddingCancel',
+  /** 取一次运行态快照，供渲染层刷新后对齐 */
+  Book_EmbeddingDescribe = 'book:embeddingDescribe',
+  /** 后端向前端推送运行态：进度推进、阶段变化、队列变化都走它 */
+  Book_EmbeddingRuntime = '#book:embeddingRuntime',
+
   // 闪卡
   Card_ListGroups = 'card:listGroups',
   Card_CreateGroup = 'card:createGroup',
@@ -64,7 +78,7 @@ export enum IpcChannel {
   /** 后端向前端推送的配置快照 */
   Config_Changed = '#config:changed',
 
-  // 向量模型
+  // 向量模型配置
   /** 调用 embeddings 接口发一条测试文本，返回向量维度 */
   Embedding_TestEndpoint = 'embedding:testEndpoint',
 }

@@ -1,6 +1,6 @@
 import type { FoliateBook, FoliateDestination } from '@/components/reader/foliate-types';
 import type { BookRow } from '../db/schema';
-import type { BookDoc, TOCItem } from '@shared/types/books';
+import type { BookDoc, BookEmbedding, TOCItem } from '@shared/types/books';
 import { collectPlainText } from './etl/chunking/html-text';
 
 interface TextNodeLike {
@@ -15,8 +15,8 @@ interface TextNodeLike {
   removeChild?: (child: TextNodeLike) => TextNodeLike;
 }
 
-/** 将 DB 行转换为渲染端 Book 实体；fileSize 由调用方读取书籍文件得到 */
-export function toBook(row: BookRow, fileSize: number | null): BookDoc {
+/** 将 DB 行转换为渲染端 Book 实体；fileSize 与 embedding 由调用方查好传进来 */
+export function toBook(row: BookRow, fileSize: number | null, embedding: BookEmbedding): BookDoc {
   return {
     id: row.id,
     booksName: row.booksName,
@@ -28,6 +28,7 @@ export function toBook(row: BookRow, fileSize: number | null): BookDoc {
     author: row.author,
     createdAt: row.createdAt,
     fileSize,
+    embedding,
   };
 }
 

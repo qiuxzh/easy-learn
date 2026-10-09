@@ -14,6 +14,9 @@ import type {
 } from '@shared/types/chat';
 import type { FileOpenRequest, FileOpenResult } from '@shared/types/file';
 import type {
+  EmbedCommandResult,
+  EmbeddingRuntime,
+  EmbedStartRequest,
   TestEmbeddingEndpointRequest,
   TestEmbeddingEndpointResult,
 } from '@shared/types/embedding';
@@ -25,6 +28,7 @@ import type {
   BookImportResult,
   BookListResult,
   BookPickCoverResult,
+  BookRechunkResult,
   BookUpdateRequest,
   BookUpdateResult,
 } from '@shared/types/books';
@@ -91,7 +95,7 @@ export const api = {
     },
   },
 
-  // 向量模型
+  // 向量模型配置：只有「这套参数能不能用」这一件事
   embedding: {
     testEndpoint: (request: TestEmbeddingEndpointRequest) =>
       ipcRenderer.invoke(
@@ -135,6 +139,31 @@ export const api = {
   /** 更新书名 / 作者 / 封面，返回更新后的 BookDoc */
   updateBook: (request: BookUpdateRequest) =>
     ipcRenderer.invoke(IpcChannel.Book_UpdateBook, request) as Promise<BookUpdateResult>,
+  /** 重新切分正文：重解析原文件、替换分片、清空该书全部向量 */
+  rechunkBook: (id: string) =>
+    ipcRenderer.invoke(IpcChannel.Book_RechunkBook, {
+      id,
+    } as BookGetRequest) as Promise<BookRechunkResult>,
+
+  // 书籍的向量化任务。它是书的逻辑，所以挂在 book 下；运行态只活在主进程内存里。
+  // 开始 / 继续 / 重新向量化共用同一个入口，只有 mode 不同
+  startEmbedding: (request: EmbedStartRequest) =>
+    ipcRenderer.invoke(IpcChannel.Book_EmbeddingStart, request) as Promise<EmbedCommandResult>,
+  pauseEmbedding: () =>
+    ipcRenderer.invoke(IpcChannel.Book_EmbeddingPause) as Promise<EmbedCommandResult>,
+  resumeEmbedding: () =>
+    ipcRenderer.invoke(IpcChannel.Book_EmbeddingResume) as Promise<EmbedCommandResult>,
+  cancelEmbedding: () =>
+    ipcRenderer.invoke(IpcChannel.Book_EmbeddingCancel) as Promise<EmbedCommandResult>,
+  /** 取一次运行态快照，供渲染层刷新后对齐 */
+  describeEmbedding: () =>
+    ipcRenderer.invoke(IpcChannel.Book_EmbeddingDescribe) as Promise<EmbeddingRuntime>,
+  /** 订阅运行态变化：进度推进、阶段变化、队列变化都走它 */
+  onEmbeddingRuntime: (callback: (runtime: EmbeddingRuntime) => void) => {
+    const listener = (_event: IpcRendererEvent, payload: EmbeddingRuntime) => callback(payload);
+    ipcRenderer.on(IpcChannel.Book_EmbeddingRuntime, listener);
+    return () => ipcRenderer.removeListener(IpcChannel.Book_EmbeddingRuntime, listener);
+  },
   pushReadingState: (payload: ReadingStatePayload) =>
     ipcRenderer.invoke(IpcChannel.Reading_PushState, payload) as Promise<void>,
   // 闪卡

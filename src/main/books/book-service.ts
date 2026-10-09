@@ -7,11 +7,13 @@ import { IpcChannel } from '@shared/ipc-channels';
 import type {
   BookDeleteRequest,
   BookDeleteResult,
+  BookDoc,
   BookGetRequest,
   BookGetResult,
   BookImportResult,
   BookListResult,
   BookPickCoverResult,
+  BookRechunkResult,
   BookUpdateRequest,
   BookUpdateResult,
   CoverImage,
@@ -32,8 +34,12 @@ import {
 } from './util';
 import { BaseService } from '../service/base-service';
 import { Constants } from '../constants';
-import { bookChunkRepo, bookRepo } from '../db/repo';
+import { runInTransaction } from '../db';
+import { bookChunkRepo, bookEmbeddingRepo, bookRepo } from '../db/repo';
 import type { BookRow, InsertBookChunkRow, InsertBookRow } from '../db/schema';
+import { getMainWindow } from '../window';
+import { BookEmbeddingQueue } from './etl/embedding';
+import type { EmbedStartRequest } from '@shared/types/embedding';
 import { initFoliatePolyfill } from './foliate-polyfill';
 import { parseEpubFile } from './book-parser';
 import {
@@ -129,27 +135,57 @@ export class BookService extends BaseService {
    *  单本解析约 100-500ms，缓存命中后 readBookTocText 几乎零开销。 */
   private parsedBookCache = new Map<string, ParsedBookCacheEntry>();
 
+  /** 向量化任务队列。运行态只活在它里面，不落库 */
+  private readonly embeddingQueue: BookEmbeddingQueue;
+
   constructor() {
     super();
     this.bookDir = path.resolve(Constants.dataDir, 'books');
+    this.embeddingQueue = new BookEmbeddingQueue({
+      onRuntime: runtime => {
+        getMainWindow()?.webContents.send(IpcChannel.Book_EmbeddingRuntime, runtime);
+      },
+    });
   }
+
+  /**
+   * 启动时按向量表对账进度行。
+   *
+   * 进度行是派生的，向量表才是事实源。换过表结构、或者手工改过库之后两者可能对不上，
+   * 这里按书补齐，幂等。
+   */
+  onInit(): void {
+    bookEmbeddingRepo.reconcile();
+  }
+
   /**
    * 注册书籍相关 IPC 处理器：
-   * - Book_PickAndImport   渲染层触发：弹文件选择框 → 解析 → 入库 → 返回 BookRow
-   * - Book_GetAllBooks     渲染层拉取书库列表
-   * - Book_DeleteBook      渲染层删除指定书籍
-   * - Book_GetBook         渲染层打开书时调用：返回 app:// 协议 URL + 类型
-   * - Book_PickCover       渲染层弹框选取封面图片（只读字节，不落盘）
-   * - Book_UpdateBook      渲染层更新书名 / 作者 / 封面
+   * - Book_PickAndImport     渲染层触发：弹文件选择框 → 解析 → 入库 → 返回 BookRow
+   * - Book_GetAllBooks       渲染层拉取书库列表（每本书带自己的向量化信息）
+   * - Book_DeleteBook        渲染层删除指定书籍
+   * - Book_GetBook           渲染层打开书时调用：返回 app:// 协议 URL + 类型
+   * - Book_PickCover         渲染层弹框选取封面图片（只读字节，不落盘）
+   * - Book_UpdateBook        渲染层更新书名 / 作者 / 封面
+   * - Book_RechunkBook       渲染层重新切分正文（重解析 + 替换分片 + 清向量）
+   * - Book_Embedding*        渲染层驱动这本书的向量化任务（启动 / 暂停 / 继续 / 取消 / 取运行态）
    */
   setupIpcHandlers(): void {
+    // 书籍embedding操作
+    ipcMain.handle(IpcChannel.Book_EmbeddingStart, (_event, req: EmbedStartRequest) =>
+      this.embeddingQueue.start(req)
+    );
+    ipcMain.handle(IpcChannel.Book_EmbeddingPause, () => this.embeddingQueue.pause());
+    ipcMain.handle(IpcChannel.Book_EmbeddingResume, () => this.embeddingQueue.resume());
+    ipcMain.handle(IpcChannel.Book_EmbeddingCancel, () => this.embeddingQueue.cancel());
+    ipcMain.handle(IpcChannel.Book_EmbeddingDescribe, () => this.embeddingQueue.describe());
+
     ipcMain.handle(IpcChannel.Book_PickAndImport, async (): Promise<BookImportResult> => {
       try {
         const picked = await this.pickEpubFile();
         if (!picked) return { success: false, canceled: true };
 
         const row = await this.importBook(picked.filePath);
-        return { success: true, book: toBook(row, this.readBookFileSize(row)) };
+        return { success: true, book: this.toBookDoc(row) };
       } catch (e) {
         log.error('[BookService] pickAndImport failed:', e);
         return { success: false, error: String(e) };
@@ -159,7 +195,12 @@ export class BookService extends BaseService {
     ipcMain.handle(IpcChannel.Book_GetAllBooks, async (): Promise<BookListResult> => {
       try {
         const rows = bookRepo.findAll();
-        return { success: true, books: rows.map(row => toBook(row, this.readBookFileSize(row))) };
+        // 一次查完全部向量化信息，避免按书逐个查询
+        const embeddings = bookEmbeddingRepo.loadAll(rows.map(row => row.id));
+        return {
+          success: true,
+          books: rows.map(row => toBook(row, this.readBookFileSize(row), embeddings[row.id])),
+        };
       } catch (e) {
         log.error('[BookService] getAllBooks failed:', e);
         return { success: false, error: String(e) };
@@ -213,9 +254,22 @@ export class BookService extends BaseService {
       async (_e, req: BookUpdateRequest): Promise<BookUpdateResult> => {
         try {
           const row = this.updateBook(req);
-          return { success: true, book: toBook(row, this.readBookFileSize(row)) };
+          return { success: true, book: this.toBookDoc(row) };
         } catch (e) {
           log.error('[BookService] updateBook failed:', e);
+          return { success: false, error: String(e) };
+        }
+      }
+    );
+
+    ipcMain.handle(
+      IpcChannel.Book_RechunkBook,
+      async (_e, req: BookGetRequest): Promise<BookRechunkResult> => {
+        try {
+          const chunks = await this.rechunkBook(req.id);
+          return { success: true, total: chunks };
+        } catch (e) {
+          log.error('[BookService] rechunkBook failed:', e);
           return { success: false, error: String(e) };
         }
       }
@@ -223,6 +277,14 @@ export class BookService extends BaseService {
   }
 
   /** 弹出文件选择框，返回用户选择的 EPUB 路径，取消选择则返回 null */
+  /**
+   * 把一行书籍记录转成渲染端实体，顺带查它的向量化信息。
+   * 批量路径不要用它——那里先用 `loadAll` 一次查完，避免按书逐个查询。
+   */
+  private toBookDoc(row: BookRow): BookDoc {
+    return toBook(row, this.readBookFileSize(row), bookEmbeddingRepo.load(row.id));
+  }
+
   private async pickEpubFile(): Promise<{ filePath: string } | null> {
     const result = await dialog.showOpenDialog({
       properties: ['openFile'],
@@ -325,10 +387,43 @@ export class BookService extends BaseService {
       log.warn(`[BookService] deleteBook: book file not found (${row.booksStoreName}):`, e);
     }
 
-    // Chunk 没有数据库级联删除，必须在删除书籍记录前显式清理。
-    bookChunkRepo.deleteByBookId(id);
+    // Chunk 与向量都没有数据库级联删除，必须在删除书籍记录前显式清理。
+    // 向量散落在各模型的动态表里，不清就会永远留在库中，既占空间又让统计偏大。
+    runInTransaction(() => {
+      bookChunkRepo.deleteByBookId(id);
+    });
+    bookEmbeddingRepo.drop(id, null);
     bookBm25SearchService.invalidateBook(id);
     bookRepo.delete(id);
+  }
+
+  /**
+   * 重新切分一本书的正文，返回新的分片数。
+   *
+   * 重解析原文件 → 重切 → 替换分片 → 清掉该书在**所有**模型下的向量。
+   * 四件事必须在同一个提交里：分片是按内容切出来的，替换之后旧向量对应的正文
+   * 已经不是同一段了，留着只会让检索返回对不上的内容——而这种错误不会报错。
+   */
+  private async rechunkBook(id: string): Promise<number> {
+    const row = bookRepo.findById(id);
+    if (!row) {
+      throw new Error(`Book not found: ${id}`);
+    }
+
+    const sourcePath = path.join(this.bookDir, row.booksStoreName);
+    const info = await parseEpubFile(sourcePath);
+    const drafts = await chunkDocument(createEpubSource(info.rawBook), DEFAULT_CHUNK_OPTIONS);
+    const chunks = toChunkRows(id, drafts);
+
+    runInTransaction(() => {
+      bookChunkRepo.deleteByBookId(id);
+      bookChunkRepo.createMany(chunks);
+    });
+    bookEmbeddingRepo.drop(id, null);
+
+    this.parsedBookCache.delete(id);
+    bookBm25SearchService.invalidateBook(id);
+    return chunks.length;
   }
 
   /**
