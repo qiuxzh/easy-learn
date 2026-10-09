@@ -48,7 +48,7 @@ import {
   createEpubSource,
   type ChunkDraft,
 } from './etl/chunking';
-import { bookBm25SearchService } from './book-bm25';
+import { invalidateBookRetrieval } from './book-retrieval';
 
 /** 章节正文分段读取的默认起始下标。 */
 export const DEFAULT_READ_OFFSET = 0;
@@ -341,7 +341,7 @@ export class BookService extends BaseService {
       // chunks 写入失败需要回滚 books 记录，避免出现"有书无文"的孤儿状态。
       bookChunkRepo.createMany(chunks);
       // 同一 ID 的 Chunk 重新生成时，确保后续检索不会继续使用旧索引。
-      bookBm25SearchService.invalidateBook(id);
+      invalidateBookRetrieval(id);
     } catch (e) {
       bookChunkRepo.deleteByBookId(id);
       bookRepo.delete(id);
@@ -393,7 +393,7 @@ export class BookService extends BaseService {
       bookChunkRepo.deleteByBookId(id);
     });
     bookEmbeddingRepo.drop(id, null);
-    bookBm25SearchService.invalidateBook(id);
+    invalidateBookRetrieval(id);
     bookRepo.delete(id);
   }
 
@@ -422,7 +422,7 @@ export class BookService extends BaseService {
     bookEmbeddingRepo.drop(id, null);
 
     this.parsedBookCache.delete(id);
-    bookBm25SearchService.invalidateBook(id);
+    invalidateBookRetrieval(id);
     return chunks.length;
   }
 

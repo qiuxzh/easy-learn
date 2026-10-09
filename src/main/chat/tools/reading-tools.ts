@@ -1,6 +1,6 @@
 import { Type } from 'typebox';
 import { defineSessionTool } from '@main/agent/common-agent/agent-definition';
-import { BookBm25SearchResult, bookBm25SearchService } from '@main/books/book-bm25';
+import { searchBookBm25, type BookRetrievalHit } from '@main/books/book-retrieval';
 import {
   bookService,
   DEFAULT_READ_LENGTH,
@@ -16,7 +16,7 @@ import { readingService } from '@main/service/reading-service';
  */
 
 /** 将 BM25 命中结果限制在 AI 工具的 5,000 字符上下文预算内。 */
-function limitBm25ToolContext(searchResults: BookBm25SearchResult[]) {
+function limitBm25ToolContext(searchResults: BookRetrievalHit[]) {
   const maxTotalCharacters = 5000;
   const results: Array<{
     id: string;
@@ -31,7 +31,7 @@ function limitBm25ToolContext(searchResults: BookBm25SearchResult[]) {
   }> = [];
   let totalCharacters = 0;
 
-  for (const { chunk, score } of searchResults) {
+  for (const { document: chunk, score } of searchResults) {
     const remainingCharacters = maxTotalCharacters - totalCharacters;
     if (remainingCharacters <= 0) break;
 
@@ -136,11 +136,7 @@ const searchBookBm25Tool = defineSessionTool({
     ),
   }),
   async execute(_toolCallId, params) {
-    const searchResults = await bookBm25SearchService.search(
-      params.bookId,
-      params.query,
-      params.topK ?? 5
-    );
+    const searchResults = await searchBookBm25(params.bookId, params.query, params.topK ?? 5);
     const results = limitBm25ToolContext(searchResults);
 
     const payload = {
