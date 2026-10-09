@@ -61,9 +61,9 @@ src/
 
 - temp_script，里面可以放置临时的脚本，用于临时测试
 
-## 项目文档
+## 文档
 
-如果需要查看文档、更新文档，务必参考：docs/references/documents.md
+如有任何对文档的写入，务必参考：docs/references/documents.md
 
 # 工作思维准则
 
