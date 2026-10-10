@@ -30,7 +30,7 @@ export interface ReaderTab {
 }
 
 interface ReaderState {
-  /** key 用 tabId（不是 bookId），支持多个 tab 同时打开同一本书 */
+  /** key 用 tabId（不是 bookId），支持多个 tab 同时打开同一本书。一个tabId标识了一个阅读状态 */
   tabs: Record<string, ReaderTab>;
   /**
    * 当前正在阅读的书的 bookId。
@@ -53,10 +53,15 @@ interface ReaderState {
    */
   navigateToPos: (tabId: string, pos: string) => Promise<void>;
   /**
-   * 翻页入口（工具栏按钮用）：调 operator.prev/next 触发 foliate 翻页。
+   * 翻页入口（翻页按钮用）：调 operator.prev/next 触发 foliate 翻页。
    * operator 未就绪时 NOOP。
    */
   pageTurn: (tabId: string, dir: 'prev' | 'next') => Promise<void>;
+  /**
+   * 按总进度跳转（底部进度条拖拽用）：调 operator.goToFraction。
+   * fraction 为 0~1。operator 未就绪时 NOOP。
+   */
+  seekToFraction: (tabId: string, fraction: number) => Promise<void>;
   /**
    * BookViewer 创建 foliate-view 后调用，把操作器注入 store。
    * 卸载时传 null 清空。
@@ -163,6 +168,16 @@ export const useReaderStore = create<ReaderState>()(
         await op[dir]();
       } catch (err) {
         console.error('[readerStore] 翻页失败:', err);
+      }
+    },
+
+    seekToFraction: async (tabId, fraction) => {
+      const op = get().tabs[tabId]?.readerViewOperator;
+      if (!op) return;
+      try {
+        await op.goToFraction(fraction);
+      } catch (err) {
+        console.error('[readerStore] 进度跳转失败:', err);
       }
     },
 

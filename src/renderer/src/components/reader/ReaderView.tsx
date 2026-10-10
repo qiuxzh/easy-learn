@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Group, Panel, Separator, useGroupRef } from 'react-resizable-panels';
-import { ChevronLeft, ChevronRight, Menu, MessageSquare, Loader2 } from 'lucide-react';
+import { Menu, MessageSquare, Loader2 } from 'lucide-react';
 import { Chat } from '@/pages/Chat';
 import { Button } from '@/components/ui/button';
 import { useReaderStore } from '@/stores/reader-store';
 import { TOCPanel } from './TOCPanel';
 import { BookViewer } from './BookViewer';
+import { ReaderStatusBar } from './ReaderStatusBar';
 import { cn } from '@/lib/utils';
 
 /** 侧面板打开时占容器宽度的比例 */
@@ -118,7 +119,7 @@ export function ReaderView({ tabId: propTabId, bookId = '' }: ReaderViewProps) {
 
         <Panel id="content" minSize="30%">
           <div className="h-full flex flex-col">
-            {/* 工具栏*/}
+            {/* 工具栏：只放面板开关，翻页控件在底部状态栏 */}
             <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-border bg-background px-3">
               <Button
                 variant="ghost"
@@ -129,27 +130,6 @@ export function ReaderView({ tabId: propTabId, bookId = '' }: ReaderViewProps) {
               >
                 <Menu className="h-4 w-4" />
               </Button>
-              {/* 翻页区域 */}
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label="上一页"
-                  disabled={!isReady}
-                  onClick={() => useReaderStore.getState().pageTurn(tabId, 'prev')}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label="下一页"
-                  disabled={!isReady}
-                  onClick={() => useReaderStore.getState().pageTurn(tabId, 'next')}
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
 
               <Button
                 variant="ghost"
@@ -165,6 +145,8 @@ export function ReaderView({ tabId: propTabId, bookId = '' }: ReaderViewProps) {
             <div className="flex-1 min-h-0">
               <BookViewer readerTabId={tabId} />
             </div>
+            {/* 底部状态栏 */}
+            <ReaderStatusBar readerTabId={tabId} />
           </div>
         </Panel>
 
