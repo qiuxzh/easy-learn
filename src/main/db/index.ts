@@ -18,6 +18,7 @@ import log from 'electron-log';
 import * as schema from './schema';
 import { tableSQLs } from './schema';
 import { Constants } from '../constants';
+import { loadVectorExtension } from './vector-extension';
 
 let db: ReturnType<typeof drizzle> | null = null;
 let sqlite: SqliteDatabase | null = null;
@@ -119,6 +120,9 @@ export function initDatabase(): void {
 
   sqlite = instance;
   db = drizzle(instance, { schema });
+
+  // 扩展是连接级的，必须与连接的创建绑在一起；加载失败不抛，检索侧会降级
+  loadVectorExtension(instance);
 
   log.info('Database initialized');
 }

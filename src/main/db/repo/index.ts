@@ -26,6 +26,7 @@ export type {
   PendingChunk,
   InsertVectorRow,
   VectorCountBySource,
+  VectorSearchHit,
 } from './embed-vector-repo';
 export type { EmbedIndexRow, InsertEmbedIndexRow } from '../schema';
 export type { EmbedTaskRow, InsertEmbedTaskRow } from '../schema';

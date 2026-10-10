@@ -1,7 +1,7 @@
-import { asc, count, eq } from 'drizzle-orm';
+import { asc, count, eq, inArray } from 'drizzle-orm';
 import { getDatabase } from '..';
 import { bookChunkTable } from '../schema';
-import type { InsertBookChunkRow } from '../schema';
+import type { BookChunkRow, InsertBookChunkRow } from '../schema';
 
 /** 每行包含 8 个字段；限制批次大小以兼容 SQLite 的 SQL 参数上限。 */
 const INSERT_BATCH_SIZE = 80;
@@ -35,6 +35,17 @@ export class BookChunkRepo {
       .where(eq(bookChunkTable.bookId, bookId))
       .orderBy(asc(bookChunkTable.segmentIndex), asc(bookChunkTable.chunkIndex))
       .all();
+  }
+
+  /**
+   * 按 id 批量取分片，用于检索命中后回查正文。
+   *
+   * **返回顺序不保证与传入一致**，调用方要自己按 id 回填来恢复顺序。
+   * 命中数受工具的 topK 限制（≤10），不会逼近 SQLite 的参数上限。
+   */
+  findByIds(ids: string[]): BookChunkRow[] {
+    if (ids.length === 0) return [];
+    return getDatabase().select().from(bookChunkTable).where(inArray(bookChunkTable.id, ids)).all();
   }
 
   /**

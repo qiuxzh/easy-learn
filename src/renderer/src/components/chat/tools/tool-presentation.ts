@@ -22,6 +22,7 @@ export const TOOL_PRESENTATION: Record<string, ToolPresentation> = {
   // 改名前的旧工具名：历史会话里存的还是它，留着让旧对话仍能显示中文标签
   read_book_toc_section: { label: '读取章节' },
   search_book_bm25: { label: '检索书中内容', summaryFrom: 'query' },
+  search_book_vector: { label: '语义检索书中内容', summaryFrom: 'query' },
   get_user_reading_state: { label: '获取阅读状态' },
 
   // 闪卡

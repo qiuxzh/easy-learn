@@ -1,5 +1,5 @@
-import type { RetrievalDocument, RetrievalHit } from '../types';
-import type { Bm25Index } from './types';
+import type { RetrievalDocument } from '../types';
+import type { Bm25Hit, Bm25Index } from './types';
 import { buildBm25Index, searchBm25Index } from './core';
 import { tokenizeQuery } from './tokenizer';
 
@@ -39,7 +39,7 @@ export class Bm25Retriever<T extends RetrievalDocument> {
   }
 
   /** 执行检索。查询分词后为空时直接返回空结果，不会触发建索引。 */
-  async search(key: string, query: string, topK: number): Promise<RetrievalHit<T>[]> {
+  async search(key: string, query: string, topK: number): Promise<Bm25Hit<T>[]> {
     const queryTerms = tokenizeQuery(query);
     if (queryTerms.length === 0) return [];
 

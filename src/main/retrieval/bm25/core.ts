@@ -1,5 +1,5 @@
-import type { RetrievalDocument, RetrievalHit } from '../types';
-import type { Bm25Index, DocumentMeta, TermIndexEntry } from './types';
+import type { RetrievalDocument } from '../types';
+import type { Bm25Hit, Bm25Index, DocumentMeta, TermIndexEntry } from './types';
 import { tokenizeContent } from './tokenizer';
 
 /**
@@ -73,7 +73,7 @@ export function searchBm25Index<T extends RetrievalDocument>(
   index: Bm25Index<T>,
   queryTerms: string[],
   topK: number
-): RetrievalHit<T>[] {
+): Bm25Hit<T>[] {
   if (queryTerms.length === 0 || index.totalDocuments === 0 || index.averageDocumentLength === 0) {
     return [];
   }

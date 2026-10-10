@@ -1,5 +1,17 @@
 import type { RetrievalDocument } from '../types';
 
+/**
+ * 一次 BM25 命中。
+ *
+ * 带原文档，调用方拿到就是全文，不必二次回查——这是建索引时手里就有文档换来的。
+ * 向量检索没有这个条件（它只持有文档标识，见 `books/book-retrieval.ts`），所以两者不共用类型。
+ */
+export interface Bm25Hit<T extends RetrievalDocument> {
+  document: T;
+  /** BM25 分数，越大越相关；不同检索器的分数尺度不可比，融合要用排名 */
+  score: number;
+}
+
 /** 倒排表里的一条记录：某个文档出现了某个词多少次。 */
 export interface Posting {
   documentId: string;

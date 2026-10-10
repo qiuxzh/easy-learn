@@ -1,6 +1,6 @@
 import { Type } from 'typebox';
 import { defineSessionTool } from '@main/agent/common-agent/agent-definition';
-import { searchBookBm25, type BookRetrievalHit } from '@main/books/book-retrieval';
+import { searchBookBm25, searchBookVector } from '@main/books/book-retrieval';
 import {
   bookService,
   DEFAULT_READ_LENGTH,
@@ -15,44 +15,6 @@ import { readingService } from '@main/service/reading-service';
  * 将来界面确实要渲染某类结构化数据时，再单独给对应工具加 details。
  */
 
-/** 将 BM25 命中结果限制在 AI 工具的 5,000 字符上下文预算内。 */
-function limitBm25ToolContext(searchResults: BookRetrievalHit[]) {
-  const maxTotalCharacters = 5000;
-  const results: Array<{
-    id: string;
-    score: number;
-    segmentIndex: number;
-    segmentId: string;
-    chunkIndex: number;
-    locatorStart: string;
-    locatorEnd: string;
-    content: string;
-    truncated: boolean;
-  }> = [];
-  let totalCharacters = 0;
-
-  for (const { document: chunk, score } of searchResults) {
-    const remainingCharacters = maxTotalCharacters - totalCharacters;
-    if (remainingCharacters <= 0) break;
-
-    const content = chunk.content.slice(0, remainingCharacters);
-    results.push({
-      id: chunk.id,
-      score: Math.round(score * 1000) / 1000,
-      segmentIndex: chunk.segmentIndex,
-      segmentId: chunk.segmentId,
-      chunkIndex: chunk.chunkIndex,
-      locatorStart: chunk.locatorStart,
-      locatorEnd: chunk.locatorEnd,
-      content,
-      truncated: content.length < chunk.content.length,
-    });
-    totalCharacters += content.length;
-  }
-
-  return results;
-}
-
 /** 书的目录：按 bookId 返回嵌套的 TOCItem 树。 */
 const getBookTocsTool = defineSessionTool({
   name: 'get_book_tocs',
@@ -60,7 +22,7 @@ const getBookTocsTool = defineSessionTool({
     '根据书的 id 获取该书的完整目录（嵌套结构，含 id、层级、子章节、href 等），用于回答用户关于书籍章节结构的问题',
   promptSnippet: '查看某本书的目录结构',
   promptGuidelines: [
-    'search_book_bm25 返回的片段不足以回答时，用 get_book_tocs 查看目录结构，再用 read_book_toc_text 读整章。',
+    '检索返回的片段不足以回答时，用 get_book_tocs 查看目录结构，再用 read_book_toc_text 读整章。',
   ],
   parameters: Type.Object({
     bookId: Type.String({ minLength: 1, description: '书的 id' }),
@@ -118,16 +80,15 @@ const readBookTocTextTool = defineSessionTool({
   },
 });
 
-/** 正文检索：关键词命中片段，附带可直接跳转阅读器的定位串。 */
+/** 关键词检索：字面命中片段，附带可直接跳转阅读器的定位串。 */
 const searchBookBm25Tool = defineSessionTool({
   name: 'search_book_bm25',
+
   description:
-    '根据关键词或问题在指定书籍的正文中检索最相关的片段。返回片段正文、BM25 分数和 locatorStart 定位串。' +
-    '回答书中具体内容前，应优先调用此工具定位相关段落；如片段不足，再调用 read_book_toc_text 阅读完整章节。',
-  promptSnippet: '在指定书中检索正文片段',
-  promptGuidelines: [
-    '回答与书中内容有关的问题时，先用 search_book_bm25 在指定书里检索，定位到相关段落后再作答。',
-  ],
+    '根据关键词在指定书籍的正文中做字面检索。返回片段正文、分数（越大越相关）' +
+    '适合术语、人名、专有名词这类能给出准确关键词的查询；如片段不足，再调用 read_book_toc_text 阅读完整章节。',
+  promptSnippet: '按关键词在指定书中检索正文片段',
+  promptGuidelines: ['需要术语、人名、专有名词等字面匹配时，用 search_book_bm25 在指定书里检索。'],
   parameters: Type.Object({
     bookId: Type.String({ minLength: 1, description: '书的 id' }),
     query: Type.String({ minLength: 1, description: '需要检索的关键词或问题' }),
@@ -136,16 +97,54 @@ const searchBookBm25Tool = defineSessionTool({
     ),
   }),
   async execute(_toolCallId, params) {
-    const searchResults = await searchBookBm25(params.bookId, params.query, params.topK ?? 5);
-    const results = limitBm25ToolContext(searchResults);
+    const hits = await searchBookBm25(params.bookId, params.query, params.topK ?? 5);
 
     const payload = {
       bookId: params.bookId,
       query: params.query,
-      totalResults: searchResults.length,
-      returnedResults: results.length,
-      totalCharacters: results.reduce((total, result) => total + result.content.length, 0),
-      results,
+      totalResults: hits.length,
+      results: hits,
+    };
+
+    return {
+      content: [{ type: 'text' as const, text: JSON.stringify(payload) }],
+      details: undefined,
+    };
+  },
+});
+
+/** 语义检索：问法与原文用词不一致时靠它，字面检索靠 bm25。 */
+const searchBookVectorTool = defineSessionTool({
+  name: 'search_book_vector',
+  description:
+    '根据问题或描述在指定书籍的正文中做语义检索。返回片段正文、相似度分数（越大越相关，最大是1）',
+  promptSnippet: '按语义在指定书中检索正文片段',
+  promptGuidelines: [
+    '给不出准确关键词、或问法与书中用词不一致时，用 search_book_vector 做语义检索。',
+  ],
+  parameters: Type.Object({
+    bookId: Type.String({ minLength: 1, description: '书的 id' }),
+    query: Type.String({ minLength: 1, description: '需要检索的问题或描述' }),
+    topK: Type.Optional(
+      Type.Integer({ minimum: 1, maximum: 10, description: '最多返回的结果数，默认 5' })
+    ),
+  }),
+  async execute(_toolCallId, params) {
+    const result = await searchBookVector(params.bookId, params.query, params.topK ?? 5);
+
+    if (!result.ok) {
+      return {
+        content: [{ type: 'text' as const, text: `检索失败：${result.message}` }],
+        details: undefined,
+      };
+    }
+
+    const payload = {
+      bookId: params.bookId,
+      query: params.query,
+      status: 'ok',
+      totalResults: result.hits.length,
+      results: result.hits,
     };
 
     return {
@@ -189,5 +188,6 @@ export const readingTools = [
   getBookTocsTool,
   readBookTocTextTool,
   searchBookBm25Tool,
+  searchBookVectorTool,
   getUserReadingStateTool,
 ];
