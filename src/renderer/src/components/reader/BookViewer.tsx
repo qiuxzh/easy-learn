@@ -3,7 +3,7 @@ import 'foliate-js/view.js'; // 副作用注册 <foliate-view> 自定义元素
 import { useReaderStore } from '@/stores/reader-store';
 import { useTabsStore } from '@/stores/tabs-store';
 import { buildReaderCSS } from './reader-styles';
-import { registerIframeKeyHandlers } from '@/utils/iframe-event-bridge';
+import { registerIframeKeyHandlers, registerReaderEdgeClick } from '@/utils/iframe-event-bridge';
 import { parsePageLabel, resolveChapter } from '@/utils/reader-utils';
 import type { FoliateViewElement, ReaderViewOperator } from './foliate-types';
 
@@ -88,18 +88,27 @@ export const BookViewer = ({ readerTabId }: BookViewerProps) => {
       });
     };
 
-    // 翻页：左右箭头键映射到 foliate prev/next
-    const turnPage = (key: string) => {
-      if (key === 'ArrowLeft') view.prev();
-      else if (key === 'ArrowRight') view.next();
+    // 翻页：把方向映射到 foliate 的 prev / next
+    const turn = (dir: 'prev' | 'next') => {
+      if (dir === 'prev') view.prev();
+      else view.next();
     };
 
-    // postMessage 桥接：iframe 内的键盘事件通过注册在 contentDocument 上的监听器转发
+    // 接收 iframe-event-bridge 转发过来的消息：iframe 内的按键和点击不会冒泡到父文档
     const onBridgeMessage = (e: MessageEvent) => {
-      if (e.data?.type !== 'foliate-bridge:keydown') return;
-      if (e.data.tabId !== readerTabId) return;
+      if (e.data?.tabId !== readerTabId) return;
       if (useTabsStore.getState().activeTabId !== readerTabId) return;
-      turnPage(e.data.key);
+
+      if (e.data.type === 'foliate-bridge:keydown') {
+        if (e.data.key === 'ArrowLeft') turn('prev');
+        else if (e.data.key === 'ArrowRight') turn('next');
+        return;
+      }
+
+      // 点击左右边缘翻页：方向已经判定好，这里只做方向到翻页的映射
+      if (e.data.type === 'foliate-bridge:edge-click') {
+        turn(e.data.direction === 'left' ? 'prev' : 'next');
+      }
     };
     window.addEventListener('message', onBridgeMessage);
 
@@ -111,7 +120,7 @@ export const BookViewer = ({ readerTabId }: BookViewerProps) => {
         return;
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
         e.preventDefault();
-        turnPage(e.key);
+        turn(e.key === 'ArrowLeft' ? 'prev' : 'next');
       }
     };
     document.addEventListener('keydown', onKeyDown);
@@ -153,12 +162,14 @@ export const BookViewer = ({ readerTabId }: BookViewerProps) => {
     };
     document.addEventListener('selectionchange', onSelectionChange);
 
-    // 监听 foliate-js 的 load 事件（新章节渲染时触发），拿到 iframe contentDocument 注册键盘桥接
-    // 绕过 closed shadow DOM 限制，外部 querySelector 无法穿透获取 iframe
+    // foliate 每渲染一个章节就发一次 load，并把该章节的 document 带出来。
+    // iframe 藏在 foliate 的 shadow DOM 里，外部查不到，只能借这个事件拿到 document 挂监听。
     const onViewLoad = (e: Event) => {
       const doc = (e as CustomEvent<{ doc: Document }>).detail?.doc;
       if (!doc) return;
       registerIframeKeyHandlers(doc, readerTabId);
+      // 点击左右边缘翻页
+      registerReaderEdgeClick(doc, container, readerTabId);
     };
     view.addEventListener('load', onViewLoad);
 
