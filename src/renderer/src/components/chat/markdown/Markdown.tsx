@@ -83,7 +83,7 @@ export function Markdown({ content, className, isStreaming }: MarkdownProps) {
     ),
     ol: ({ children, ...props }) => (
       <ol
-        className="list-decimal list-outside space-y-0.5 text-[15px] mb-2 pl-5 text-foreground/95"
+        className="list-decimal list-outside space-y-0.5 text-[15px] mb-2 pl-7 text-foreground/95"
         {...props}
       >
         {children}
