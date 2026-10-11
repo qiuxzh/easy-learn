@@ -19,6 +19,12 @@ type DragState = {
   startPanY: number;
 };
 
+/** 预览视口尺寸。 */
+type ViewportSize = {
+  width: number;
+  height: number;
+};
+
 /** 可缩放预览属性。 */
 type ZoomablePreviewProps = {
   children: ReactNode;
@@ -34,7 +40,34 @@ const MAX_ZOOM = 3;
 const WHEEL_ZOOM_FACTOR = 1.1;
 
 /**
+ * 计算内容完整显示在视口内所需的基准缩放。
+ *
+ * 取宽高两个方向比例中的较小值，因此内容必定完整可见（contain 语义）；
+ * 内容小于视口时同样放大填满。内容尺寸或视口尺寸未知、视口不可见（尺寸为 0）时
+ * 返回 1，即按原始尺寸显示，避免内容被缩放为 0。
+ */
+function resolveFitScale(
+  viewportSize: ViewportSize | null,
+  contentWidth?: number,
+  contentHeight?: number
+): number {
+  if (
+    !viewportSize ||
+    viewportSize.width <= 0 ||
+    viewportSize.height <= 0 ||
+    !contentWidth ||
+    !contentHeight
+  ) {
+    return 1;
+  }
+
+  return Math.min(viewportSize.width / contentWidth, viewportSize.height / contentHeight);
+}
+
+/**
  * 提供滚轮缩放、鼠标拖动和双击重置的通用预览容器。
+ *
+ * 内容默认按视口自适应（完整可见），滚轮缩放是在自适应比例之上的倍率。
  */
 export function ZoomablePreview({
   children,
@@ -46,8 +79,32 @@ export function ZoomablePreview({
 }: ZoomablePreviewProps) {
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [viewportSize, setViewportSize] = useState<ViewportSize | null>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const dragStateRef = useRef<DragState | null>(null);
+
+  // 跟踪视口尺寸，作为内容自适应缩放的基准
+  useEffect(() => {
+    const viewport = viewportRef.current;
+
+    if (!viewport) {
+      return;
+    }
+
+    const observer = new ResizeObserver(entries => {
+      const entry = entries[0];
+
+      if (!entry) {
+        return;
+      }
+
+      setViewportSize({ width: entry.contentRect.width, height: entry.contentRect.height });
+    });
+
+    observer.observe(viewport);
+
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -72,6 +129,10 @@ export function ZoomablePreview({
       viewport.removeEventListener('wheel', handleWheel);
     };
   }, []);
+
+  const fitScale = resolveFitScale(viewportSize, contentWidth, contentHeight);
+  // 内容尺寸已知但视口尚未测量时先隐藏，避免按原始尺寸绘制一帧后再跳变
+  const isFitReady = !contentWidth || !contentHeight || viewportSize !== null;
 
   /**
    * 开始拖动预览内容。
@@ -160,7 +221,8 @@ export function ZoomablePreview({
           style={{
             width: contentWidth,
             height: contentHeight,
-            transform: `scale(${zoom})`,
+            transform: `scale(${fitScale * zoom})`,
+            visibility: isFitReady ? undefined : 'hidden',
           }}
         >
           {children}
