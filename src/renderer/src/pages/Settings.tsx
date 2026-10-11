@@ -1,16 +1,18 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { EmbeddingModelSettings } from '@/components/settings/EmbeddingModelSettings';
+import { ReaderSettings } from '@/components/settings/ReaderSettings';
 import { cn } from '@/lib/utils';
 
 /** 配置页左侧的分组类型。 */
-type SettingsSection = 'general' | 'appearance' | 'models';
+type SettingsSection = 'general' | 'appearance' | 'reader' | 'models';
 
 /** 左侧配置分组。 */
 const SETTINGS_SECTIONS: Array<{ value: SettingsSection; label: string }> = [
   { value: 'general', label: '通用' },
   { value: 'appearance', label: '外观' },
+  { value: 'reader', label: '阅读' },
   { value: 'models', label: '模型' },
 ];
 
@@ -64,6 +66,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           className="min-w-0 flex-1 overflow-y-auto p-4"
           role="tabpanel"
         >
+          {activeSection === 'reader' && <ReaderSettings />}
           {activeSection === 'models' && <EmbeddingModelSettings />}
         </section>
       </DialogContent>

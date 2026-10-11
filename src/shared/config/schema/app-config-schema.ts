@@ -1,6 +1,7 @@
-﻿import { type Static, Type } from 'typebox';
+import { type Static, Type } from 'typebox';
 import { EmbeddingConfigSchema } from './embedding-config-schema';
 import { ModelsConfigSchema } from './models-config-schema';
+import { ReaderConfigSchema } from './reader-config-schema';
 
 /** PaddleOCR 服务配置。 */
 export const PaddleOcrConfigSchema = Type.Object({
@@ -18,6 +19,7 @@ export const AppConfigSchema = Type.Object({
   ocr: Type.Optional(OcrConfigSchema),
   models: Type.Optional(ModelsConfigSchema),
   embedding: Type.Optional(EmbeddingConfigSchema),
+  reader: Type.Optional(ReaderConfigSchema),
 });
 
 /** 由 AppConfigSchema 推导出的应用配置类型。 */

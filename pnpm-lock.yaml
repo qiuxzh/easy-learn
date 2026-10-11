@@ -6,7 +6,7 @@ settings:
 
 patchedDependencies:
   foliate-js@1.0.1:
-    hash: da904ab0a6160b9e509769f631282fb79e1042c195e06962b3a62cff5f9adbb2
+    hash: 172217d25ff5b6cf13b136ae48117d6e3437a3372e40aa97894ba342ca6e8b56
     path: patches/foliate-js@1.0.1.patch
 
 importers:
@@ -135,7 +135,7 @@ importers:
         version: 5.4.4
       foliate-js:
         specifier: ^1.0.1
-        version: 1.0.1(patch_hash=da904ab0a6160b9e509769f631282fb79e1042c195e06962b3a62cff5f9adbb2)
+        version: 1.0.1(patch_hash=172217d25ff5b6cf13b136ae48117d6e3437a3372e40aa97894ba342ca6e8b56)
       jieba-wasm:
         specifier: ^2.4.0
         version: 2.4.0
@@ -10819,7 +10819,7 @@ snapshots:
 
   flatted@3.4.2: {}
 
-  foliate-js@1.0.1(patch_hash=da904ab0a6160b9e509769f631282fb79e1042c195e06962b3a62cff5f9adbb2):
+  foliate-js@1.0.1(patch_hash=172217d25ff5b6cf13b136ae48117d6e3437a3372e40aa97894ba342ca6e8b56):
     dependencies:
       construct-style-sheets-polyfill: 3.1.0
 

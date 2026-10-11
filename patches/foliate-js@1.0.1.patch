@@ -28,3 +28,29 @@ index 95c4d0dae16bd96c3ace91bbd87fd1bea1c9f571..1a7aa666a599d073f5cdce9346a2460e
          const { documentElement } = this.document
          if (this.#column) {
              const side = this.#vertical ? 'height' : 'width'
+@@ -506,7 +506,25 @@ class Paginator extends HTMLElement {
+             grid-row: 1 / -1;
+             overflow: auto;
+         }
++        /* 滚动条：规则必须写在 shadow root 内部，全局的 *::-webkit-scrollbar 跨不过边界。
++           这里不能设 scrollbar-width/scrollbar-color——设了会反过来覆盖下面这几条。
++           颜色与尺寸用全局自定义属性，它们会继承进 shadow tree。 */
++        :host([flow="scrolled"]) #container::-webkit-scrollbar {
++            width: var(--scrollbar-size);
++            height: var(--scrollbar-size);
++        }
++        :host([flow="scrolled"]) #container::-webkit-scrollbar-track,
++        :host([flow="scrolled"]) #container::-webkit-scrollbar-corner {
++            background: transparent;
++        }
++        :host([flow="scrolled"]) #container::-webkit-scrollbar-thumb {
++            background-color: var(--scrollbar-thumb);
++            border-radius: 9999px;
++        }
++        :host([flow="scrolled"]) #container::-webkit-scrollbar-thumb:hover {
++            background-color: var(--scrollbar-thumb-hover);
++        }
+         #header {
+             grid-column: 3 / 4;
+             grid-row: 1;
+         }

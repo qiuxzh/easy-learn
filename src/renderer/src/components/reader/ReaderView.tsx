@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Group, Panel, Separator, useGroupRef } from 'react-resizable-panels';
-import { Menu, MessageSquare, Loader2 } from 'lucide-react';
+import { Menu, MessageSquare, Loader2, SlidersHorizontal } from 'lucide-react';
 import { Chat } from '@/pages/Chat';
 import { Button } from '@/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { ReaderSettings } from '@/components/settings/ReaderSettings';
 import { useReaderStore } from '@/stores/reader-store';
 import { TOCPanel } from './TOCPanel';
 import { BookViewer } from './BookViewer';
@@ -131,15 +133,32 @@ export function ReaderView({ tabId: propTabId, bookId = '' }: ReaderViewProps) {
                 <Menu className="h-4 w-4" />
               </Button>
 
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label={chatOpen ? '隐藏对话' : '显示对话'}
-                onClick={() => togglePanel('chat')}
-                className={cn(chatOpen && 'bg-accent text-accent-foreground')}
-              >
-                <MessageSquare className="h-4 w-4" />
-              </Button>
+              <div className="flex items-center gap-1">
+                {/* 阅读设置：翻页方式与栏数。弹层里直接渲染 ReaderSettings，与设置页共用同一个组件。
+                    modal：非模态时 Radix 靠父文档的 pointerdown 判断"点到了外面"，而章节 iframe 内
+                    的点击不冒泡到父文档，点书页关不掉弹层。modal 会让 body 变 pointer-events: none，
+                    iframe 不再可命中，点击落到父文档上即可关闭。代价是这一下点击只用于关闭。 */}
+                <Popover modal>
+                  <PopoverTrigger asChild>
+                    <Button variant="ghost" size="icon" aria-label="阅读设置">
+                      <SlidersHorizontal className="h-4 w-4" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="end" side="bottom" className="w-80 p-3">
+                    <ReaderSettings />
+                  </PopoverContent>
+                </Popover>
+
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={chatOpen ? '隐藏对话' : '显示对话'}
+                  onClick={() => togglePanel('chat')}
+                  className={cn(chatOpen && 'bg-accent text-accent-foreground')}
+                >
+                  <MessageSquare className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
             {/* 内容区域 */}
             <div className="flex-1 min-h-0">

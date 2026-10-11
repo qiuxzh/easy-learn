@@ -1,14 +1,36 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import 'foliate-js/view.js'; // 副作用注册 <foliate-view> 自定义元素
+import { useConfigStore } from '@/stores/config-store';
 import { useReaderStore } from '@/stores/reader-store';
 import { useTabsStore } from '@/stores/tabs-store';
 import { buildReaderCSS } from './reader-styles';
 import { registerIframeKeyHandlers, registerReaderEdgeClick } from '@/utils/iframe-event-bridge';
 import { parsePageLabel, resolveChapter } from '@/utils/reader-utils';
+import type { ReaderConfig } from '@shared/config';
 import type { FoliateViewElement, ReaderViewOperator } from './foliate-types';
 
 interface BookViewerProps {
   readerTabId: string;
+}
+
+/**
+ * 把阅读配置写到 foliate 的分页器上。
+ *
+ * `flow` 决定翻页还是滚动；`max-column-count` 是「上限」不是「强制」，可用宽度不足时
+ * foliate 会自行降栏，滚动模式下则整个忽略它。未配置按「翻页 + 单栏」处理，与
+ * `DEFAULT_READER_CONFIG` 一致。
+ * 固定版式（PDF、pre-paginated EPUB）由 <foliate-fxl> 渲染，没有这些属性，直接跳过。
+ * 属性值没变时自定义元素不触发回调，所以重复调用不会带来多余重排。
+ */
+function applyReaderConfig(
+  view: FoliateViewElement | null,
+  reader: ReaderConfig | undefined
+): void {
+  if (!view || view.isFixedLayout) return;
+  const renderer = view.renderer;
+  if (!renderer) return;
+  renderer.setAttribute('flow', reader?.mode === 'scrolled' ? 'scrolled' : 'paginated');
+  renderer.setAttribute('max-column-count', reader?.layout === 'double' ? '2' : '1');
 }
 
 /**
@@ -28,9 +50,16 @@ export const BookViewer = ({ readerTabId }: BookViewerProps) => {
   const setSelection = useReaderStore(s => s.setSelection);
   const rawBook = useReaderStore(s => s.tabs[readerTabId]?.book?.rawBook);
   const bookTocs = useReaderStore(s => s.tabs[readerTabId]?.book?.tocs);
+  // 阅读配置。选到叶子上的原始值：选 config.reader 会在任何配置变更时重渲染
+  const readerMode = useConfigStore(s => s.config.reader?.mode);
+  const readerLayout = useConfigStore(s => s.config.reader?.layout);
 
   // 容器：foliate-view append 到这里
   const containerRef = useRef<HTMLDivElement>(null);
+  // 当前 foliate-view。创建 effect 里写入，配置变更时靠它够得着渲染器
+  const viewRef = useRef<FoliateViewElement | null>(null);
+  // open + init 是否已完成。renderer 要等 open() 才存在，用它在就绪后补应用一次配置
+  const [viewReady, setViewReady] = useState(false);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -38,6 +67,7 @@ export const BookViewer = ({ readerTabId }: BookViewerProps) => {
 
     // 创建 foliate-view 并打开书籍
     const view = document.createElement('foliate-view') as FoliateViewElement;
+    viewRef.current = view;
     view.classList.add('h-full', 'w-full');
     container.appendChild(view);
     // 立即把 view 的能力投影（operator）注入 store，navigateToPos / pageTurn 通过它调 foliate 方法
@@ -178,6 +208,10 @@ export const BookViewer = ({ readerTabId }: BookViewerProps) => {
       try {
         console.log('BookViewer: 开始加载渲染');
         await view.open(rawBook);
+        // 赶在 init 首次排版之前设好，否则会先按 foliate 的默认排版跑一遍再重排。
+        // 这里直接读快照而不是闭包里的配置：这个 effect 不依赖它们，
+        // 闭包值可能已经过期；过期也无妨，下面的 effect 会再纠正一次。
+        applyReaderConfig(view, useConfigStore.getState().config.reader);
         // paginator 的首次 relocate 事件在 view.init 期间触发，监听器必须在 init
         // 之前挂上。view 自己的 #onRelocate 监听器（view.open 内部已加）会先于
         // 我们跑完并把 lastLocation 写好，这里读 lastLocation 一定有值。
@@ -185,6 +219,8 @@ export const BookViewer = ({ readerTabId }: BookViewerProps) => {
         view.renderer?.addEventListener('relocate', onRelocate);
         await view.init({ showTextStart: true });
         injectTheme();
+        // 渲染器到这一步才真正可用
+        setViewReady(true);
       } catch (err) {
         console.error('[BookViewer] 加载渲染失败', err);
       }
@@ -192,6 +228,8 @@ export const BookViewer = ({ readerTabId }: BookViewerProps) => {
 
     return () => {
       // 清理：清掉 store 里的运行时字段、销毁渲染器（含 ResizeObserver）、移除 DOM
+      viewRef.current = null;
+      setViewReady(false);
       setReaderViewOperator(readerTabId, null);
       setCurrentChapter(readerTabId, null);
       setCurrentPosition(readerTabId, null);
@@ -219,6 +257,12 @@ export const BookViewer = ({ readerTabId }: BookViewerProps) => {
     setCurrentPosition,
     setSelection,
   ]);
+
+  // 配置变更 → 应用到分页器。切模式/切栏都不跳页：foliate 重排后会锚回原位置。
+  // view 的重建由上面那个 effect 负责，这里不依赖 rawBook，所以改配置不会重新加载书。
+  useEffect(() => {
+    applyReaderConfig(viewRef.current, { mode: readerMode, layout: readerLayout });
+  }, [readerMode, readerLayout, viewReady]);
 
   return (
     <div
