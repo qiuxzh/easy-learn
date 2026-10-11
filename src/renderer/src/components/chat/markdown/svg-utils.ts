@@ -16,6 +16,9 @@ const MAX_CANVAS_SIZE = 4096;
 
 /**
  * 校验 SVG 代码块，返回错误信息，合法时返回 undefined。
+ *
+ * 这里按 XML 严格校验：用户手写的 SVG 应当本身合法。渲染路径则改用 HTML 解析，
+ * 以兼容 mermaid 这类由 HTML 序列化产出的 SVG 字符串。
  */
 export function validateSvgSource(source: string): string | undefined {
   const parsedDocument = new DOMParser().parseFromString(source, 'image/svg+xml');
@@ -57,10 +60,22 @@ export function validateSvgSource(source: string): string | undefined {
 }
 
 /**
- * 从 viewBox 或 width/height 中读取 SVG 原始尺寸。
+ * 解析 SVG 字符串并取出根 svg 元素，取不到时返回 undefined。
+ *
+ * 用 HTML 解析而不是 image/svg+xml：mermaid 返回的 SVG 由 innerHTML（HTML 序列化）
+ * 产出，含未闭合的 <br>、&nbsp; 实体等非法 XML 写法，严格 XML 解析会直接失败。
+ * HTML 解析器容忍这些写法，之后再用 XMLSerializer 序列化即可得到合法 XML。
  */
-export function getSvgDimensions(svg: string): SvgDimensions | undefined {
-  const svgElement = new DOMParser().parseFromString(svg, 'image/svg+xml').documentElement;
+function parseSvgElement(svg: string): SVGSVGElement | undefined {
+  const parsedDocument = new DOMParser().parseFromString(svg, 'text/html');
+
+  return parsedDocument.querySelector('svg') ?? undefined;
+}
+
+/**
+ * 从 viewBox 读取尺寸，viewBox 缺失或非法时返回 undefined。
+ */
+function readViewBoxSize(svgElement: SVGSVGElement): SvgDimensions | undefined {
   const viewBox = svgElement
     .getAttribute('viewBox')
     ?.trim()
@@ -74,6 +89,25 @@ export function getSvgDimensions(svg: string): SvgDimensions | undefined {
     if (width > 0 && height > 0) {
       return { width, height };
     }
+  }
+
+  return undefined;
+}
+
+/**
+ * 从 viewBox 或 width/height 中读取 SVG 原始尺寸。
+ */
+export function getSvgDimensions(svg: string): SvgDimensions | undefined {
+  const svgElement = parseSvgElement(svg);
+
+  if (!svgElement) {
+    return undefined;
+  }
+
+  const viewBoxSize = readViewBoxSize(svgElement);
+
+  if (viewBoxSize) {
+    return viewBoxSize;
   }
 
   const width = parseSvgDimension(svgElement.getAttribute('width'));
@@ -96,20 +130,16 @@ function parseSvgDimension(value: string | null): number | undefined {
 }
 
 /**
- * 解析 SVG 尺寸并转换为图片可直接加载的数据地址。
+ * 解析 SVG 尺寸并转换为图片可直接加载的数据地址，解析不出 svg 元素时返回 undefined。
  */
-function prepareSvgImageSource(svg: string): SvgImageSource {
-  const parsedDocument = new DOMParser().parseFromString(svg, 'image/svg+xml');
-  const svgElement = parsedDocument.documentElement;
-  const viewBox = svgElement
-    .getAttribute('viewBox')
-    ?.trim()
-    .split(/\s+/)
-    .map(value => Number(value));
-  const viewBoxSize =
-    viewBox?.length === 4 && viewBox.every(Number.isFinite)
-      ? { width: viewBox[2], height: viewBox[3] }
-      : undefined;
+function prepareSvgImageSource(svg: string): SvgImageSource | undefined {
+  const svgElement = parseSvgElement(svg);
+
+  if (!svgElement) {
+    return undefined;
+  }
+
+  const viewBoxSize = readViewBoxSize(svgElement);
 
   if (viewBoxSize) {
     if (!svgElement.getAttribute('width') || svgElement.getAttribute('width')?.includes('%')) {
@@ -133,9 +163,14 @@ function prepareSvgImageSource(svg: string): SvgImageSource {
  * 将 SVG 转换为 PNG Blob。
  */
 function svgToPngBlob(svg: string): Promise<Blob> {
-  const imageSource = prepareSvgImageSource(svg);
-
   return new Promise((resolve, reject) => {
+    const imageSource = prepareSvgImageSource(svg);
+
+    if (!imageSource) {
+      reject(new Error('无法解析 SVG 内容'));
+      return;
+    }
+
     const image = new Image();
 
     image.onload = () => {
