@@ -1,6 +1,8 @@
 import type {
   ChatEventPayload,
   DeleteSessionRequest,
+  ForkSessionRequest,
+  ForkSessionResult,
   ImageContent,
   ImageStoreRequest,
   OpenSessionRequest,
@@ -67,6 +69,9 @@ export const api = {
     ipcRenderer.invoke(IpcChannel.Chat_RenameSession, params),
   deleteSession: (params: DeleteSessionRequest) =>
     ipcRenderer.invoke(IpcChannel.Chat_DeleteSession, params),
+  /** 从某条助手消息分支出一个新会话，返回新会话摘要 */
+  forkSession: (params: ForkSessionRequest) =>
+    ipcRenderer.invoke(IpcChannel.Chat_ForkSession, params) as Promise<ForkSessionResult>,
 
   // 流式响应 - render 发起请求
   sendMessage: (params: StreamSendRequest) =>

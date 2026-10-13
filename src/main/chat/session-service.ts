@@ -1,9 +1,12 @@
-﻿import { ipcMain } from 'electron';
+import { ipcMain } from 'electron';
+import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'util';
 import type {
   AgentSessionEvent,
   ChatEventPayload,
   DeleteSessionRequest,
+  ForkSessionRequest,
+  ForkSessionResult,
   OpenSessionRequest,
   OpenSessionResult,
   RenameSessionRequest,
@@ -17,7 +20,7 @@ import type {
 import { IpcChannel } from '@shared/ipc-channels';
 import { AgentSession } from '@main/agent/common-agent/agent-session';
 import { createAgentSession } from '@main/agent/common-agent/create-agent-session';
-import { loadSessionEntries } from '@main/agent/common-agent/session-manager';
+import { dropSessionBranch, loadBranch } from '@main/agent/common-agent/session-manager';
 import { ModelRuntime } from '@main/agent/model/model-runtime';
 import { configService } from '@main/config/config-service';
 import { agentSessionRepo } from '@main/db/repo';
@@ -69,6 +72,9 @@ export class SessionService extends BaseService {
     ipcMain.handle(IpcChannel.Chat_DeleteSession, async (_, req: DeleteSessionRequest) =>
       this.deleteSession(req)
     );
+    ipcMain.handle(IpcChannel.Chat_ForkSession, async (_, req: ForkSessionRequest) =>
+      this.forkSession(req)
+    );
     ipcMain.handle(IpcChannel.Chat_StreamSend, async (_, req: StreamSendRequest) =>
       this.streamSend(req)
     );
@@ -108,7 +114,7 @@ export class SessionService extends BaseService {
     const runtime = this.sessions.get(req.sessionId);
     return {
       summary: this.toSummary(row),
-      entries: loadSessionEntries(req.sessionId),
+      entries: loadBranch(req.sessionId).entries,
       run: {
         isRunning: runtime?.isStreaming ?? false,
         streamingMessage: runtime?.agent.state.streamingMessage,
@@ -123,8 +129,7 @@ export class SessionService extends BaseService {
 
   /**
    * 删除会话。
-   * 池中的会话先 dispose（中断运行并等待本轮落库）再出池，最后才删库行；
-   * 顺序颠倒会让运行中的会话后续落库撞上已删除的外键。
+   * 池中的会话先 dispose（中断运行并等待本轮落库）再出池，最后删会话行并回收只被它引用的 entry。
    */
   async deleteSession(req: DeleteSessionRequest): Promise<void> {
     const runtime = this.sessions.get(req.sessionId);
@@ -132,7 +137,35 @@ export class SessionService extends BaseService {
       await runtime.dispose();
       this.sessions.delete(req.sessionId);
     }
-    agentSessionRepo.delete(req.sessionId);
+    dropSessionBranch(req.sessionId);
+  }
+
+  /**
+   * 从某条消息分支出新会话。
+   * 会话本身只是「指向某个 entry 的引用」，所以分支是零拷贝：新会话的 tip 指向那条消息，历史由父指针天然共享。
+   * 调用方给的切点只做一次完整性校验——它必须落在源会话当前分支上，否则会造出一条谁也走不到的前缀。
+   */
+  forkSession(req: ForkSessionRequest): ForkSessionResult {
+    const source = agentSessionRepo.findById(req.sessionId);
+    if (!source) {
+      throw new Error(`父会话不存在: ${req.sessionId}`);
+    }
+
+    const { entries } = loadBranch(req.sessionId);
+    if (!entries.some(entry => entry.id === req.entryId)) {
+      throw new Error('找不到这条消息，请刷新会话后重试');
+    }
+
+    const sessionId = randomUUID();
+    // 标题优先用调用方给的；留空（或只有空白）时按源会话标题自动命名，源会话没标题时用占位
+    const title = req.title?.trim() || (source.title ? `${source.title} (分支)` : '分支');
+    agentSessionRepo.create({ id: sessionId, title, tipEntryId: req.entryId });
+
+    const row = agentSessionRepo.findById(sessionId);
+    if (!row) {
+      throw new Error('分支会话创建失败');
+    }
+    return { summary: this.toSummary(row) };
   }
 
   /**

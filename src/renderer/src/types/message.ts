@@ -86,6 +86,11 @@ export type AppUIMessagePart =
 /** App 层消息 */
 export interface AppUIMessage {
   id: string;
+  /**
+   * 该消息在会话树里的 entry id，也是分支等操作的寻址坐标。
+   * 已落库的消息由会话层随 message_end 事件带上来，或从日志加载时填入；尚未落库的消息没有。
+   */
+  entryId?: string;
   role: 'user' | 'assistant' | 'system';
   parts: AppUIMessagePart[];
   /** 该条助手消息的 token 用量；用户消息、以及尚未收到用量的助手消息为 undefined。 */

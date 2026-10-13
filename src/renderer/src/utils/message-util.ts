@@ -162,8 +162,10 @@ export function userMessageToAppMessage(message: UserMessage): AppUIMessage {
   };
 }
 
-/** 把助手消息的 content 转换为 App 层 part 列表 */
-function assistantContentToParts(message: AssistantMessage): AppUIMessagePart[] {
+/**
+ * 把助手消息的 content 转换为 App 层 part 列表。
+ */
+export function assistantContentToParts(message: AssistantMessage): AppUIMessagePart[] {
   return message.content.map(part => {
     if (part.type === 'text') {
       return {
@@ -203,12 +205,13 @@ function toolResultToText(message: ToolResultMessage): string {
  */
 function compactionEntryToAppMessage(entry: CompactionEntry): AppUIMessage {
   const part: AppCompactionPart = { type: 'compaction', state: 'done' };
-  return { id: entry.id, role: 'system', parts: [part] };
+  return { id: entry.id, entryId: entry.id, role: 'system', parts: [part] };
 }
 
 /**
- * 把会话日志转换为 App 层消息列表。
+ * 把一条分支（根 → 末端）转换为 App 层消息列表。
  * 只有 message 类 entry 会产出对话内容；压缩标记产出一条系统提示；模型变更一律跳过。
+ * 每条消息都带上它在会话树里的 entry id，供界面判断"是否已落库"并支持分支等操作。
  */
 export function sessionEntriesToAppMessages(entries: SessionEntry[]): AppUIMessage[] {
   const messages: AppUIMessage[] = [];
@@ -222,13 +225,14 @@ export function sessionEntriesToAppMessages(entries: SessionEntry[]): AppUIMessa
     const { message } = entry;
 
     if (message.role === 'user') {
-      messages.push(userMessageToAppMessage(message));
+      messages.push({ ...userMessageToAppMessage(message), entryId: entry.id });
       continue;
     }
 
     if (message.role === 'assistant') {
       messages.push({
         id: crypto.randomUUID(),
+        entryId: entry.id,
         role: 'assistant',
         parts: assistantContentToParts(message),
         usage: message.usage,

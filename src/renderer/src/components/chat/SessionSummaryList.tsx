@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { MessageCircle, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { useSessions } from '@/hooks/use-sessions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -157,6 +158,7 @@ export function SessionSummaryList({
   /** 删除单条会话 */
   const handleDelete = async (id: string) => {
     await deleteSession(id);
+    toast.success('会话已删除');
   };
 
   return (

@@ -258,9 +258,15 @@ export interface QueueUpdateEvent {
   followUp: readonly string[];
 }
 
-/** 会话对外发出的事件：内核事件，以及会话自身的状态事件。 */
+/**
+ * 会话对外发出的事件：内核事件，以及会话自身的状态事件。
+ * message_end 不使用内核版：会话层落库后要补日志坐标，因此在这里单独声明（见下）。
+ */
 export type AgentSessionEvent =
-  | AgentEvent
+  | Exclude<AgentEvent, { type: 'message_end' }>
+  // 内核自己发出的 message_end 没有 entryId——消息定稿时还没写库；
+  // 会话层落库后补上这个坐标再转发，渲染层据此给已落定的消息打上身份。
+  | { type: 'message_end'; message: AgentMessage; entryId?: string }
   | QueueUpdateEvent
   | { type: 'compaction_start'; reason: 'manual' | 'threshold' | 'overflow' }
   | {
@@ -282,10 +288,8 @@ export type ThinkingLevel = 'off' | 'medium' | 'max';
 export interface SessionEntryBase {
   /** entry 种类判别字段，取值见 SessionEntry 的各成员。 */
   type: string;
-  /** 稳定主键。compaction 的 firstKeptEntryId 指向此处，不随更新变化。 */
+  /** 稳定主键，也是分支点的寻址坐标。 */
   id: string;
-  /** 会话内单调递增序号，决定 entry 顺序。 */
-  seq: number;
   /** 创建时间，Unix 毫秒。 */
   timestamp: number;
 }
@@ -361,6 +365,24 @@ export interface RenameSessionRequest {
 /** 删除会话请求。 */
 export interface DeleteSessionRequest {
   sessionId: string;
+}
+
+/**
+ * 分支会话请求：新会话的引用指向 `entryId` 那条助手消息，此前的历史由父指针天然共享。
+ * 零拷贝——只写一行会话记录。
+ */
+export interface ForkSessionRequest {
+  /** 被分支的父会话。 */
+  sessionId: string;
+  /** 分支点：某轮最后一条助手消息的 entry id（见 SessionEntryBase.id）。 */
+  entryId: string;
+  /** 新会话标题；省略或留空时按源会话标题自动命名。 */
+  title?: string;
+}
+
+/** 分支会话响应：新会话的摘要，前端据此切换过去。 */
+export interface ForkSessionResult {
+  summary: SessionSummary;
 }
 
 /**

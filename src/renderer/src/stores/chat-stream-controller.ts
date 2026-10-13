@@ -126,12 +126,21 @@ function handleSessionEvent({ sessionId, event }: ChatEventPayload): void {
     case 'message_update':
       handleAssistantMessageEvent(sessionId, event.assistantMessageEvent);
       return;
-    case 'message_end':
-      // 助手消息定稿时才会拿到 token 用量，一次 turn 记一次
-      if (event.message.role === 'assistant' && event.message.usage) {
-        sessionStore.setLastAssistantUsage(sessionId, event.message.usage);
+    case 'message_end': {
+      // 落库的消息带着它在会话树里的坐标到达，这是消息与日志建立联系的时刻。
+      // 只有 user / assistant 需要记坐标：渲染层为它们各建了一条消息；
+      // 工具结果被并进当前助手消息的 part，没有独立消息可标，跳过。
+      const { message, entryId } = event;
+      if (entryId === undefined || message.role === 'toolResult') return;
+      if (message.role === 'user') {
+        sessionStore.settleUserMessage(sessionId, entryId);
+        return;
+      }
+      if (message.role === 'assistant') {
+        sessionStore.settleAssistantMessage(sessionId, entryId, message);
       }
       return;
+    }
     case 'tool_execution_end':
       sessionStore.appendToolResult(sessionId, {
         toolCallId: event.toolCallId,

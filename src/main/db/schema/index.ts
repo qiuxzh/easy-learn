@@ -8,8 +8,13 @@ import {
   cardGroupIdIndexSQL,
   cardDueIndexSQL,
 } from './flashcard';
-import { agentSessionTable, agentSessionSQL, agentSessionUpdatedAtIndexSQL } from './agent-session';
-import { agentEntryTable, agentEntrySQL, agentEntrySessionSeqIndexSQL } from './agent-entry';
+import {
+  agentSessionTable,
+  agentSessionSQL,
+  agentSessionUpdatedAtIndexSQL,
+  agentSessionTipIndexSQL,
+} from './agent-session';
+import { agentEntryTable, agentEntrySQL, agentEntryParentIndexSQL } from './agent-entry';
 import {
   embedIndexTable,
   embedIndexSQL,
@@ -46,8 +51,9 @@ export const tableSQLs = [
   cardDueIndexSQL,
   agentSessionSQL,
   agentSessionUpdatedAtIndexSQL,
+  agentSessionTipIndexSQL,
   agentEntrySQL,
-  agentEntrySessionSeqIndexSQL,
+  agentEntryParentIndexSQL,
   embedIndexSQL,
   embedIndexFingerprintIndexSQL,
   embedIndexModelIndexSQL,

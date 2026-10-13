@@ -120,16 +120,18 @@ export class AgentSession {
       await this._emit(event);
     }
     if (event.type === 'message_end') {
-      // 只有 LLM 消息落库
+      // 凡落库的消息，message_end 都带它在会话树里的 entry id，渲染层据此给这条消息打上身份
       const { message } = event;
       if (
         message.role === 'user' ||
         message.role === 'assistant' ||
         message.role === 'toolResult'
       ) {
-        this.sessionManager.appendMessage(message);
+        const entryId = this.sessionManager.appendMessage(message);
+        await this._emit({ ...event, entryId });
+        return;
       }
-      await this._emit(event);
+      await this._emit({ ...event });
     }
 
     // 工具执行生命周期
@@ -221,7 +223,7 @@ export class AgentSession {
     return this.sessionManager.sessionId;
   }
 
-  /** 会话日志，按 seq 升序。 */
+  /** 当前分支的会话日志，根 → 末端。 */
   getEntries(): readonly SessionEntry[] {
     return this.sessionManager.getEntries();
   }

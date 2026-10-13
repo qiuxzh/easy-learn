@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import type { Usage } from '@shared/types/chat';
+import type { AssistantMessage } from '@shared/types/chat';
 import type {
   AppUIMessage,
   AppUIMessagePart,
@@ -12,6 +12,7 @@ import type {
 import { BatchBuffer } from '@/utils/batch-buffer';
 import {
   appendTextDelta,
+  assistantContentToParts,
   getLastAssistantMessage,
   isCompactionPart,
   markStreamingAsAbort,
@@ -88,6 +89,13 @@ interface SessionState {
   endRun: (sessionId: string, outcome: RunOutcome) => void;
   /** 单个 turn 结束：把当前 turn 的 streaming part 标记完成。 */
   finishStep: (sessionId: string) => void;
+  /** 用户消息落定：记下它在会话树里的坐标。 */
+  settleUserMessage: (sessionId: string, entryId: string) => void;
+  /**
+   * 助手消息落定：记下坐标，并用定稿内容替换流式累积的 parts。
+   * 以落库内容为准，避免丢失增量时界面与日志不一致。
+   */
+  settleAssistantMessage: (sessionId: string, entryId: string, message: AssistantMessage) => void;
 
   // ───────── 消息内容追加（流式事件驱动） ─────────
   /** 追加一条用户消息：既用于本次发送的提示词，也用于运行中注入的 steering / follow-up。 */
@@ -102,8 +110,6 @@ interface SessionState {
   appendToolCall: (sessionId: string, part: Omit<AppToolCallPart, 'type'>) => void;
   /** 在最后一条 assistant 上追加 tool-result part。 */
   appendToolResult: (sessionId: string, part: Omit<AppToolResultPart, 'type'>) => void;
-  /** 把 token 用量挂到最后一条 assistant 消息上，对应一次 turn 的请求结束。 */
-  setLastAssistantUsage: (sessionId: string, usage: Usage) => void;
 
   // ───────── 上下文压缩提示 ─────────
   /** 追加一条"正在压缩上下文"的系统提示。 */
@@ -293,6 +299,36 @@ export const useSessionStore = create<SessionState>()(
         });
       },
 
+      settleUserMessage: (sessionId, entryId) => {
+        flushDeltas();
+        set(state => {
+          const session = state.sessionsMap[sessionId];
+          const last = session?.messages[session.messages.length - 1];
+          // 只认"刚刚落定的那条用户消息"，已记过坐标的不再改动
+          if (!last || last.role !== 'user' || last.entryId !== undefined) return;
+
+          last.entryId = entryId;
+        });
+      },
+
+      settleAssistantMessage: (sessionId, entryId, message) => {
+        // 覆盖前必须先把缓冲的增量结算掉：否则它们会在覆盖之后才写入，
+        // 把已经包含在新 parts 里的文本再追加一遍
+        flushDeltas();
+        set(state => {
+          const session = state.sessionsMap[sessionId];
+          if (!session) return;
+          const lastAssistant = getLastAssistantMessage(session.messages);
+          if (!lastAssistant || lastAssistant.entryId !== undefined) return;
+
+          lastAssistant.parts = assistantContentToParts(message);
+          lastAssistant.entryId = entryId;
+          if (message.usage) {
+            lastAssistant.usage = message.usage;
+          }
+        });
+      },
+
       finishStep: sessionId => {
         flushDeltas();
         set(state => {
@@ -353,17 +389,6 @@ export const useSessionStore = create<SessionState>()(
       appendToolResult: (sessionId, part) => {
         set(state => {
           appendPartToLastAssistant(state.sessionsMap, sessionId, { type: 'tool-result', ...part });
-        });
-      },
-
-      setLastAssistantUsage: (sessionId, usage) => {
-        set(state => {
-          const session = state.sessionsMap[sessionId];
-          if (!session) return;
-
-          const lastAssistant = getLastAssistantMessage(session.messages);
-          if (!lastAssistant) return;
-          lastAssistant.usage = usage;
         });
       },
 

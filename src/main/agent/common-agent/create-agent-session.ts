@@ -37,8 +37,8 @@ export interface CreateAgentSessionOptions {
 export function createAgentSession(options: CreateAgentSessionOptions): AgentSession {
   const { sessionId, definition, modelRuntime } = options;
   const sessionManager = new SessionManager(sessionId);
-  const entries = sessionManager.getEntries();
-  const isNewSession = entries.length === 0;
+  // NewSession = 会话还没有指向任何 entry（tip 为空）。比直接对比获取entry的方式轻量
+  const isNewSession = sessionManager.tipEntryId === null;
   const context = sessionManager.buildContext();
 
   // 模型优先级：显式指定 → 日志中最近使用的模型 → 配置默认模型

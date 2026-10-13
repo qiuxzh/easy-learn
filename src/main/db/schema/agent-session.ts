@@ -8,6 +8,8 @@ export const agentSessionTable = sqliteTable('agent_session', {
   id: text().primaryKey(),
   /** 会话标题，仅用于列表展示。 */
   title: text().notNull().default(''),
+  /** 活动分支的末端 entry id；空会话为 NULL。 */
+  tipEntryId: text('tip_entry_id'),
   /** 创建时间，Unix 毫秒。 */
   createdAt: integer('created_at')
     .notNull()
@@ -25,6 +27,7 @@ export const agentSessionSQL = `
 CREATE TABLE IF NOT EXISTS agent_session (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL DEFAULT '',
+  tip_entry_id TEXT,
   created_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000),
   updated_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000)
 );
@@ -32,4 +35,8 @@ CREATE TABLE IF NOT EXISTS agent_session (
 
 export const agentSessionUpdatedAtIndexSQL = `
 CREATE INDEX IF NOT EXISTS agent_session_updated_at_idx ON agent_session(updated_at DESC);
+`;
+
+export const agentSessionTipIndexSQL = `
+CREATE INDEX IF NOT EXISTS agent_session_tip_idx ON agent_session(tip_entry_id);
 `;

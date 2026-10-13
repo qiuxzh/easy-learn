@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
 import { cn } from '@/lib/utils';
+import { useForkSession } from '@/hooks/use-fork-session';
 import type { AppUIMessage } from '@/types/message';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
@@ -13,6 +14,7 @@ import { TraceUsage } from './TraceUsage';
 import { FlashcardChangesBlock } from './FlashcardChangesBlock';
 import {
   ChatStatus,
+  forkEntryIdOfTrace,
   getAssistantText,
   getUserText,
   groupMessagesIntoTraces,
@@ -33,6 +35,13 @@ export type MessageListProps = {
   className?: string;
   /** 是否启用用户消息图片的点击全屏预览 */
   enableImagePreview?: boolean;
+  /**
+   * 当前会话 id。提供后本组件自带"从某轮分支"的能力（按钮、命名弹窗、提示都在内部）；
+   * 不提供则不渲染分支按钮。
+   */
+  sessionId?: string;
+  /** 分支创建成功后的回调，宿主据此切到新会话 */
+  onForked?: (sessionId: string) => void;
   /** 可替换的子组件插槽 */
   slots?: {
     /** 自定义用户消息渲染组件 */
@@ -58,6 +67,7 @@ function TraceItem({
   isStreaming,
   activeCopyId,
   onCopy,
+  onFork,
   UserMessageComponent,
   enableImagePreview,
   userClassName,
@@ -69,6 +79,8 @@ function TraceItem({
   isStreaming: boolean;
   activeCopyId: string | null;
   onCopy: (id: string) => void;
+  /** 未提供时不渲染分支按钮 */
+  onFork: ((entryId: string) => void) | undefined;
   UserMessageComponent: ComponentType<{
     message: AppUIMessage;
     className?: string;
@@ -97,6 +109,8 @@ function TraceItem({
   const showAssistantToolbar = Boolean(assistantText.trim()) && !isTraceStreaming;
   const assistantCopyKey = `assistant-${userMsg.id}-all`;
   const assistantCopyVisible = activeCopyId === assistantCopyKey;
+  // 这一轮能否分支：能的话工具栏会多一个分支按钮（此时可能只有它、没有正文）
+  const forkEntryId = forkEntryIdOfTrace(trace);
 
   return (
     <div className="mx-auto max-w-3xl px-4 pt-3 pb-6 space-y-2">
@@ -141,8 +155,9 @@ function TraceItem({
           )}
           {/* 复制按钮靠左，统计靠右；两者都不渲染时该行高度为 0 */}
           <div className="mt-2 flex items-center gap-1.5">
-            {/* 默认只在有正文且非流式时显示；刚复制过时即使处于流式也保留，便于连续复制 */}
-            {showAssistantToolbar || assistantCopyVisible ? (
+            {/* 默认只在有正文且非流式时显示；刚复制过时即使处于流式也保留，便于连续复制；
+                这一轮已落定且可分支时也要显示，此时可能只有分支按钮 */}
+            {showAssistantToolbar || assistantCopyVisible || forkEntryId !== undefined ? (
               <MessageToolbar
                 text={assistantText}
                 heightClass="h-7"
@@ -150,6 +165,11 @@ function TraceItem({
                 isVisible={showAssistantToolbar ? assistantCopyVisible : true}
                 alignClass="justify-start"
                 onCopied={() => onCopy(assistantCopyKey)}
+                onFork={
+                  onFork !== undefined && forkEntryId !== undefined
+                    ? () => onFork(forkEntryId)
+                    : undefined
+                }
               />
             ) : null}
             {/* 该 trace 跑完之前不显示统计：用量要等每个 turn 的请求结束才有值 */}
@@ -185,9 +205,13 @@ export const MessageList = memo(function MessageList({
   status,
   className,
   enableImagePreview = true,
+  sessionId,
+  onForked,
   slots,
   classNames,
 }: MessageListProps) {
+  // 分支能力由本组件自带：宿主只给会话 id 与切换回调，未给会话 id 时按钮不出现
+  const { requestFork, forkDialog } = useForkSession({ sessionId, onForked });
   // 滚动视口：virtualizer 的 scroll element 必须是真实滚动的容器
   const viewportRef = useRef<HTMLDivElement>(null);
   // 用户向上滚动后取消自动跟随，避免流式更新把用户"顶"走
@@ -276,57 +300,62 @@ export const MessageList = memo(function MessageList({
   }, [lastMessageId, lastMessage, scrollToEnd]);
 
   return (
-    // 用原生 div 充当滚动容器：virtualizer 自己控制滚动测量，
-    // 不再需要 Radix ScrollArea 的 rAF 包装（之前会与 virtualizer 产生强制 reflow 竞争）。
-    // chat-message-viewport 类用于 chat.css 中的滚动条样式定制。
-    <div
-      ref={viewportRef}
-      onScroll={handleViewportScroll}
-      className={cn(
-        'chat-message-list chat-message-viewport flex-1 min-h-0 min-w-0 overflow-y-auto',
-        className
-      )}
-    >
-      {/* virtualizer 的总高度容器：所有虚拟行 absolute 定位到这 */}
+    <>
+      {/* 用原生 div 充当滚动容器：virtualizer 自己控制滚动测量，
+          不再需要 Radix ScrollArea 的 rAF 包装（之前会与 virtualizer 产生强制 reflow 竞争）。
+          chat-message-viewport 类用于 chat.css 中的滚动条样式定制。 */}
       <div
-        style={{
-          height: `${virtualizer.getTotalSize()}px`,
-          position: 'relative',
-          width: '100%',
-        }}
+        ref={viewportRef}
+        onScroll={handleViewportScroll}
+        className={cn(
+          'chat-message-list chat-message-viewport flex-1 min-h-0 min-w-0 overflow-y-auto',
+          className
+        )}
       >
-        {virtualizer.getVirtualItems().map(virtualRow => {
-          const trace = traces[virtualRow.index];
-          if (!trace) return null;
-          const isLastTrace = virtualRow.index === traces.length - 1;
-          return (
-            <div
-              key={virtualRow.key}
-              ref={virtualizer.measureElement}
-              data-index={virtualRow.index}
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '100%',
-                transform: `translateY(${virtualRow.start}px)`,
-              }}
-            >
-              <TraceItem
-                trace={trace}
-                isLastTrace={isLastTrace}
-                showPlanning={showPlanning}
-                isStreaming={isStreaming}
-                activeCopyId={activeCopyId}
-                onCopy={markCopied}
-                UserMessageComponent={CustomUserMessage}
-                enableImagePreview={enableImagePreview}
-                userClassName={classNames?.userMessage}
-              />
-            </div>
-          );
-        })}
+        {/* virtualizer 的总高度容器：所有虚拟行 absolute 定位到这 */}
+        <div
+          style={{
+            height: `${virtualizer.getTotalSize()}px`,
+            position: 'relative',
+            width: '100%',
+          }}
+        >
+          {virtualizer.getVirtualItems().map(virtualRow => {
+            const trace = traces[virtualRow.index];
+            if (!trace) return null;
+            const isLastTrace = virtualRow.index === traces.length - 1;
+            return (
+              <div
+                key={virtualRow.key}
+                ref={virtualizer.measureElement}
+                data-index={virtualRow.index}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  transform: `translateY(${virtualRow.start}px)`,
+                }}
+              >
+                <TraceItem
+                  trace={trace}
+                  isLastTrace={isLastTrace}
+                  showPlanning={showPlanning}
+                  isStreaming={isStreaming}
+                  activeCopyId={activeCopyId}
+                  onCopy={markCopied}
+                  onFork={sessionId === undefined ? undefined : requestFork}
+                  UserMessageComponent={CustomUserMessage}
+                  enableImagePreview={enableImagePreview}
+                  userClassName={classNames?.userMessage}
+                />
+              </div>
+            );
+          })}
+        </div>
       </div>
-    </div>
+
+      {forkDialog}
+    </>
   );
 });

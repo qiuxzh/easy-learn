@@ -7,6 +7,8 @@ export enum IpcChannel {
   Chat_DeleteSession = 'chat:deleteSession',
   /** 打开会话：返回摘要、完整日志与运行态快照 */
   Chat_OpenSession = 'chat:openSession',
+  /** 从某条助手消息分支出一个新会话 */
+  Chat_ForkSession = 'chat:forkSession',
 
   // AI 流式响应
   Chat_StreamSend = 'chat:streamSend',

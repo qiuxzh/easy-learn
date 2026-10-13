@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { IconCopy, IconCheck } from '@tabler/icons-react';
+import { IconCopy, IconCheck, IconGitBranch } from '@tabler/icons-react';
 import { cn } from '@/lib/utils';
 
 type CopyButtonProps = {
@@ -64,10 +64,37 @@ export type MessageToolbarProps = {
   isVisible: boolean;
   alignClass: string;
   onCopied?: () => void;
+  /** 提供时渲染分支按钮：把会话从这条回复之后切成一个新会话 */
+  onFork?: () => void;
 };
 
 /**
- * 单条消息下方的操作栏：复制按钮 + 时间戳。
+ * 分支按钮：从这条回复分出新会话。
+ * 与复制按钮同一行、同一套交互（阻止冒泡，避免触发行本身的点击）。
+ */
+function ForkButton({ onFork }: { onFork: () => void }) {
+  return (
+    <button
+      type="button"
+      tabIndex={-1}
+      title="从这条回复分支出新会话"
+      onClick={onFork}
+      onPointerDown={event => {
+        event.stopPropagation();
+      }}
+      onMouseDown={event => event.stopPropagation()}
+      className={cn(
+        'size-6 flex items-center justify-center rounded-md active:scale-[0.97] transition-[background-color,opacity,transform] duration-150 ease-out',
+        'opacity-50 bg-transparent hover:opacity-100 hover:bg-foreground/10'
+      )}
+    >
+      <IconGitBranch className="w-3.5 h-3.5 text-muted-foreground" />
+    </button>
+  );
+}
+
+/**
+ * 单条消息下方的操作栏：复制按钮 + 时间戳（+ 可选的分支按钮）。
  * 复制按钮默认可见，isVisible 用于复制成功后的高亮状态。
  */
 export function MessageToolbar({
@@ -78,6 +105,7 @@ export function MessageToolbar({
   isVisible,
   alignClass,
   onCopied,
+  onFork,
 }: MessageToolbarProps) {
   return (
     <div
@@ -94,6 +122,7 @@ export function MessageToolbar({
     >
       {timestamp && <span>{timestamp}</span>}
       {text && <CopyButton text={text} onCopied={onCopied} />}
+      {onFork && <ForkButton onFork={onFork} />}
     </div>
   );
 }

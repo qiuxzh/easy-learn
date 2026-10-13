@@ -6,8 +6,10 @@ import type {
   SessionEntry,
   SessionEntryBase,
 } from '@shared/types/chat';
+import { v4 as uuidv4 } from 'uuid';
 import { agentEntryRepo, agentSessionRepo } from '../../db/repo';
 import type { AgentEntryRow } from '../../db/repo';
+import { runInTransaction } from '../../db';
 
 /**
  * 由会话日志推导出的上下文快照。
@@ -62,7 +64,7 @@ export function sessionEntryToContextMessages(entry: SessionEntry): AgentMessage
 
 /**
  * 计算参与 LLM 上下文的 entry 列表。
- * 线性日志下 entry 列表本身就是路径；存在 compaction 时，最新 compaction 之前、firstKeptEntryId 之前的 entry 由摘要顶替。
+ * 传进来的 entry 列表本身就是一条分支（根 → 末端）；存在 compaction 时，最新 compaction 之前、firstKeptEntryId 之前的 entry 由摘要顶替。
  */
 export function buildContextEntries(entries: SessionEntry[]): SessionEntry[] {
   const compaction = getLatestCompaction(entries);
@@ -89,7 +91,7 @@ export function buildContextEntries(entries: SessionEntry[]): SessionEntry[] {
   return contextEntries;
 }
 
-/** 把会话日志合成为一次运行所需的上下文快照。 */
+/** 把一条分支合成为一次运行所需的上下文快照。 */
 export function buildSessionContext(entries: SessionEntry[]): SessionContext {
   const messages = buildContextEntries(entries).flatMap(sessionEntryToContextMessages);
   return { messages, ...getSessionContextSettings(entries) };
@@ -100,7 +102,7 @@ export function buildSessionContext(entries: SessionEntry[]): SessionContext {
  * payload 在 db 层以 unknown 存储，此处按 type 收窄；未知 type 返回 null 由调用方丢弃。
  */
 function rowToEntry(row: AgentEntryRow): SessionEntry | null {
-  const base = { id: row.id, seq: row.seq, timestamp: row.createdAt };
+  const base = { id: row.id, timestamp: row.createdAt };
   switch (row.type) {
     case 'message':
       return { ...base, type: 'message', message: row.payload as AgentMessage };
@@ -124,73 +126,169 @@ function rowToEntry(row: AgentEntryRow): SessionEntry | null {
   }
 }
 
+/* ───────────────────────── 分支（一棵 entry 树里的一条路径） ───────────────────────── */
+
 /**
- * 从库读取某会话的全部 entry，按 seq 升序。
- * 运行时会话由 SessionManager 持有；只读场景（打开历史会话）直接用它，不必建实例。
+ * 沿父指针从某个 entry 回溯到根，再反转成「根 → 末端」的顺序。
+ * 不认识的 type 直接丢弃，但父指针取自原始行，所以中间被丢弃也不会断链。
  */
-export function loadSessionEntries(sessionId: string): SessionEntry[] {
-  return agentEntryRepo
-    .findBySessionId(sessionId)
-    .map(rowToEntry)
-    .filter((entry): entry is SessionEntry => entry !== null);
+function walkUp(tipEntryId: string): SessionEntry[] {
+  const entries: SessionEntry[] = [];
+  let cursor: string | null = tipEntryId;
+  while (cursor !== null) {
+    const row = agentEntryRepo.findById(cursor);
+    // 父指针断了就到此为止，避免死循环
+    if (!row) break;
+    const entry = rowToEntry(row);
+    if (entry) entries.push(entry);
+    cursor = row.parentEntryId;
+  }
+  return entries.reverse();
+}
+
+/** 一个会话当前所在分支的快照。 */
+export interface BranchSnapshot {
+  /** 分支末端 entry id；空会话为 null。 */
+  tipEntryId: string | null;
+  /** 从根到末端的 entry 序列，不认识的 type 已被丢弃。 */
+  entries: SessionEntry[];
 }
 
 /**
- * 单个会话的日志管理：构造时从库载入，写库成功后同步内存列表。
+ * 读一个会话当前所在的分支：先读它的引用（tip），再沿父指针回溯。
+ * 只读场景（打开历史会话）直接用它，不必建 SessionManager 实例。
+ */
+export function loadBranch(sessionId: string): BranchSnapshot {
+  const tipEntryId = agentSessionRepo.findTip(sessionId);
+  if (tipEntryId === null) {
+    return { tipEntryId: null, entries: [] };
+  }
+  return { tipEntryId, entries: walkUp(tipEntryId) };
+}
+
+/**
+ * 从某个分支末端向上回收不可达的 entry，删掉会话引用之后调用。
+ *
+ * 沿父指针往上走，遇到「还有别的孩子」或「还有别的会话把它当末端」就停下：那个节点及其祖先仍被别的分支可达，必须保留；它更靠近末端的那些节点已无人引用，可以删。
+ * 向上走时要排除「自己是从哪个孩子走上来的」，否则每个节点都会因为那个孩子而被误判成有别的孩子。
+ *
+ * @param tipEntryId - 刚被删掉引用所指向的末端
+ * @returns 被回收的 entry 数量
+ */
+export function collectUnreachableEntries(tipEntryId: string): number {
+  const unreachable: string[] = [];
+  let cursor: string | null = tipEntryId;
+  let cameFrom: string | null = null;
+
+  while (cursor !== null) {
+    const row = agentEntryRepo.findById(cursor);
+    if (!row) break;
+
+    const otherChildren = agentEntryRepo.listChildIds(cursor).filter(id => id !== cameFrom);
+    if (otherChildren.length > 0 || agentSessionRepo.existsByTip(cursor)) break;
+
+    unreachable.push(cursor);
+    cameFrom = cursor;
+    cursor = row.parentEntryId;
+  }
+
+  agentEntryRepo.deleteByIds(unreachable);
+  return unreachable.length;
+}
+
+/**
+ * 删掉一个会话的引用，并回收只被它引用的 entry
+ *
+ * @returns 被回收的 entry 数量
+ */
+export function dropSessionBranch(sessionId: string): number {
+  const tipEntryId = agentSessionRepo.findTip(sessionId);
+  // 删会话与回收在同一个事务里。别的分支共享的那段历史会被可达性判断保留下来，所以删除永远不连坐
+  return runInTransaction(() => {
+    agentSessionRepo.delete(sessionId);
+    return tipEntryId === null ? 0 : collectUnreachableEntries(tipEntryId);
+  });
+}
+
+/* ───────────────────────────────── 运行时视图 ───────────────────────────────── */
+
+/**
+ * 单个会话的运行时日志视图：**当前所在的那条分支**，以及往它追加。
+ * 会话本身只是「指向某个 entry 的引用」，所以这里同时维护那个引用（tip）并在每次追加后移动它。
  * 一个 sessionId 同时只应存在一个实例，由 SessionService 的运行时池保证。
  */
 export class SessionManager {
   /** 所属会话 id。 */
   readonly sessionId: string;
-  /** 会话表（agent_session）读写入口。 */
-  readonly sessionRepo = agentSessionRepo;
-  /** 会话日志表（agent_entry）读写入口。 */
-  readonly entryRepo = agentEntryRepo;
 
-  /** 内存中的 entry 列表，按 seq 升序，与库保持一致。 */
+  /** 当前分支的 entry 序列（根 → 末端），不认识的 type 已被丢弃。 */
   private entries: SessionEntry[] = [];
+  /** 当前分支末端的 entry id；空会话为 null。 */
+  private tip: string | null = null;
 
   constructor(sessionId: string) {
     this.sessionId = sessionId;
     this.load();
   }
 
-  /** 从库重新载入该会话的全部 entry，覆盖内存列表。 */
+  /** 从库重新载入当前分支，覆盖内存状态。 */
   load(): void {
-    this.entries = loadSessionEntries(this.sessionId);
+    const branch = loadBranch(this.sessionId);
+    this.entries = branch.entries;
+    this.tip = branch.tipEntryId;
   }
 
-  /** 只读的 entry 列表，按 seq 升序。 */
+  /** 当前分支末端 entry id；空会话为 null。 */
+  get tipEntryId(): string | null {
+    return this.tip;
+  }
+
+  /** 只读的当前分支 entry 序列。 */
   getEntries(): readonly SessionEntry[] {
     return this.entries;
   }
 
-  /** 按 id 查 entry。线性查找，会话内 entry 数量有限。 */
+  /** 按 id 查 entry。只在当前分支上找，别的分支的 entry 不在这里。 */
   getEntry(id: string): SessionEntry | undefined {
     return this.entries.find(entry => entry.id === id);
   }
 
   /**
-   * 追加一条 entry：写库成功后同步内存列表，并刷新会话活跃时间。
+   * 往当前分支追加一条 entry，并把会话的引用移到它上面。
+   * 父 = 当前末端；插 entry 与移动引用在同一个事务里，失败时内存不变。
    * 变更类 entry 不承载消息，只用于回放会话的运行期设置。
+   *
+   * @returns 新 entry 的 id，供调用方随事件带给渲染层
    */
-  private appendEntry(type: 'message' | 'model_change' | 'compaction', payload: unknown): void {
-    const row = this.entryRepo.append({
-      sessionId: this.sessionId,
-      seq: this.entryRepo.nextSeq(this.sessionId),
-      type,
-      payload,
+  private appendEntry(type: 'message' | 'model_change' | 'compaction', payload: unknown): string {
+    const id = uuidv4();
+    const parentEntryId = this.tip;
+
+    const row = runInTransaction(() => {
+      const inserted = agentEntryRepo.append({ id, parentEntryId, type, payload });
+      const updated = agentSessionRepo.setTip(this.sessionId, id);
+      // 会话行不存在就整体回滚，避免留下一条没有任何分支引用的孤儿 entry
+      // （旧结构里这件事由 entry.session_id 的外键兜住，新结构没有外键了）
+      if (updated.changes !== 1) {
+        throw new Error(`会话不存在: ${this.sessionId}`);
+      }
+      return inserted;
     });
+
     const entry = rowToEntry(row);
     if (entry) {
       this.entries.push(entry);
     }
-    this.sessionRepo.touch(this.sessionId);
+    this.tip = id;
+    return id;
   }
 
-  /** 把一条 LLM 消息追加进会话日志。 */
-  appendMessage(message: AgentMessage): void {
-    this.appendEntry('message', message);
+  /**
+   * 把一条 LLM 消息追加进当前分支。
+   * @returns 该消息在会话树里的 entry id
+   */
+  appendMessage(message: AgentMessage): string {
+    return this.appendEntry('message', message);
   }
 
   /** 记录一次模型变更。 */
@@ -206,7 +304,7 @@ export class SessionManager {
     this.appendEntry('compaction', compaction);
   }
 
-  /** 由当前会话日志构建上下文快照。 */
+  /** 由当前分支构建上下文快照。 */
   buildContext(): SessionContext {
     return buildSessionContext(this.entries);
   }

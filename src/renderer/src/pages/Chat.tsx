@@ -109,7 +109,12 @@ export const Chat = memo(function Chat({ bookId }: { bookId?: string }) {
                 开始新对话
               </div>
             )}
-            <MessageList messages={messages} status={chatStatus} />
+            <MessageList
+              messages={messages}
+              status={chatStatus}
+              sessionId={activeSessionId}
+              onForked={switchSession}
+            />
             {chatStatus === 'streaming' && (
               <div className="flex items-center justify-center gap-2 px-4 py-2 text-sm text-muted-foreground shrink-0">
                 <TextShimmer>思考中...</TextShimmer>

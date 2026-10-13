@@ -85,3 +85,19 @@ export function traceHasContent(trace: Trace): boolean {
     )
   );
 }
+
+/**
+ * 取该 trace 的分支点：这一轮最后一条助手消息的 entry id。
+ * 助手回复还没落库（正在流式）时不给分支点，避免从一轮中途分叉。
+ * 切点是否合法由后端判断，这里只负责报出"这一轮现在停在哪"。
+ *
+ * 已知边界：这一轮若在工具结果之后就停下（没有收尾的助手回复），坐标会落在工具批次中间，
+ * 切出来的新分支首次请求会被模型接口拒——这类历史本身也需要在协议适配层补全后才能用。
+ *
+ * @param trace - 待判定的 trace
+ * @returns 可分支时返回切点的 entry id，否则返回 undefined
+ */
+export function forkEntryIdOfTrace(trace: Trace): string | undefined {
+  const assistants = traceAssistantMessages(trace);
+  return assistants[assistants.length - 1]?.entryId;
+}
