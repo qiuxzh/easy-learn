@@ -3,8 +3,8 @@ import type {
   DeleteSessionRequest,
   ForkSessionRequest,
   ForkSessionResult,
+  AttachmentStoreRequest,
   ImageContent,
-  ImageStoreRequest,
   OpenSessionRequest,
   OpenSessionResult,
   RenameSessionRequest,
@@ -123,9 +123,9 @@ export const api = {
   openFileDialog: (req?: FileOpenRequest) =>
     ipcRenderer.invoke(IpcChannel.File_OpenDialog, req) as Promise<FileOpenResult>,
 
-  // 图片（聊天输入）
-  storeImages: (req: ImageStoreRequest) =>
-    ipcRenderer.invoke(IpcChannel.Image_Store, req) as Promise<ImageContent[]>,
+  // 附件（聊天输入）
+  storeAttachments: (req: AttachmentStoreRequest) =>
+    ipcRenderer.invoke(IpcChannel.Attachment_Store, req) as Promise<ImageContent[]>,
 
   // 书籍（书库）
   /** 让 main 端弹文件框 + 解析 + 写库，返回 BookDoc */

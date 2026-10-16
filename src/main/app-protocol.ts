@@ -4,12 +4,15 @@ import { pathToFileURL } from 'node:url';
 import log from 'electron-log';
 import mime from 'mime-types';
 import { Constants } from './constants';
+import { attachmentRepo } from './db/repo';
 
 /**
  * app:// 自定义协议
  *
  * URL 格式：app:///{relativePath}，relativePath 是相对于 Constants.dataDir 的路径
  * 仅 dataDir 内部的文件可被访问，使用 path.relative 校验防越权
+ *
+ * 附件寻址：app://attachment-resource/<attachmentId>，按 id 查附件表定位文件。
  *
  * 注册时机：
  * - registerAppProtocolPrivileges 必须在 app.ready 之前执行（声明 scheme 的 privileged 属性）
@@ -30,9 +33,51 @@ export function registerAppProtocolPrivileges(): void {
   ]);
 }
 
+/** 附件寻址专用的保留 hostname 段；data 目录下不得创建同名目录 */
+const ATTACHMENT_HOSTNAME = 'attachment-resource';
+
+/** 处理附件寻址：按 id 查附件表拿路径与 MIME，再读文件返回 */
+async function handleAttachmentRequest(attachmentId: string): Promise<Response> {
+  const row = attachmentRepo.findById(attachmentId);
+  if (!row) {
+    return new Response('Not Found', { status: 404 });
+  }
+
+  const target = path.resolve(Constants.dataDir, row.path);
+  const relative = path.relative(Constants.attachmentDir, target);
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+    log.warn('[app://] blocked (invalid attachment path):', attachmentId, '->', target);
+    return new Response('Forbidden', { status: 403 });
+  }
+
+  try {
+    const fileResp = await net.fetch(pathToFileURL(target).href);
+    if (fileResp.status === 404) {
+      return new Response('Not Found', { status: 404 });
+    }
+    return new Response(fileResp.body, {
+      status: fileResp.status,
+      statusText: fileResp.statusText,
+      headers: { 'Content-Type': row.mimeType },
+    });
+  } catch (e) {
+    log.error('[app://] attachment request error:', attachmentId, e);
+    return new Response('Internal Server Error', { status: 500 });
+  }
+}
+
 async function handleAppRequest(req: Request): Promise<Response> {
   try {
     const url = new URL(req.url);
+
+    // 附件寻址走独立的 hostname 段
+    if (url.hostname === ATTACHMENT_HOSTNAME) {
+      const attachmentId = decodeURIComponent(url.pathname).replace(/^\/+/, '');
+      if (!attachmentId) {
+        return new Response('Bad Request', { status: 400 });
+      }
+      return handleAttachmentRequest(attachmentId);
+    }
 
     // 浏览器把 app:///path 解析为 hostname="path的第一段" + pathname="/剩余段"
     // 因此 hostname 也是有效路径的一部分，需要拼接

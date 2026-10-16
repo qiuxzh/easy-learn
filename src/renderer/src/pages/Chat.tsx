@@ -126,7 +126,6 @@ export const Chat = memo(function Chat({ bookId }: { bookId?: string }) {
             <div className="mx-auto max-w-3xl px-4">
               <InputBar
                 size="lg"
-                sessionId={activeSessionId}
                 onSend={handleSend}
                 status={chatStatus}
                 onStop={handleStop}

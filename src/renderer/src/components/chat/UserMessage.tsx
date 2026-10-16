@@ -4,7 +4,7 @@ import { memo, useCallback, useState } from 'react';
 import { cn } from '@/lib/utils';
 import type { AppUIMessage } from '@/types/message';
 import { isImagePart, isTextPart } from '@/utils/message-util';
-import { toAppImageUrl } from '@/utils/image-util';
+import { toAttachmentUrl } from '@/utils/image-util';
 import { ImagePreviewDialog } from './ImagePreview';
 
 export type UserMessageProps = {
@@ -30,8 +30,8 @@ export const UserMessage = memo(function UserMessage({
   const images = (message.parts ?? []).filter(isImagePart);
 
   const handlePreview = useCallback(
-    (path: string) => {
-      if (enableImagePreview) setPreviewSrc(toAppImageUrl(path));
+    (attachmentId: string) => {
+      if (enableImagePreview) setPreviewSrc(toAttachmentUrl(attachmentId));
     },
     [enableImagePreview]
   );
@@ -45,15 +45,15 @@ export const UserMessage = memo(function UserMessage({
           <div className="flex flex-wrap justify-end gap-2">
             {images.map(image => (
               <button
-                key={image.path}
+                key={image.attachmentId}
                 type="button"
-                onClick={() => handlePreview(image.path)}
+                onClick={() => handlePreview(image.attachmentId)}
                 title="预览图片"
                 aria-label="预览图片"
                 className="block cursor-pointer rounded-xl border-0 bg-transparent p-0"
               >
                 <img
-                  src={toAppImageUrl(image.path)}
+                  src={toAttachmentUrl(image.attachmentId)}
                   alt="图片"
                   className="h-24 w-24 rounded-xl object-cover ring-1 ring-foreground/10 transition-opacity hover:opacity-90"
                 />

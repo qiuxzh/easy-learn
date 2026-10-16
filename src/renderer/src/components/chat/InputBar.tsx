@@ -14,7 +14,7 @@ import {
 import { ImagePlus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ImageContent } from '@shared/types/chat';
-import { toAppImageUrl } from '@/utils/image-util';
+import { toAttachmentUrl } from '@/utils/image-util';
 import { SendButton } from './SendButton';
 import { ImagePreviewDialog } from './ImagePreview';
 import type { ChatStatus } from './message/utils';
@@ -43,8 +43,6 @@ export type InputBarProps = {
   onSend: (message: { role: 'user'; content: string; images: ImageContent[] }) => void;
   status: ChatStatus;
   onStop: () => void;
-  /** 当前会话 id，图片落盘时按会话分目录 */
-  sessionId: string;
   /** 输入框尺寸，影响内边距和整体高度 */
   size?: 'sm' | 'md' | 'lg';
   /** 渲染在工具栏左侧、发送按钮右侧的内容（如模式选择器） */
@@ -53,18 +51,17 @@ export type InputBarProps = {
 
 /**
  * 输入框：文本输入 + Enter 发送 + 流式停止，以及图片输入（粘贴 / 文件选择）。
- * 图片不驻留内存：粘贴或选择后立刻交给主进程落盘，这里只保留可引用的路径。
+ * 图片粘贴或选择后立刻交给主进程登记为附件，这里只保留附件 id。
  */
 export const InputBar = memo(function InputBar({
   onSend,
   status,
   onStop,
-  sessionId,
   size = 'md',
   leftActions,
 }: InputBarProps) {
   const [input, setInput] = useState('');
-  /** 待发送图片；只保存已落盘的引用，预览时拼 app:// 地址 */
+  /** 待发送图片，只保存附件 id */
   const [images, setImages] = useState<ImageContent[]>([]);
   /** 是否有图片正在落盘，期间禁用再次添加 */
   const [isStoring, setIsStoring] = useState(false);
@@ -77,10 +74,7 @@ export const InputBar = memo(function InputBar({
   const isStreaming = status === 'streaming' || status === 'submitted';
   const isFull = images.length >= MAX_IMAGES;
 
-  /**
-   * 图片入库：带 source 时落盘粘贴的字节，不带时由主进程弹框选择。
-   * 校验、压缩、落盘都在主进程完成，这里负责把数量收敛到上限内再并入草稿。
-   */
+  /** 图片入库：带 source 时登记粘贴的字节，不带时由主进程弹框选择，数量收敛到上限内并入草稿 */
   const storeImages = useCallback(
     async (source?: { bytes: Uint8Array; mimeType: string }[]) => {
       if (storingRef.current) return;
@@ -94,7 +88,7 @@ export const InputBar = memo(function InputBar({
       storingRef.current = true;
       setIsStoring(true);
       try {
-        const stored = await window.api.storeImages({ sessionId, images: source });
+        const stored = await window.api.storeAttachments({ images: source });
         // 弹框选择的数量由用户决定，超出剩余额度的部分只提示、不加入草稿
         const accepted = stored.slice(0, remain);
         if (accepted.length < stored.length) {
@@ -112,7 +106,7 @@ export const InputBar = memo(function InputBar({
         setIsStoring(false);
       }
     },
-    [images.length, sessionId]
+    [images.length]
   );
 
   /** 文件选择：弹框、读取、压缩与落盘都在主进程完成，这里只接收图片引用 */
@@ -146,8 +140,8 @@ export const InputBar = memo(function InputBar({
   );
 
   /** 从草稿里移除一张图片 */
-  const handleRemoveImage = useCallback((path: string) => {
-    setImages(prev => prev.filter(image => image.path !== path));
+  const handleRemoveImage = useCallback((attachmentId: string) => {
+    setImages(prev => prev.filter(image => image.attachmentId !== attachmentId));
   }, []);
 
   const handleSubmit = useCallback(() => {
@@ -209,23 +203,23 @@ export const InputBar = memo(function InputBar({
           {images.length > 0 && (
             <div className="mb-2 -mx-1 flex gap-2 overflow-x-auto px-1 pt-1 pb-1.5">
               {images.map(image => (
-                <div key={image.path} className="group/image relative shrink-0">
+                <div key={image.attachmentId} className="group/image relative shrink-0">
                   <button
                     type="button"
-                    onClick={() => setPreviewSrc(toAppImageUrl(image.path))}
+                    onClick={() => setPreviewSrc(toAttachmentUrl(image.attachmentId))}
                     title="预览图片"
                     aria-label="预览图片"
                     className="block cursor-pointer rounded-lg border-0 bg-transparent p-0"
                   >
                     <img
-                      src={toAppImageUrl(image.path)}
+                      src={toAttachmentUrl(image.attachmentId)}
                       alt="待发送图片"
                       className="h-16 w-16 rounded-lg object-cover ring-1 ring-foreground/10 transition-opacity hover:opacity-90"
                     />
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleRemoveImage(image.path)}
+                    onClick={() => handleRemoveImage(image.attachmentId)}
                     title="移除图片"
                     aria-label="移除图片"
                     className="absolute -top-1 -right-1 flex h-4 w-4 cursor-pointer items-center justify-center rounded-full border-0 bg-foreground text-background opacity-0 transition-opacity group-hover/image:opacity-100"

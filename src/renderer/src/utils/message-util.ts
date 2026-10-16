@@ -133,13 +133,10 @@ export const appendTextDelta = (
 /**
  * TODO(消息模型对齐)：内核消息与 App 层消息的映射规则尚未定稿。
  * 当前实现只求"能渲染历史"：用户/助手消息逐条转换，工具结果并入其前一条助手消息；
- * 图片只保留落盘路径，思考签名、stopReason 等信息一律丢弃。规则确定后重写本段。
+ * 图片只保留附件 id，思考签名、stopReason 等信息一律丢弃。规则确定后重写本段。
  */
 
-/**
- * 把一条内核用户消息转成 App 层消息。
- * 文本与图片按内核里的顺序落到 parts：图片只取路径，渲染时拼 app:// 地址。
- */
+/** 把一条内核用户消息转成 App 层消息，文本与图片按内核里的顺序落到 parts */
 export function userMessageToAppMessage(message: UserMessage): AppUIMessage {
   const parts: AppUIMessagePart[] = [];
 
@@ -149,8 +146,8 @@ export function userMessageToAppMessage(message: UserMessage): AppUIMessage {
     for (const block of message.content) {
       if (block.type === 'text') {
         parts.push({ type: 'text', text: block.text });
-      } else if (block.path) {
-        parts.push({ type: 'image', path: block.path });
+      } else {
+        parts.push({ type: 'image', attachmentId: block.attachmentId });
       }
     }
   }

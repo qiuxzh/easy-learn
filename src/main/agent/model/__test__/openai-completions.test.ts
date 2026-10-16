@@ -342,8 +342,8 @@ describe('createOpenAiCompletionsStreamFn', () => {
           toolCallId: 'call_2',
           toolName: 'read_image',
           content: [
-            { type: 'text', text: '读取图片：images/s1/x.png（image/png）' },
-            { type: 'image', path: 'images/s1/x.png', mimeType: 'image/png', data: 'QUJD' },
+            { type: 'text', text: '读取图片：a1b2c3' },
+            { type: 'image', attachmentId: 'a1b2c3', mimeType: 'image/png', data: 'QUJD' },
           ],
           isError: false,
           timestamp: 4,
@@ -362,10 +362,10 @@ describe('createOpenAiCompletionsStreamFn', () => {
         'tool',
         'user',
       ]);
-      expect(sentMessages[3].content).toBe('读取图片：images/s1/x.png（image/png）');
+      expect(sentMessages[3].content).toBe('读取图片：a1b2c3');
       // 图片用方括号标签标明来源，逐图标注，避免模型把它当成用户说的话
       expect(sentMessages[4].content).toEqual([
-        { type: 'text', text: '[read_image 返回的图片：images/s1/x.png]' },
+        { type: 'text', text: '[read_image 返回的图片：a1b2c3]' },
         { type: 'image_url', image_url: { url: 'data:image/png;base64,QUJD' } },
       ]);
     } finally {

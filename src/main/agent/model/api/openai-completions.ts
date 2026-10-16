@@ -466,7 +466,12 @@ function toOpenAiUserMessage(message: UserMessage): ChatCompletionUserMessagePar
   const content: ChatCompletionContentPart[] = message.content.map(part =>
     part.type === 'text'
       ? { type: 'text', text: part.text }
-      : { type: 'image_url', image_url: { url: toDataUrl(part.mimeType, requireImageData(part)) } }
+      : {
+          type: 'image_url',
+          image_url: {
+            url: toDataUrl(requireImageMimeType(part), requireImageData(part)),
+          },
+        }
   );
   return { role: 'user', content };
 }
@@ -520,17 +525,13 @@ function toOpenAiToolMessage(message: ToolResultMessage): ChatCompletionToolMess
   return { role: 'tool', tool_call_id: message.toolCallId, content };
 }
 
-/**
- * 取工具结果里的图片：每张配一段方括号标签与 data URL。
- * 标签带上工具名与路径，一是让模型知道这张图来自哪次工具调用，
- * 二是方括号标签明显不是用户说的话，避免模型把它当成用户的指令。
- */
+/** 取工具结果里的图片：每张配一段标注来源的方括号标签与 data URL */
 function collectToolImages(message: ToolResultMessage): { text: string; url: string }[] {
   return message.content
     .filter((part): part is ImageContent => part.type === 'image')
     .map(part => ({
-      text: `[${message.toolName} 返回的图片：${part.path}]`,
-      url: toDataUrl(part.mimeType, requireImageData(part)),
+      text: `[${message.toolName} 返回的图片：${part.attachmentId}]`,
+      url: toDataUrl(requireImageMimeType(part), requireImageData(part)),
     }));
 }
 
@@ -553,13 +554,18 @@ function toDataUrl(mimeType: string, data: string): string {
   return `data:${mimeType};base64,${data}`;
 }
 
-/**
- * 取图片块的 base64 数据。
- * 图片以落盘路径入上下文，发请求前由读取环节填入 data；走到这里仍是引用形态即为内部错误。
- */
+/** 取图片块的 mimeType，缺失即为读取环节没有完成 */
+function requireImageMimeType(part: ImageContent): string {
+  if (!part.mimeType) {
+    throw new Error(`图片 ${part.attachmentId} 缺少 mimeType，未能从附件表读取`);
+  }
+  return part.mimeType;
+}
+
+/** 取图片块的 base64 数据，缺失即为读取环节没有完成 */
 function requireImageData(part: ImageContent): string {
   if (!part.data) {
-    throw new Error(`图片 ${part.path} 尚未读取为 base64`);
+    throw new Error(`图片 ${part.attachmentId} 尚未读取为 base64`);
   }
   return part.data;
 }

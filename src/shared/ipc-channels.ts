@@ -26,9 +26,9 @@ export enum IpcChannel {
   // File 操作
   File_OpenDialog = 'file:openDialog',
 
-  // 图片（聊天输入）
-  /** 图片入库：落盘粘贴的图片字节，或由 main 端弹框选择图片，返回可引用的图片内容 */
-  Image_Store = 'image:store',
+  // 附件（聊天输入）
+  /** 附件入库：落盘图片字节或弹框选择，返回图片引用 */
+  Attachment_Store = 'attachment:store',
 
   // 书籍（书库）
   /** main 端打开 dialog 选文件 + 解析 + 写库，返回 BookDoc */

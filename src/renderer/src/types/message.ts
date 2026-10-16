@@ -44,10 +44,10 @@ export interface AppToolResultPart {
   details?: unknown;
 }
 
-/** App 层图片 part：只保存落盘路径，渲染时拼成 app:// 地址 */
+/** App 层图片 part：只保存附件 id */
 export interface AppImagePart {
   type: 'image';
-  path: string;
+  attachmentId: string;
 }
 
 // 用户打断时，向当前的assistant message 里面添加一份这个块

@@ -1,7 +1,7 @@
-﻿import '../config/config-service';
+import '../config/config-service';
 import './window-service';
 import './file-service';
-import './image-service';
+import './attachment-service';
 import './reading-service';
 import './embedding-service';
 import '../books/book-service';

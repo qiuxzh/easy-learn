@@ -6,6 +6,6 @@ const dataDir = path.resolve(app.getPath('userData'), 'data');
 
 export const Constants = {
   dataDir,
-  /** 聊天输入图片的存放目录；落盘与读取都基于它拼相对路径 */
-  imageDir: path.join(dataDir, 'images'),
+  /** 附件的存放目录；落盘与读取都基于它拼相对路径 */
+  attachmentDir: path.join(dataDir, 'attachment'),
 };

@@ -1,12 +1,13 @@
-﻿import { dialog, ipcMain, nativeImage, type NativeImage, type OpenDialogOptions } from 'electron';
+import { dialog, ipcMain, nativeImage, type NativeImage, type OpenDialogOptions } from 'electron';
 import fs from 'node:fs';
+import fsp from 'node:fs/promises';
 import path from 'node:path';
-import { randomUUID } from 'node:crypto';
 import mime from 'mime-types';
 import { IpcChannel } from '@shared/ipc-channels';
-import type { ImageContent, ImageStoreRequest } from '@shared/types/chat';
+import type { AttachmentStoreRequest, ImageContent } from '@shared/types/chat';
 import { Constants } from '@main/constants';
 import { getMainWindow } from '@main/window';
+import { attachmentRepo } from '@main/db/repo';
 import { BaseService } from './base-service';
 
 /** 图片最长边的上限，超过则等比缩小 */
@@ -80,27 +81,21 @@ function scaleToMaxDimension(image: NativeImage): NativeImage {
   });
 }
 
-/**
- * 压缩图片：先缩尺寸，再按类型编码；超出体积上限时降质为 JPEG 并逐级缩小。
- * 无法解码的格式（如 WebP）原样保留原始字节，由模型端自行处理。
- */
+/** 压缩图片：缩到尺寸上限内编码；仍超体积上限时降质为 JPEG 逐级缩小 */
 function compressImage(bytes: Buffer, mimeType: string): PreparedImage {
   const image = nativeImage.createFromBuffer(bytes);
   if (image.isEmpty()) return { bytes, mimeType };
 
   let current = scaleToMaxDimension(image);
-  // JPEG 本就有损且体积小，直接沿用；其它格式先尝试无损 PNG
   let prepared: PreparedImage =
     mimeType === 'image/jpeg'
       ? { bytes: current.toJPEG(JPEG_QUALITY), mimeType: 'image/jpeg' }
       : { bytes: current.toPNG(), mimeType: 'image/png' };
   if (base64Length(prepared.bytes) <= MAX_BASE64_BYTES) return prepared;
 
-  // 无损编码超限，先降质为 JPEG
   prepared = { bytes: current.toJPEG(JPEG_QUALITY), mimeType: 'image/jpeg' };
   if (base64Length(prepared.bytes) <= MAX_BASE64_BYTES) return prepared;
 
-  // 仍然超限，逐级缩小尺寸
   for (let attempt = 0; attempt < MAX_SHRINK_ATTEMPTS; attempt++) {
     const { width, height } = current.getSize();
     current = current.resize({
@@ -115,40 +110,25 @@ function compressImage(bytes: Buffer, mimeType: string): PreparedImage {
   throw new Error('图片压缩后仍然过大，请换一张更小的图片');
 }
 
-/** 校验会话 id：只允许 uuid 形态的字符，避免被拼进路径造成越权写入 */
-function assertSessionId(sessionId: string): string {
-  if (!/^[A-Za-z0-9_-]+$/.test(sessionId)) {
-    throw new Error(`非法的会话 id: ${sessionId}`);
-  }
-  return sessionId;
-}
-
 /**
- * 图片服务：把聊天输入里的图片处理并落盘到 data/images/<sessionId>/ 下。
- * 会话日志与界面只保存相对 dataDir 的路径，图片本体始终留在磁盘上。
+ * 附件服务：把图片落盘到 data/attachment/image/ 下并登记进 attachment 表。
+ * 行与文件分开维护，删文件失败会留下无行的残留文件，没有清理流程回收它。
  */
-export class ImageService extends BaseService {
-  /** 图片根目录 */
-  private readonly imageDir = Constants.imageDir;
+export class AttachmentService extends BaseService {
+  /** 附件根目录 */
+  private readonly attachmentDir = Constants.attachmentDir;
+
+  /** 图片文件所在的子目录名，与 type 枚举对应 */
+  private static readonly IMAGE_SUBDIR = 'image';
 
   setupIpcHandlers(): void {
-    ipcMain.handle(IpcChannel.Image_Store, async (_e, req: ImageStoreRequest) =>
+    ipcMain.handle(IpcChannel.Attachment_Store, async (_e, req: AttachmentStoreRequest) =>
       this.storeImages(req)
     );
   }
 
-  /**
-   * 图片入库：带 images 时处理这批字节，否则弹文件框让用户选择。
-   * 返回落盘后的图片引用；单张失败只跳过该张，全部失败时抛出原因。
-   *
-   * TODO(孤儿图片清理)：图片一旦落盘就不再跟踪引用，以下两种情况会留下无人引用的文件：
-   * - 弹框一次选中的图片超过单条消息上限，渲染层只接入前几张；
-   * - 图片加入草稿后用户未发送（删除草稿、关闭标签页、关窗口）。
-   * 将来可做：会话删除时连带删除 images/<sessionId>/ 目录，并扫描会话日志中不再被引用的文件。
-   */
-  async storeImages(req: ImageStoreRequest): Promise<ImageContent[]> {
-    const sessionId = assertSessionId(req.sessionId);
-
+  /** 图片入库：带 images 时处理这批字节，否则弹文件框让用户选择；单张失败跳过，全部失败抛出原因 */
+  async storeImages(req: AttachmentStoreRequest): Promise<ImageContent[]> {
     const sources = req.images?.length
       ? req.images.map(item => ({
           bytes: Buffer.from(item.bytes),
@@ -161,26 +141,60 @@ export class ImageService extends BaseService {
     let firstError: unknown;
     for (const source of sources) {
       try {
-        stored.push(this.storeOne(sessionId, source.bytes, source.mimeType));
+        stored.push(await this.storeImage(source.bytes, source.mimeType));
       } catch (error) {
         firstError ??= error;
-        console.error('[ImageService] 图片处理失败:', error);
+        console.error('[AttachmentService] 图片处理失败:', error);
       }
     }
 
-    // 一张都没成功时把原因抛给渲染层，部分成功则返回成功的部分
     if (stored.length === 0 && firstError) {
       throw firstError instanceof Error ? firstError : new Error(String(firstError));
     }
     return stored;
   }
 
-  /** 处理并落盘一张图片，返回可引用的图片内容 */
-  private storeOne(
-    sessionId: string,
-    originalBytes: Buffer,
-    declaredMimeType: string
-  ): ImageContent {
+  /** 把一个磁盘文件登记为新图片附件 */
+  async storeFromFile(filePath: string): Promise<ImageContent> {
+    const bytes = await fsp.readFile(filePath);
+    const declared = mime.lookup(filePath) || '';
+    return this.storeImage(bytes, declared);
+  }
+
+  /** 把已有附件的字节复制登记为一份新附件 */
+  async copyAttachment(attachmentId: string): Promise<ImageContent> {
+    const row = attachmentRepo.findById(attachmentId);
+    if (!row) {
+      throw new Error(`附件不存在: ${attachmentId}`);
+    }
+    const bytes = await fsp.readFile(path.resolve(Constants.dataDir, row.path));
+    return this.storeImage(bytes, row.mimeType);
+  }
+
+  /** 删除附件对应的磁盘文件，路径越权或删除失败只记日志，该文件之后不再回收 */
+  async deleteFiles(relativePaths: string[]): Promise<void> {
+    for (const relativePath of relativePaths) {
+      const target = path.resolve(Constants.dataDir, relativePath);
+      const relative = path.relative(this.attachmentDir, target);
+      if (relative.startsWith('..') || path.isAbsolute(relative)) {
+        console.error('[AttachmentService] 跳过越权路径:', relativePath);
+        continue;
+      }
+      try {
+        await fsp.unlink(target);
+      } catch (error) {
+        console.error('[AttachmentService] 附件文件删除失败:', relativePath, error);
+      }
+    }
+  }
+
+  /** 按 id 查附件记录 */
+  getAttachment(attachmentId: string) {
+    return attachmentRepo.findById(attachmentId);
+  }
+
+  /** 处理并落盘一张图片，登记附件行，返回图片引用 */
+  private async storeImage(originalBytes: Buffer, declaredMimeType: string): Promise<ImageContent> {
     const mimeType = resolveImageMimeType(originalBytes, declaredMimeType);
     if (!mimeType) {
       throw new Error('不支持的图片格式，仅支持 PNG / JPEG / WebP / GIF / BMP');
@@ -191,17 +205,38 @@ export class ImageService extends BaseService {
 
     const prepared = compressImage(originalBytes, mimeType);
     const extension = IMAGE_EXTENSIONS[prepared.mimeType] ?? 'png';
-    const dir = path.join(this.imageDir, sessionId);
+
+    // 先写文件后插行，插行失败时删掉已写的文件；这步再失败，文件就留在磁盘上不再回收
+    const attachmentId = crypto.randomUUID();
+    const fileName = `${attachmentId}.${extension}`;
+    const dir = path.join(this.attachmentDir, AttachmentService.IMAGE_SUBDIR);
     fs.mkdirSync(dir, { recursive: true });
+    const target = path.join(dir, fileName);
+    fs.writeFileSync(target, prepared.bytes);
 
-    const fileName = `${randomUUID()}.${extension}`;
-    fs.writeFileSync(path.join(dir, fileName), prepared.bytes);
+    try {
+      attachmentRepo.insert({
+        id: attachmentId,
+        path: this.toRelativePath(target),
+        type: 'image',
+        mimeType: prepared.mimeType,
+        size: prepared.bytes.length,
+      });
+    } catch (error) {
+      try {
+        fs.unlinkSync(target);
+      } catch (cleanupError) {
+        console.error('[AttachmentService] 残留文件清理失败:', target, cleanupError);
+      }
+      throw error;
+    }
 
-    return {
-      type: 'image',
-      path: `images/${sessionId}/${fileName}`,
-      mimeType: prepared.mimeType,
-    };
+    return { type: 'image', attachmentId };
+  }
+
+  /** 绝对路径转相对 dataDir 的正斜杠路径 */
+  private toRelativePath(absolutePath: string): string {
+    return path.relative(Constants.dataDir, absolutePath).split(path.sep).join('/');
   }
 
   /** 弹出文件选择框并读取图片字节；用户取消时返回空数组 */
@@ -215,7 +250,6 @@ export class ImageService extends BaseService {
       ],
     };
 
-    // 挂在主窗口上，弹框才会成为窗口的模态子窗并自动获得焦点
     const parent = getMainWindow();
     const result = parent
       ? await dialog.showOpenDialog(parent, options)
@@ -229,4 +263,4 @@ export class ImageService extends BaseService {
   }
 }
 
-export const imageService = new ImageService();
+export const attachmentService = new AttachmentService();

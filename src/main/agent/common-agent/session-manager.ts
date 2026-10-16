@@ -7,9 +7,11 @@ import type {
   SessionEntryBase,
 } from '@shared/types/chat';
 import { v4 as uuidv4 } from 'uuid';
-import { agentEntryRepo, agentSessionRepo } from '../../db/repo';
+import log from 'electron-log';
+import { agentEntryRepo, agentSessionRepo, attachmentRepo } from '../../db/repo';
 import type { AgentEntryRow } from '../../db/repo';
 import { runInTransaction } from '../../db';
+import { attachmentService } from '../../service/attachment-service';
 
 /**
  * 由会话日志推导出的上下文快照。
@@ -166,8 +168,30 @@ export function loadBranch(sessionId: string): BranchSnapshot {
   return { tipEntryId, entries: walkUp(tipEntryId) };
 }
 
+/** 从 entry 的 payload 里提取它引用的附件 id */
+function extractAttachmentIds(rows: AgentEntryRow[]): string[] {
+  const ids: string[] = [];
+  for (const row of rows) {
+    if (row.type !== 'message') continue;
+    const payload = row.payload as { message?: { content?: unknown } };
+    const content = payload.message?.content;
+    if (!Array.isArray(content)) continue;
+    for (const block of content) {
+      if (
+        block &&
+        typeof block === 'object' &&
+        (block as { type?: unknown }).type === 'image' &&
+        typeof (block as { attachmentId?: unknown }).attachmentId === 'string'
+      ) {
+        ids.push((block as { attachmentId: string }).attachmentId);
+      }
+    }
+  }
+  return ids;
+}
+
 /**
- * 从某个分支末端向上回收不可达的 entry，删掉会话引用之后调用。
+ * 从某个分支末端向上收集不可达的 entry 行。
  *
  * 沿父指针往上走，遇到「还有别的孩子」或「还有别的会话把它当末端」就停下：那个节点及其祖先仍被别的分支可达，必须保留；它更靠近末端的那些节点已无人引用，可以删。
  * 向上走时要排除「自己是从哪个孩子走上来的」，否则每个节点都会因为那个孩子而被误判成有别的孩子。
@@ -175,8 +199,8 @@ export function loadBranch(sessionId: string): BranchSnapshot {
  * @param tipEntryId - 刚被删掉引用所指向的末端
  * @returns 被回收的 entry 数量
  */
-export function collectUnreachableEntries(tipEntryId: string): number {
-  const unreachable: string[] = [];
+function collectUnreachableRows(tipEntryId: string): AgentEntryRow[] {
+  const rows: AgentEntryRow[] = [];
   let cursor: string | null = tipEntryId;
   let cameFrom: string | null = null;
 
@@ -187,13 +211,32 @@ export function collectUnreachableEntries(tipEntryId: string): number {
     const otherChildren = agentEntryRepo.listChildIds(cursor).filter(id => id !== cameFrom);
     if (otherChildren.length > 0 || agentSessionRepo.existsByTip(cursor)) break;
 
-    unreachable.push(cursor);
+    rows.push(row);
     cameFrom = cursor;
     cursor = row.parentEntryId;
   }
+  return rows;
+}
 
-  agentEntryRepo.deleteByIds(unreachable);
-  return unreachable.length;
+/** 删除 entry 引用的附件行，返回被删附件的相对路径供事务提交后删文件 */
+function dropAttachmentsOfEntries(rows: AgentEntryRow[]): string[] {
+  const attachmentIds = extractAttachmentIds(rows);
+  if (attachmentIds.length === 0) return [];
+
+  let paths: string[] = [];
+  try {
+    paths = attachmentRepo.findByIds(attachmentIds).map(row => row.path);
+  } catch (error) {
+    log.error('[SessionManager] 查询 entry 附件失败:', error);
+    return [];
+  }
+  try {
+    attachmentRepo.deleteByIds(attachmentIds);
+  } catch (error) {
+    log.error('[SessionManager] 回收 entry 附件失败:', error);
+    return [];
+  }
+  return paths;
 }
 
 /**
@@ -204,10 +247,21 @@ export function collectUnreachableEntries(tipEntryId: string): number {
 export function dropSessionBranch(sessionId: string): number {
   const tipEntryId = agentSessionRepo.findTip(sessionId);
   // 删会话与回收在同一个事务里。别的分支共享的那段历史会被可达性判断保留下来，所以删除永远不连坐
-  return runInTransaction(() => {
+  const result = runInTransaction(() => {
     agentSessionRepo.delete(sessionId);
-    return tipEntryId === null ? 0 : collectUnreachableEntries(tipEntryId);
+    if (tipEntryId === null) {
+      return { count: 0, attachmentPaths: [] as string[] };
+    }
+
+    const unreachableRows = collectUnreachableRows(tipEntryId);
+    agentEntryRepo.deleteByIds(unreachableRows.map(row => row.id));
+    const attachmentPaths = dropAttachmentsOfEntries(unreachableRows);
+    return { count: unreachableRows.length, attachmentPaths };
   });
+
+  // 事务提交后再删附件文件
+  void attachmentService.deleteFiles(result.attachmentPaths);
+  return result.count;
 }
 
 /* ───────────────────────────────── 运行时视图 ───────────────────────────────── */

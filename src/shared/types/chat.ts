@@ -86,10 +86,11 @@ export interface ThinkingContent {
 
 export interface ImageContent {
   type: 'image';
-  /** 落盘图片相对 dataDir 的路径，如 images/<sessionId>/<uuid>.png。会话日志只保存该路径。 */
-  path: string;
-  mimeType: string; // e.g., "image/jpeg", "image/png"
-  /** base64 图片数据。仅在发往模型前由读取环节按需填入，不进入会话日志。 */
+  /** 附件 id，对应 attachment 表主键 */
+  attachmentId: string;
+  /** MIME 类型；日志不保存，发往模型前由读取环节查附件表补齐 */
+  mimeType?: string;
+  /** base64 数据；仅在发往模型前按需填入，不进入会话日志 */
   data?: string;
 }
 
@@ -385,15 +386,9 @@ export interface ForkSessionResult {
   summary: SessionSummary;
 }
 
-/**
- * 图片入库请求。
- * 带 images 时落盘这些字节（粘贴来源），不带时由主进程弹文件框让用户选择。
- * 单条消息的图片数量上限由渲染层把关。
- */
-export interface ImageStoreRequest {
-  /** 目标会话 id，决定图片存放的子目录。 */
-  sessionId: string;
-  /** 待落盘的图片字节；省略时由主进程弹框选择图片。 */
+/** 附件入库请求；images 省略时由主进程弹文件框让用户选择 */
+export interface AttachmentStoreRequest {
+  /** 待落盘的图片字节 */
   images?: { bytes: Uint8Array; mimeType: string }[];
 }
 
@@ -401,7 +396,7 @@ export interface ImageStoreRequest {
 export interface StreamSendRequest {
   sessionId: string;
   text: string;
-  /** 本次消息携带的图片引用；内容已落盘，只带路径，发往模型时再读取。 */
+  /** 本次消息携带的图片附件 */
   images?: ImageContent[];
   /** 本次运行使用的思考级别。缺省视作 medium。 */
   thinkingLevel?: ThinkingLevel;

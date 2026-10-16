@@ -13,8 +13,10 @@ export {
 export type { CardGroupCounts, CardWriteData } from './flashcard-repo';
 export { agentSessionRepo, AgentSessionRepo } from './agent-session-repo';
 export { agentEntryRepo, AgentEntryRepo } from './agent-entry-repo';
+export { attachmentRepo, AttachmentRepo } from './attachment-repo';
 export type { AgentSessionRow, InsertAgentSessionRow } from '../schema';
 export type { AgentEntryRow, InsertAgentEntryRow } from '../schema';
+export type { AttachmentRow, InsertAttachmentRow } from '../schema';
 export type { BookChunkCount } from './book-chunk-repo';
 export { embedIndexRepo, EmbedIndexRepo } from './embed-index-repo';
 export { embedTaskRepo, EmbedTaskRepo } from './embed-task-repo';

@@ -100,7 +100,7 @@ export function createReadTool(
     promptSnippet: '读取非二进制的文本文件',
     promptGuidelines: [
       'read 适合读取非二进制的文本文件（配置、导出的文本等）。',
-      '需要查看图片时用 read_image，不要用 read。',
+      '需要查看图片时用 read_image（按路径）或 read_attachment_image（按附件 id），不要用 read。',
     ],
     parameters: readSchema,
     async execute(_toolCallId, params, signal) {
@@ -110,7 +110,9 @@ export function createReadTool(
 
       const absolutePath = resolveReadPath(params.path, cwd);
       if (imageExtensions.has(path.extname(absolutePath).toLowerCase())) {
-        throw new Error(`${params.path} 是图片文件，read 不读图片，请改用 read_image`);
+        throw new Error(
+          `${params.path} 是图片文件，read 不读图片，请改用 read_image（按路径）或 read_attachment_image（按附件 id）`
+        );
       }
 
       await defaultReadOperations.access(absolutePath);
