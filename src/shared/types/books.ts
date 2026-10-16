@@ -1,7 +1,8 @@
 /** 当前支持的书类型。后续新增文件类型只需扩展这个联合类型 */
 import type { FoliateBook } from '@/components/reader/foliate-types';
 
-export type BookType = 'epub';
+/** epub：ZIP 容器；pdf：固定版式文档（由 pdfjs 适配层转成 foliate 的 Book 对象） */
+export type BookType = 'epub' | 'pdf';
 
 /** 封面图片的字节 + 扩展名。Blob 不能跨 IPC 传输，拆成这两个字段 */
 export interface CoverImage {
@@ -166,5 +167,9 @@ export interface BookGetResult {
   url?: string;
   /** 文件类型（冗余存储，避免前端再查 DB） */
   type?: BookType;
+  /** 书籍名。PDF 元信息里没标题时，渲染端用它兜底展示 */
+  name?: string;
+  /** 已存在的封面 app:// URL；为 null 表示还没有封面（PDF 据此在首次打开时补生成） */
+  coverUrl?: string | null;
   error?: string;
 }

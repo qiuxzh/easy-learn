@@ -6,6 +6,7 @@ import { useTabsStore } from '@/stores/tabs-store';
 import { buildReaderCSS } from './reader-styles';
 import { registerIframeKeyHandlers, registerReaderEdgeClick } from '@/utils/iframe-event-bridge';
 import { parsePageLabel, resolveChapter } from '@/utils/reader-utils';
+import { withFixedLayoutSpread } from '@/utils/pdf-book';
 import type { ReaderConfig } from '@shared/config';
 import type { FoliateViewElement, ReaderViewOperator } from './foliate-types';
 
@@ -14,23 +15,26 @@ interface BookViewerProps {
 }
 
 /**
- * 把阅读配置写到 foliate 的分页器上。
+ * 把阅读配置写到 foliate 的渲染器上。
  *
  * `flow` 决定翻页还是滚动；`max-column-count` 是「上限」不是「强制」，可用宽度不足时
  * foliate 会自行降栏，滚动模式下则整个忽略它。未配置按「翻页 + 单栏」处理，与
  * `DEFAULT_READER_CONFIG` 一致。
- * 固定版式（PDF、pre-paginated EPUB）由 <foliate-fxl> 渲染，没有这些属性，直接跳过。
+ * 固定版式（PDF、pre-paginated EPUB）由 <foliate-fxl> 渲染，没有这些属性，改为只应用缩放：
+ * fxl 的 `zoom` 属性是响应式的（zoom / fit-width / fit-page），改动会立刻重排。
  * 属性值没变时自定义元素不触发回调，所以重复调用不会带来多余重排。
  */
 function applyReaderConfig(
   view: FoliateViewElement | null,
   reader: ReaderConfig | undefined
 ): void {
-  if (!view || view.isFixedLayout) return;
-  const renderer = view.renderer;
-  if (!renderer) return;
-  renderer.setAttribute('flow', reader?.mode === 'scrolled' ? 'scrolled' : 'paginated');
-  renderer.setAttribute('max-column-count', reader?.layout === 'double' ? '2' : '1');
+  if (!view || !view.renderer) return;
+  if (view.isFixedLayout) {
+    view.renderer.setAttribute('zoom', String(reader?.pdfZoom ?? 'fit-page'));
+    return;
+  }
+  view.renderer.setAttribute('flow', reader?.mode === 'scrolled' ? 'scrolled' : 'paginated');
+  view.renderer.setAttribute('max-column-count', reader?.layout === 'double' ? '2' : '1');
 }
 
 /**
@@ -50,9 +54,16 @@ export const BookViewer = ({ readerTabId }: BookViewerProps) => {
   const setSelection = useReaderStore(s => s.setSelection);
   const rawBook = useReaderStore(s => s.tabs[readerTabId]?.book?.rawBook);
   const bookTocs = useReaderStore(s => s.tabs[readerTabId]?.book?.tocs);
+  const bookType = useReaderStore(s => s.tabs[readerTabId]?.book?.type);
   // 阅读配置。选到叶子上的原始值：选 config.reader 会在任何配置变更时重渲染
   const readerMode = useConfigStore(s => s.config.reader?.mode);
   const readerLayout = useConfigStore(s => s.config.reader?.layout);
+  const readerPdfZoom = useConfigStore(s => s.config.reader?.pdfZoom);
+
+  // 固定版式的跨页方式（单页 / 跨页）只能在 open() 之前写进 rendition ——
+  // foliate 1.0.1 的 fxl 在 open() 里据此建 spreads，之后没有响应式入口。
+  // 所以 PDF 的栏数变化靠重建 view 生效；EPUB 这个 key 恒为 null，不会触发多余重建。
+  const fixedLayoutKey = bookType === 'pdf' ? readerLayout : null;
 
   // 容器：foliate-view append 到这里
   const containerRef = useRef<HTMLDivElement>(null);
@@ -80,8 +91,11 @@ export const BookViewer = ({ readerTabId }: BookViewerProps) => {
     };
     setReaderViewOperator(readerTabId, operator);
 
-    // 把当前主题样式注入 EPUB iframe
+    // 把当前主题样式注入 EPUB iframe。
+    // 固定版式必须跳过：fxl 渲染器没有 setStyles 方法（会抛 TypeError），
+    // 而且注入的 `* { color: ... !important }` 会盖掉 PDF 文字层的透明色，页面出现重影文字。
     const injectTheme = () => {
+      if (view.isFixedLayout) return;
       view.renderer?.setStyles(buildReaderCSS());
     };
 
@@ -207,7 +221,16 @@ export const BookViewer = ({ readerTabId }: BookViewerProps) => {
     (async () => {
       try {
         console.log('BookViewer: 开始加载渲染');
-        await view.open(rawBook);
+        // 固定版式的跨页方式必须在 open 之前定好，晚于 open 就不起作用了。
+        // 不直接改 store 里的 book（hook 返回值不允许就地修改），复制一份带目标 spread 的对象。
+        const openTarget =
+          bookType === 'pdf'
+            ? withFixedLayoutSpread(
+                rawBook,
+                useConfigStore.getState().config.reader?.layout === 'double' ? 'auto' : 'none'
+              )
+            : rawBook;
+        await view.open(openTarget);
         // 赶在 init 首次排版之前设好，否则会先按 foliate 的默认排版跑一遍再重排。
         // 这里直接读快照而不是闭包里的配置：这个 effect 不依赖它们，
         // 闭包值可能已经过期；过期也无妨，下面的 effect 会再纠正一次。
@@ -247,10 +270,14 @@ export const BookViewer = ({ readerTabId }: BookViewerProps) => {
         /* 忽略 foliate-js 内部清理的异常 */
       }
       view.remove();
+      // 不调用 rawBook.destroy()：BookEntity 由 book-loader 按 bookId 缓存、可能被多个 tab 共享，
+      // 在这里销毁会把别的 tab 的 PDF 一起弄坏。它的生命周期跟缓存淘汰一起处理。
     };
   }, [
     rawBook,
     bookTocs,
+    bookType,
+    fixedLayoutKey,
     readerTabId,
     setReaderViewOperator,
     setCurrentChapter,
@@ -258,16 +285,25 @@ export const BookViewer = ({ readerTabId }: BookViewerProps) => {
     setSelection,
   ]);
 
-  // 配置变更 → 应用到分页器。切模式/切栏都不跳页：foliate 重排后会锚回原位置。
+  // 配置变更 → 应用到渲染器。切模式/切栏都不跳页：foliate 重排后会锚回原位置。
   // view 的重建由上面那个 effect 负责，这里不依赖 rawBook，所以改配置不会重新加载书。
+  // 例外：PDF 的栏数（fixedLayoutKey）会重建 view，因为跨页方式只能在 open 前设定。
   useEffect(() => {
-    applyReaderConfig(viewRef.current, { mode: readerMode, layout: readerLayout });
-  }, [readerMode, readerLayout, viewReady]);
+    applyReaderConfig(viewRef.current, {
+      mode: readerMode,
+      layout: readerLayout,
+      pdfZoom: readerPdfZoom,
+    });
+  }, [readerMode, readerLayout, readerPdfZoom, viewReady]);
 
   return (
     <div
       ref={containerRef}
-      className="h-full w-full bg-background"
+      // select-none：阅读区（含 foliate 给书页留的空白）不可选中。
+      // 页面缩小后留白很宽，点空白翻页时按下的落点就在父文档里，浏览器会从应用自己的
+      // 文字（如标签栏）拉出一段选区，铺过整个书页区域，看起来像"整页被选中"。
+      // iframe 是独立文档，不受这条影响，页面内选字照旧。
+      className="h-full w-full select-none bg-background"
       data-book-id={rawBook?.metadata?.title}
     />
   );

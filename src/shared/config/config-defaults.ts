@@ -13,10 +13,11 @@ export const DEFAULT_EMBEDDING_CONFIG: EmbeddingConfig = {
   models: {},
 };
 
-/** reader 区块的默认内容：翻页 + 单栏。 */
+/** reader 区块的默认内容：翻页 + 单栏 + 固定版式整页适配。 */
 export const DEFAULT_READER_CONFIG: ReaderConfig = {
   layout: 'single',
   mode: 'paginated',
+  pdfZoom: 'fit-page',
 };
 
 /** config.json 的默认内容。 */

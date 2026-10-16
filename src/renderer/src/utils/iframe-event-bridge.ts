@@ -4,6 +4,7 @@
  * 阅读区指放书的那块区域。本文件把用户在这里的按键和点击转成消息发给主窗口，
  * 调用方只处理语义化的结果（哪个按键、左还是右），不需要接触 iframe 和坐标计算。
  */
+import { INTERACTIVE_SELECTOR, isClickRelease, resolveEdgeDirection } from './reader-interaction';
 
 interface RegisteredDocument extends Document {
   __foliateBridgeRegistered?: boolean;
@@ -13,16 +14,6 @@ interface RegisteredDocument extends Document {
 interface RegisteredElement extends HTMLElement {
   __foliateEdgeClickRegistered?: boolean;
 }
-
-/** 拖动超过该像素距离视为选中文字，不算点击 */
-const CLICK_DRAG_TOLERANCE_PX = 6;
-
-/** 左右边缘区域宽度：至少 48px，同时不小于阅读区宽度的 6% */
-const EDGE_ZONE_MIN_PX = 48;
-const EDGE_ZONE_RATIO = 0.06;
-
-/** 点到链接、按钮这类元素时不翻页 */
-const INTERACTIVE_SELECTOR = 'a[href], button, input, textarea, select, [role="button"]';
 
 /** 注册键盘监听：把 iframe 内的按键转发给主窗口 */
 export function registerIframeKeyHandlers(doc: Document, tabId: string): void {
@@ -105,8 +96,8 @@ function attachContentEdgeClick(doc: Document, container: HTMLElement, tabId: st
 
   let downX = 0;
   let downY = 0;
-  let hadSelection = false; // pointerdown 时是否已经选中了文字
   let downSeen = false; // pointerdown 是否落在 iframe 里
+  let hadSelection = false; // 按下时是否已经有残留选区
 
   /** 复位按下时的记录，避免交互跨区域时残留到下一次点击 */
   const resetDown = () => {
@@ -132,13 +123,18 @@ function attachContentEdgeClick(doc: Document, container: HTMLElement, tabId: st
     if (!downSeen) return;
     const hadSel = hadSelection;
     resetDown();
-    // 按下时已经选中了文字，说明这次点击是用来取消选中的，不翻页
-    if (hadSel) return;
-    // 位移过大，是拖选
-    if (Math.abs(event.clientX - downX) > CLICK_DRAG_TOLERANCE_PX) return;
-    if (Math.abs(event.clientY - downY) > CLICK_DRAG_TOLERANCE_PX) return;
-    // 选中了文字（拖选），不翻页
-    if (!(doc.getSelection()?.isCollapsed ?? true)) return;
+    const selection = doc.getSelection();
+    // 位移过大、或本次手势拖选出了文字，都不算点击
+    if (
+      !isClickRelease({
+        deltaX: event.clientX - downX,
+        deltaY: event.clientY - downY,
+        hadSelectionOnPress: hadSel,
+        hasSelectionNow: !(selection?.isCollapsed ?? true),
+      })
+    ) {
+      return;
+    }
     // 点到链接或按钮，交给它们自己处理
     const target = event.target as Element | null;
     if (target?.closest?.(INTERACTIVE_SELECTOR)) return;
@@ -146,18 +142,11 @@ function attachContentEdgeClick(doc: Document, container: HTMLElement, tabId: st
     const clientX = resolveIframeClientX(doc, event.clientX);
     if (clientX === null) return;
     const direction = resolveEdgeDirection(clientX, container.getBoundingClientRect());
-    if (direction) postEdgeClick(tabId, direction);
+    if (!direction) return;
+    // 边缘区一律翻页：翻页会让残留选区失去意义，先清掉，否则它会一直挡着后续点击
+    selection?.removeAllRanges();
+    postEdgeClick(tabId, direction);
   });
-}
-
-/** 点击位置落在阅读区左 / 右边缘的哪一侧；不在边缘返回 null */
-function resolveEdgeDirection(clientX: number, rect: DOMRect): 'left' | 'right' | null {
-  if (rect.width <= 0) return null;
-  const zone = Math.max(EDGE_ZONE_MIN_PX, rect.width * EDGE_ZONE_RATIO);
-  const x = clientX - rect.left;
-  if (x <= zone) return 'left';
-  if (x >= rect.width - zone) return 'right';
-  return null;
 }
 
 /**

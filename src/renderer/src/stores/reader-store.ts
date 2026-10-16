@@ -132,11 +132,13 @@ export const useReaderStore = create<ReaderState>()(
           if (book.metadata.title) {
             useTabsStore.getState().updateTabTitle(tabId, book.metadata.title);
           }
-          const tabSnapshot = useReaderStore.getState().tabs[tabId];
-          console.log(
-            `[initReaderTab] 书籍加载完成 tabId: ${tabId}`,
-            JSON.parse(JSON.stringify(tabSnapshot))
-          );
+          // 只打可序列化字段：book 持有 pdf.js 文档（WorkerTransport 与 loadingTask 循环引用），整体 JSON 化会抛错
+          console.log(`[initReaderTab] 书籍加载完成 tabId: ${tabId}`, {
+            isReady: get().tabs[tabId]?.isReady,
+            bookId,
+            type: book.type,
+            title: book.metadata.title,
+          });
         })
         .catch(err => {
           console.error('[initReaderTab] 加载失败:', err);

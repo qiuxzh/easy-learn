@@ -140,7 +140,14 @@ export function BookIndexSection({ bookId }: BookIndexSectionProps) {
     else await startEmbedding('rebuild');
   }
 
-  const nodes = buildNodes({ state, counts, configured, notes, stale });
+  const nodes = buildNodes({
+    state,
+    counts,
+    configured,
+    notes,
+    stale,
+    unsupported: book.booksType !== 'epub',
+  });
 
   return (
     <div className="flex flex-col border-t border-border pt-4">
@@ -311,6 +318,8 @@ function buildNodes(input: {
   configured: boolean;
   notes: string[];
   stale: boolean;
+  /** 该格式还没接入分片/向量化（当前只有 PDF），两个节点都按不可用展示 */
+  unsupported: boolean;
 }): {
   active: boolean;
   split: { tone: NodeTone; stateText: string; body: string; hint?: string; locked: boolean };
@@ -324,8 +333,25 @@ function buildNodes(input: {
   };
   note: string;
 } {
-  const { state, counts, configured, notes, stale } = input;
+  const { state, counts, configured, notes, stale, unsupported } = input;
   const { total, done } = counts;
+
+  // PDF 只支持阅读：分片与向量化都还没接入，直接给出不可用态，避免点了按钮才报错
+  if (unsupported) {
+    return {
+      active: false,
+      split: {
+        tone: 'off',
+        stateText: '不适用',
+        body: 'PDF 暂无正文分片',
+        hint: '该格式的分片与向量化尚未接入',
+        locked: true,
+      },
+      embed: { tone: 'off', stateText: '不可用', body: 'PDF 暂无向量索引', actions: [] },
+      note: '当前只支持阅读 PDF，正文索引待后续支持。',
+    };
+  }
+
   const ratio = total === 0 ? 0 : done / total;
   const active = state === 'running' || state === 'paused' || state === 'queued';
 

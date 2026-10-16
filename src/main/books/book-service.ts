@@ -14,6 +14,7 @@ import type {
   BookListResult,
   BookPickCoverResult,
   BookRechunkResult,
+  BookType,
   BookUpdateRequest,
   BookUpdateResult,
   CoverImage,
@@ -32,7 +33,7 @@ import {
   toBook,
   toResultToc,
 } from './util';
-import { BaseService } from '../service/base-service';
+import { BaseService } from '@main/service';
 import { Constants } from '../constants';
 import { runInTransaction } from '../db';
 import { bookChunkRepo, bookEmbeddingRepo, bookRepo } from '../db/repo';
@@ -122,10 +123,13 @@ export interface ReadBookTocTextResult {
  * - 按 TOC 项读取章节正文（readBookTocText），供 AI reading-tools 工具使用
  *
  * 文件布局（相对 Constants.dataDir）：
- * - books/{booksStoreName}         拷贝后的源 epub 文件
- * - books/cover/{id}{ext}          导入时从元信息抽出的封面图
+ * - books/{booksStoreName}         拷贝后的源文件（epub / pdf）
+ * - books/cover/{id}{ext}          导入时从元信息或首页渲染出的封面图
  * - books/cover/{id}-{时间戳}{ext}  用户手动更换的封面图（带时间戳避免命中旧图缓存）
  * - DB 中存 books + book_chunks 两张表，book_chunks 没有级联删除，必须显式清理
+ *
+ * 格式支持：EPUB 会解析出分片供检索；PDF 目前只导入文件 + 页数 + 首页封面，
+ * 分片 / 向量化 / 正文提取都未接入（相关入口对 PDF 会给出明确错误）。
  */
 export class BookService extends BaseService {
   /** 用户书籍根目录，所有书籍文件和封面都以此为前缀 */
@@ -181,7 +185,7 @@ export class BookService extends BaseService {
 
     ipcMain.handle(IpcChannel.Book_PickAndImport, async (): Promise<BookImportResult> => {
       try {
-        const picked = await this.pickEpubFile();
+        const picked = await this.pickBookFile();
         if (!picked) return { success: false, canceled: true };
 
         const row = await this.importBook(picked.filePath);
@@ -230,7 +234,15 @@ export class BookService extends BaseService {
           }
           // 构造 app:// 协议 URL（booksStoreName 已是 bookDir 下的文件名，相对 dataDir）
           const url = `app:///books/${row.booksStoreName}`;
-          return { success: true, url, type: row.booksType };
+          // name 给渲染端兜底：PDF 元信息里没有标题时用书籍名展示
+          // coverUrl 给渲染端判断要不要补生成封面（PDF 的封面在首次打开时渲染）
+          return {
+            success: true,
+            url,
+            type: row.booksType,
+            name: row.booksName,
+            coverUrl: row.coverImg ? `app:///${row.coverImg}` : null,
+          };
         } catch (e) {
           log.error('[BookService] getBook failed:', e);
           return { success: false, error: String(e) };
@@ -276,7 +288,6 @@ export class BookService extends BaseService {
     );
   }
 
-  /** 弹出文件选择框，返回用户选择的 EPUB 路径，取消选择则返回 null */
   /**
    * 把一行书籍记录转成渲染端实体，顺带查它的向量化信息。
    * 批量路径不要用它——那里先用 `loadAll` 一次查完，避免按书逐个查询。
@@ -285,11 +296,14 @@ export class BookService extends BaseService {
     return toBook(row, this.readBookFileSize(row), bookEmbeddingRepo.load(row.id));
   }
 
-  private async pickEpubFile(): Promise<{ filePath: string } | null> {
+  /** 弹出文件选择框，返回用户选择的书籍路径（EPUB / PDF），取消选择则返回 null */
+  private async pickBookFile(): Promise<{ filePath: string } | null> {
     const result = await dialog.showOpenDialog({
       properties: ['openFile'],
       filters: [
+        { name: '电子书', extensions: ['epub', 'pdf'] },
         { name: 'EPUB 文件', extensions: ['epub'] },
+        { name: 'PDF 文件', extensions: ['pdf'] },
         { name: '所有文件', extensions: ['*'] },
       ],
     });
@@ -297,15 +311,22 @@ export class BookService extends BaseService {
     return { filePath: result.filePaths[0] };
   }
 
+  /** 按扩展名分派导入流程（当前支持 EPUB / PDF） */
+  private async importBook(srcFilePath: string): Promise<BookRow> {
+    return detectBookFormat(srcFilePath) === 'pdf'
+      ? this.importPdfBook(srcFilePath)
+      : this.importEpubBook(srcFilePath);
+  }
+
   /**
-   * 导入一本书（main 端完成解析 + 写库）：
+   * 导入一本 EPUB（main 端完成解析 + 写库）：
    * 1. 解析 EPUB 并生成带 CFI 的正文分片
    * 2. 确保 bookDir / cover 目录存在
    * 3. 写 DB 元信息和分片数据
    * 4. 保存 cover（如有）
    * 5. 拷贝源文件到 bookDir/{booksStoreName}
    */
-  private async importBook(srcFilePath: string): Promise<BookRow> {
+  private async importEpubBook(srcFilePath: string): Promise<BookRow> {
     // 1. 解析 EPUB 并生成可检索的正文分片
     const id = crypto.randomUUID();
     const info = await parseEpubFile(srcFilePath);
@@ -365,6 +386,35 @@ export class BookService extends BaseService {
     return row;
   }
   /**
+   * 导入一本 PDF：只落库 + 拷贝源文件，不做任何内容解析。
+   *
+   * 阅读由渲染进程的 pdf.js 适配层负责；页数与封面也都在渲染进程首次打开该书时补：
+   * 页数来自 pdf.js，封面渲染首页后经 Book_UpdateBook 回写。
+   * 这里不引入 PDFium / canvas 之类的原生依赖。
+   */
+  private async importPdfBook(srcFilePath: string): Promise<BookRow> {
+    const id = crypto.randomUUID();
+    fs.mkdirSync(this.bookDir, { recursive: true });
+
+    const booksStoreName = `${id}.pdf`;
+    const row = bookRepo.create({
+      id,
+      // 书名先用文件名：PDF 的元信息在渲染进程读，之后由 Book_UpdateBook 覆盖
+      booksName: path.basename(srcFilePath, path.extname(srcFilePath)),
+      booksStoreName,
+      booksType: 'pdf',
+      coverImg: null,
+      totalPages: null,
+      totalChapters: null,
+      description: null,
+      author: null,
+    });
+
+    fs.copyFileSync(srcFilePath, path.join(this.bookDir, booksStoreName));
+    return row;
+  }
+
+  /**
    * 删除一本书：
    * 1. 查询 DB 拿到书籍记录
    * 2. 删除封面文件（如有）
@@ -408,6 +458,9 @@ export class BookService extends BaseService {
     const row = bookRepo.findById(id);
     if (!row) {
       throw new Error(`Book not found: ${id}`);
+    }
+    if (row.booksType !== 'epub') {
+      throw new Error('该格式暂不支持重新分片');
     }
 
     const sourcePath = path.join(this.bookDir, row.booksStoreName);
@@ -753,7 +806,8 @@ export class BookService extends BaseService {
   /**
    * 拿 bookId 对应的解析后 EPUB。
    * 命中缓存直接返回；未命中则读 DB 拿到路径 → 读文件 → parseEpubFromBuffer → 写入缓存。
-   * 解析失败（文件丢失 / epub 损坏）返回 null，调用方负责降级（空 TOC / 空章节）。
+   * 解析失败（文件丢失 / epub 损坏）返回 null，调用方负责降级（空 TOC / 空章节）；
+   * 非 EPUB（例如 PDF）同样返回 null —— AI 工具链的正文读取目前只支持 EPUB。
    */
   private async getParsedBook(bookId: string): Promise<ParsedBookCacheEntry | null> {
     const cached = this.parsedBookCache.get(bookId);
@@ -763,6 +817,11 @@ export class BookService extends BaseService {
 
     const row = bookRepo.findById(bookId);
     if (!row) return null;
+
+    if (row.booksType !== 'epub') {
+      log.warn(`[BookService] getParsedBook: 暂不支持解析 ${row.booksType} 正文 (${bookId})`);
+      return null;
+    }
 
     const filePath = path.join(this.bookDir, row.booksStoreName);
     try {
@@ -784,6 +843,15 @@ export class BookService extends BaseService {
       return null;
     }
   }
+}
+
+/**
+ * 按扩展名判断导入格式。
+ * 对话框已经限制了可选类型，这里作为最后一道判断；未知扩展名按 EPUB 处理，
+ * 解析失败会在 parseEpubFile 里报错并中断导入。
+ */
+function detectBookFormat(filePath: string): BookType {
+  return path.extname(filePath).toLowerCase() === '.pdf' ? 'pdf' : 'epub';
 }
 
 /**

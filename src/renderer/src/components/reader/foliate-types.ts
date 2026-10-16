@@ -282,10 +282,24 @@ export interface ReaderViewOperator {
 // 书籍对象（foliate-js 解析 EPUB 后的 Book 对象）类型
 // ============================================================
 
-/** 章节。foliate-js 通过 load() 拿到渲染内容（URL/data URI/字符串）。 */
+/**
+ * 固定版式章节的加载结果。
+ *
+ * `<foliate-fxl>` 允许 `load()` 返回对象而不是字符串：`src` 是页面 iframe 的地址，
+ * `onZoom` 在每次缩放/尺寸变化时被调用，用于按新比例重绘内容（PDF 的 canvas 重绘就靠它）。
+ * 参考 node_modules/foliate-js/fixed-layout.js 的 #createFrame / #render。
+ */
+export interface FoliateFixedLayoutSource {
+  /** 页面 iframe 的地址（通常是 blob URL） */
+  src: string;
+  /** 缩放回调：doc 是页面 iframe 的 document，scale 是当前缩放系数 */
+  onZoom?: (options: { doc: Document; scale: number }) => void | Promise<void>;
+}
+
+/** 章节。foliate-js 通过 load() 拿到渲染内容（URL/data URI/字符串/固定版式对象）。 */
 export interface FoliateSection {
-  /** 返回可渲染的资源 URL/字符串；可能异步 */
-  load(): string | Promise<string>;
+  /** 返回可渲染的资源 URL/字符串或固定版式加载结果；可能异步 */
+  load(): string | FoliateFixedLayoutSource | Promise<string | FoliateFixedLayoutSource>;
   /** 可选：释放资源 */
   unload?: () => void;
   /** 返回 Document 对象，用于搜索等。foliate-js 文档标为 optional */
@@ -296,10 +310,12 @@ export interface FoliateSection {
   linear?: string;
   /** 章节基础 CFI（'!' 之前的部分） */
   cfi?: string;
-  /** 唯一 id；TOC 反查时作为 Map 键使用，类型任意但需可作为 Map key */
+  /** 唯一 id；TOC 反查时作为 Map 键使用，必须与 splitTOCHref 返回的第一项一致 */
   id: string;
   /** 翻页方向 */
   dir?: 'ltr' | 'rtl' | string;
+  /** 固定版式：该页在跨页中的位置 */
+  pageSpread?: 'left' | 'right' | 'center' | '';
 }
 
 /** 目录/页表中的单个条目。subitems 用于层级嵌套。 */
@@ -334,6 +350,10 @@ export interface FoliateCreator {
 /** rendition 配置；layout='pre-paginated' 走固定布局渲染器。 */
 export interface FoliateRendition {
   layout?: 'pre-paginated' | 'reflowable' | string;
+  /** 固定版式的跨页方式：'none' 每页单独一屏，'auto' 由渲染器按横竖屏决定 */
+  spread?: 'auto' | 'none' | 'both' | 'portrait';
+  /** 固定版式的默认页面尺寸（无 viewport meta 时兜底） */
+  viewport?: { width: number; height: number };
   [key: string]: unknown;
 }
 
@@ -369,8 +389,19 @@ export interface FoliateBook {
   resources?: FoliateResources;
   /** 转换钩子（EventTarget），监听 "data" 事件对加载的内容做变换 */
   transformTarget?: EventTarget;
+  /** 阅读方向；'rtl' 时固定版式的翻页方向反过来 */
+  dir?: 'ltr' | 'rtl' | string;
+  /** 书签锚点（EPUB 的 landmarks），view.goToTextStart 用它找正文起点 */
+  landmarks?: Array<{ type?: string; href?: string; label?: string }>;
+  /** 释放书籍占用的资源（PDF 适配层用它销毁 pdf.js 文档） */
+  destroy?: () => void | Promise<void>;
+  /** 取封面（返回图片 Blob），仅部分来源实现 */
+  getCover?: () => Promise<Blob | null>;
 
   // ---- 跳转 / 链接解析 ----
+  // 注意 resolveHref / resolveCFI 必须是同步的：view.js 的 resolveNavigation 是同步方法，
+  // 而渲染层的 resolveChapter 等调用方也直接取 .index。PDF 适配层在加载时就把
+  // outline 目标解析成页号存表，跳转时只做查表。
   /** href → { index, anchor(doc) } */
   resolveHref?: (href: string) => FoliateDestination;
   /** CFI → { index, anchor(doc) } */
@@ -379,8 +410,10 @@ export interface FoliateBook {
   isExternal?: (href: string) => boolean;
 
   // ---- TOC 同步（progress.js 使用）----
-  /** href → [sectionId, fragment]；section id 可作为 Map 键 */
-  splitTOCHref?: (href: string) => [string | number, unknown] | Promise<[string | number, unknown]>;
+  /** href → [sectionId, fragment]；section id 可作为 Map 键。返回 null 表示解析不了。progress.js 会 await */
+  splitTOCHref?: (
+    href: string
+  ) => [string | number | null, unknown] | Promise<[string | number | null, unknown]>;
   /** (doc, fragment) → Node，对应 splitTOCHref 返回的 fragment */
   getTOCFragment?: (doc: Document, fragment: unknown) => Node | null;
 }

@@ -1,36 +1,43 @@
 import { cn } from '@/lib/utils';
 
-/** 两段式切换选项。 */
+/** 分段切换选项。 */
 type SegmentedToggleOption<T extends string> = {
   value: T;
   label: string;
 };
 
-/** 两段式切换属性。 */
+/** 分段切换属性。options 支持任意段数（至少两段） */
 type SegmentedToggleProps<T extends string> = {
   value: T;
-  options: readonly [SegmentedToggleOption<T>, SegmentedToggleOption<T>];
+  options: readonly SegmentedToggleOption<T>[];
   onChange: (value: T) => void;
 };
 
-/** 两段式胶囊切换控件。 */
+/** 分段胶囊切换控件。 */
 export function SegmentedToggle<T extends string>({
   value,
   options,
   onChange,
 }: SegmentedToggleProps<T>) {
+  // 选中项不存在（配置值不在选项里）时退化为第一段，避免指示块飞出控件
+  const selectedIndex = Math.max(
+    0,
+    options.findIndex(option => option.value === value)
+  );
+  // 指示块宽度与位移都按段数算，2 段时与原先的 50% / translate-x-full 等价
+  const segmentWidth = `calc(${100 / options.length}% - 0.125rem)`;
+
   return (
     <div
-      className="relative inline-grid h-7 w-max shrink-0 grid-cols-2 whitespace-nowrap rounded-full bg-muted p-0.5 text-xs"
+      className="relative inline-grid h-7 w-max shrink-0 whitespace-nowrap rounded-full bg-muted p-0.5 text-xs"
+      style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
       role="group"
       aria-label="分段切换"
     >
       <span
         aria-hidden
-        className={cn(
-          'absolute inset-y-0.5 left-0.5 w-[calc(50%-0.125rem)] rounded-full bg-card shadow-sm transition-transform duration-200 ease-out',
-          value === options[1].value && 'translate-x-full'
-        )}
+        className="absolute inset-y-0.5 left-0.5 rounded-full bg-card shadow-sm transition-transform duration-200 ease-out"
+        style={{ width: segmentWidth, transform: `translateX(${selectedIndex * 100}%)` }}
       />
       {options.map(option => (
         <button

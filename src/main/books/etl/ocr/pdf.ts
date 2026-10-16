@@ -1,3 +1,17 @@
+/**
+ * OCR 链的第一阶段：把 PDF 逐页光栅化成页面图。
+ *
+ * 与渲染进程的 PDF 预览是两条互不相干的链：预览用 pdf.js（纯 JS/WASM，受 CSP 约束），
+ * 这里用 PDFium + @napi-rs/canvas（主进程原生模块）。本文件及其依赖不得被预览链 import，
+ * 否则会把原生模块拉进主 bundle 的静态依赖图，触发顶层 require() 的启动崩溃。
+ *
+ * 待办（OCR 工作流，尚未接入口）：
+ * - 当前 pdfium 版本下把编码函数当回调传给 page.render 会抛
+ *   "RuntimeError: null function or function signature mismatch"；无回调的
+ *   `page.render({ scale })` 可用，返回 { width, height, data(BGRA) }，改法是把返回值交给 encodePng。
+ * - 同一页不能渲染两次（第二次必抛同一个错），失败页不要原地重试。
+ * - 缺取消、断点续跑与提交队列退避重试。
+ */
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import path from 'path';
 import { createCanvas } from '@napi-rs/canvas';
