@@ -23,10 +23,10 @@ export class BookRepo {
     return db.select().from(bookTable).orderBy(desc(bookTable.createdAt)).all();
   }
 
-  /** 更新封面路径（导入流程分步写入时使用） */
-  updateCoverImg(id: string, coverImg: string | null): void {
+  /** 更新封面附件 id（导入流程分步写入时使用） */
+  updateCoverAttachment(id: string, coverAttachment: string | null): void {
     const db = getDatabase();
-    db.update(bookTable).set({ coverImg }).where(eq(bookTable.id, id)).run();
+    db.update(bookTable).set({ coverAttachment }).where(eq(bookTable.id, id)).run();
   }
 
   /** 更新界面上可编辑的元信息字段（书名 / 作者） */

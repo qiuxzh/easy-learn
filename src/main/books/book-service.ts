@@ -20,7 +20,13 @@ import type {
   CoverImage,
   TOCItem,
 } from '@shared/types/books';
+import type { ImageContent } from '@shared/types/chat';
 import { parseEpubFromBuffer } from '@shared/utils/book-parser';
+import {
+  IMAGE_EXTENSIONS,
+  imageMimeTypeFromExtension,
+  resolveImageExtension,
+} from '@shared/utils/file-util';
 import {
   clampReadLength,
   clampReadOffset,
@@ -30,10 +36,12 @@ import {
   findTocById,
   resolveAnchorElement,
   resolveNextTocAnchorElement,
+  toAttachmentUrl,
   toBook,
   toResultToc,
 } from './util';
 import { BaseService } from '@main/service';
+import { attachmentService } from '@main/service/attachment-service';
 import { Constants } from '../constants';
 import { runInTransaction } from '../db';
 import { bookChunkRepo, bookEmbeddingRepo, bookRepo } from '../db/repo';
@@ -45,6 +53,7 @@ import { initFoliatePolyfill } from './foliate-polyfill';
 import { parseEpubFile } from './book-parser';
 import {
   DEFAULT_CHUNK_OPTIONS,
+  buildPictureUnit,
   chunkDocument,
   createEpubSource,
   type ChunkDraft,
@@ -58,20 +67,8 @@ export const DEFAULT_READ_LENGTH = 12000;
 /** 章节正文单次读取的硬上限，防止超长章节塞爆 LLM 上下文窗口。 */
 export const MAX_READ_LENGTH = 30000;
 
-/** 允许用作封面的图片扩展名。白名单同时用于校验用户传入的扩展名，避免被拼进路径 */
-const COVER_EXTENSIONS: string[] = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'];
-
 /** 封面图片体积上限 */
 const MAX_COVER_BYTES = 10 * 1024 * 1024;
-
-/**
- * 归一化封面扩展名：去掉前导点、统一小写。
- * 不在白名单内时返回 null，调用方按不支持处理。
- */
-function normalizeCoverExt(ext: string): string | null {
-  const normalized = ext.replace(/^\./, '').toLowerCase();
-  return COVER_EXTENSIONS.includes(normalized) ? normalized : null;
-}
 
 /**
  * 解析后 EPUB 的内存缓存项。
@@ -84,6 +81,8 @@ interface ParsedBookCacheEntry {
   parsedAt: number;
   rawBook: FoliateBook;
   tocs: TOCItem[];
+  /** 按 zip 内路径读资源字节，供按 key 读取书中图片使用 */
+  loadResource: (href: string) => Promise<Uint8Array | null>;
 }
 
 /**
@@ -123,16 +122,15 @@ export interface ReadBookTocTextResult {
  * - 按 TOC 项读取章节正文（readBookTocText），供 AI reading-tools 工具使用
  *
  * 文件布局（相对 Constants.dataDir）：
- * - books/{booksStoreName}         拷贝后的源文件（epub / pdf）
- * - books/cover/{id}{ext}          导入时从元信息或首页渲染出的封面图
- * - books/cover/{id}-{时间戳}{ext}  用户手动更换的封面图（带时间戳避免命中旧图缓存）
- * - DB 中存 books + book_chunks 两张表，book_chunks 没有级联删除，必须显式清理
+ * - books/{booksStoreName}   拷贝后的源文件（epub / pdf）
+ * - attachment/image/{id}    封面与按需读取的书籍插图附件，统一由 AttachmentService 落盘，book 表只存封面附件 id
+ * - DB 中存 book + book_chunk 两张表，book_chunk 没有级联删除，必须显式清理
  *
  * 格式支持：EPUB 会解析出分片供检索；PDF 目前只导入文件 + 页数 + 首页封面，
  * 分片 / 向量化 / 正文提取都未接入（相关入口对 PDF 会给出明确错误）。
  */
 export class BookService extends BaseService {
-  /** 用户书籍根目录，所有书籍文件和封面都以此为前缀 */
+  /** 用户书籍根目录，书籍源文件都落在它下面 */
   bookDir: string;
   /** 解析后的 FoliateBook 缓存，key 是 bookId。
    *  简单 Map（无 LRU）：deleteBook / app 退出时清空；导入新书不清旧缓存。
@@ -241,7 +239,7 @@ export class BookService extends BaseService {
             url,
             type: row.booksType,
             name: row.booksName,
-            coverUrl: row.coverImg ? `app:///${row.coverImg}` : null,
+            coverUrl: toAttachmentUrl(row.coverAttachment),
           };
         } catch (e) {
           log.error('[BookService] getBook failed:', e);
@@ -265,7 +263,7 @@ export class BookService extends BaseService {
       IpcChannel.Book_UpdateBook,
       async (_e, req: BookUpdateRequest): Promise<BookUpdateResult> => {
         try {
-          const row = this.updateBook(req);
+          const row = await this.updateBook(req);
           return { success: true, book: this.toBookDoc(row) };
         } catch (e) {
           log.error('[BookService] updateBook failed:', e);
@@ -321,9 +319,9 @@ export class BookService extends BaseService {
   /**
    * 导入一本 EPUB（main 端完成解析 + 写库）：
    * 1. 解析 EPUB 并生成带 CFI 的正文分片
-   * 2. 确保 bookDir / cover 目录存在
+   * 2. 确保 bookDir 存在
    * 3. 写 DB 元信息和分片数据
-   * 4. 保存 cover（如有）
+   * 4. 把封面登记为附件并回写附件 id（如有）
    * 5. 拷贝源文件到 bookDir/{booksStoreName}
    */
   private async importEpubBook(srcFilePath: string): Promise<BookRow> {
@@ -341,7 +339,6 @@ export class BookService extends BaseService {
 
     // 2. 确保目录存在
     fs.mkdirSync(this.bookDir, { recursive: true });
-    fs.mkdirSync(path.join(this.bookDir, 'cover'), { recursive: true });
 
     // 3. 写入元信息
     const booksStoreName = `${id}.epub`;
@@ -350,7 +347,7 @@ export class BookService extends BaseService {
       booksName: info.title || path.basename(srcFilePath, path.extname(srcFilePath)),
       booksStoreName,
       booksType: 'epub',
-      coverImg: null,
+      coverAttachment: null,
       totalChapters: info.totalChapters ?? null,
       description: null,
       author: info.author ?? null,
@@ -371,13 +368,9 @@ export class BookService extends BaseService {
 
     // 5. 保存 cover（如有）
     if (info.cover) {
-      const coverRelPath = `books/cover/${id}${info.cover.ext}`;
-      fs.writeFileSync(
-        path.join(this.bookDir, 'cover', `${id}${info.cover.ext}`),
-        Buffer.from(info.cover.bytes)
-      );
-      bookRepo.updateCoverImg(id, coverRelPath);
-      row.coverImg = coverRelPath;
+      const attachmentId = await this.storeCoverAttachment(info.cover.bytes, info.cover.ext);
+      bookRepo.updateCoverAttachment(id, attachmentId);
+      row.coverAttachment = attachmentId;
     }
 
     // 6. 拷贝源文件
@@ -403,7 +396,7 @@ export class BookService extends BaseService {
       booksName: path.basename(srcFilePath, path.extname(srcFilePath)),
       booksStoreName,
       booksType: 'pdf',
-      coverImg: null,
+      coverAttachment: null,
       totalPages: null,
       totalChapters: null,
       description: null,
@@ -417,7 +410,7 @@ export class BookService extends BaseService {
   /**
    * 删除一本书：
    * 1. 查询 DB 拿到书籍记录
-   * 2. 删除封面文件（如有）
+   * 2. 删除封面附件（如有）
    * 3. 删除书籍源文件
    * 4. 删除正文分片和书籍记录
    * 文件删除失败仅记录日志，不影响 DB 删除（DB 是 UI 可见状态的唯一来源）
@@ -429,7 +422,7 @@ export class BookService extends BaseService {
     }
     this.parsedBookCache.delete(id);
 
-    this.removeCoverFile(row.coverImg);
+    await attachmentService.deleteAttachments(row.coverAttachment ? [row.coverAttachment] : []);
 
     try {
       fs.unlinkSync(path.join(this.bookDir, row.booksStoreName));
@@ -484,7 +477,7 @@ export class BookService extends BaseService {
    * 未出现在请求里的字段保持不变；书名去掉首尾空白后不允许为空，
    * 作者去掉首尾空白后为空则存 null，避免库里同时存在 '' 和 null 两种"无作者"。
    */
-  private updateBook(req: BookUpdateRequest): BookRow {
+  private async updateBook(req: BookUpdateRequest): Promise<BookRow> {
     const row = bookRepo.findById(req.id);
     if (!row) {
       throw new Error(`Book not found: ${req.id}`);
@@ -516,7 +509,7 @@ export class BookService extends BaseService {
     }
 
     if (req.cover !== undefined) {
-      this.replaceCover(req.id, req.cover, row.coverImg);
+      await this.replaceCover(req.id, req.cover, row.coverAttachment);
     }
 
     const updated = bookRepo.findById(req.id);
@@ -528,17 +521,21 @@ export class BookService extends BaseService {
 
   /**
    * 替换或移除封面：cover 为 null 表示移除。
-   * 新封面使用带时间戳的文件名，避免沿用同名文件时被浏览器缓存命中而仍显示旧图；
-   * 数据库写入成功后再删除旧封面文件。
+   * 新封面先登记为新附件再回写 book 行，url 随附件 id 变化、不会命中旧图缓存；
+   * book 行更新成功后才删除旧附件。
    */
-  private replaceCover(bookId: string, cover: CoverImage | null, oldCoverImg: string | null): void {
+  private async replaceCover(
+    bookId: string,
+    cover: CoverImage | null,
+    oldAttachmentId: string | null
+  ): Promise<void> {
     if (!cover) {
-      bookRepo.updateCoverImg(bookId, null);
-      this.removeCoverFile(oldCoverImg);
+      bookRepo.updateCoverAttachment(bookId, null);
+      await attachmentService.deleteAttachments(oldAttachmentId ? [oldAttachmentId] : []);
       return;
     }
 
-    const ext = normalizeCoverExt(cover.ext);
+    const ext = resolveImageExtension(cover.ext);
     if (!ext) {
       throw new Error('封面仅支持 PNG / JPG / WebP / GIF / BMP 格式');
     }
@@ -550,24 +547,23 @@ export class BookService extends BaseService {
       throw new Error('封面图片过大，请选择 10MB 以内的图片');
     }
 
-    const coverRelPath = `books/cover/${bookId}-${Date.now()}${ext}`;
-    fs.mkdirSync(path.join(this.bookDir, 'cover'), { recursive: true });
-    fs.writeFileSync(path.join(Constants.dataDir, coverRelPath), bytes);
-
-    bookRepo.updateCoverImg(bookId, coverRelPath);
-    if (oldCoverImg && oldCoverImg !== coverRelPath) {
-      this.removeCoverFile(oldCoverImg);
+    const attachmentId = await this.storeCoverAttachment(bytes, ext);
+    bookRepo.updateCoverAttachment(bookId, attachmentId);
+    if (oldAttachmentId && oldAttachmentId !== attachmentId) {
+      await attachmentService.deleteAttachments([oldAttachmentId]);
     }
   }
 
-  /** 删除封面文件；文件缺失只记日志，不影响数据库状态 */
-  private removeCoverFile(coverRelPath: string | null): void {
-    if (!coverRelPath) return;
-    try {
-      fs.unlinkSync(path.join(Constants.dataDir, coverRelPath));
-    } catch (e) {
-      log.warn(`[BookService] cover file not found (${coverRelPath}):`, e);
+  /** 把封面字节登记为附件并返回附件 id；扩展名只用于推断 MIME，实际类型由附件服务按文件头兜底 */
+  private async storeCoverAttachment(bytes: Uint8Array, ext: string): Promise<string> {
+    const mimeType = imageMimeTypeFromExtension(ext) ?? '';
+    const [stored] = await attachmentService.storeImages({
+      images: [{ bytes, mimeType }],
+    });
+    if (!stored) {
+      throw new Error('封面写入附件失败');
     }
+    return stored.attachmentId;
   }
 
   /**
@@ -578,12 +574,12 @@ export class BookService extends BaseService {
     const result = await dialog.showOpenDialog({
       title: '选择封面图片',
       properties: ['openFile'],
-      filters: [{ name: '图片', extensions: COVER_EXTENSIONS }],
+      filters: [{ name: '图片', extensions: IMAGE_EXTENSIONS }],
     });
     if (result.canceled || result.filePaths.length === 0) return null;
 
     const filePath = result.filePaths[0];
-    const ext = normalizeCoverExt(path.extname(filePath));
+    const ext = resolveImageExtension(path.extname(filePath));
     if (!ext) {
       throw new Error('封面仅支持 PNG / JPG / WebP / GIF / BMP 格式');
     }
@@ -765,7 +761,8 @@ export class BookService extends BaseService {
       const endEl = resolveNextTocAnchorElement(parsed.rawBook, nextToc, target.index, doc);
       clipDocumentRange(doc, startEl, endEl);
 
-      const fullText = extractSegmentText(doc);
+      // 图片按资源 key 插入占位，与分片内容保持同一套标识
+      const fullText = extractSegmentText(doc, element => buildPictureUnit(element, segment.id));
       const start = clampReadOffset(offset, DEFAULT_READ_OFFSET);
       const readLength = clampReadLength(length, DEFAULT_READ_LENGTH, MAX_READ_LENGTH);
       const limitedText = fullText.slice(start, start + readLength);
@@ -804,6 +801,38 @@ export class BookService extends BaseService {
   }
 
   /**
+   * 按书内资源 key 读取一张图片并登记为附件。
+   * key 来自正文里的 `[[picture bookImage:{key}]]` 占位；登记出来的附件由调用方（工具结果）持有。
+   * @throws 书籍不存在、格式暂不支持、key 对应的资源不存在时抛出可直接展示的原因
+   */
+  async readBookImage(bookId: string, resourceKey: string): Promise<ImageContent> {
+    const row = bookRepo.findById(bookId);
+    if (!row) {
+      throw new Error(`书籍不存在：${bookId}`);
+    }
+    if (row.booksType !== 'epub') {
+      throw new Error('该格式的图片读取尚未支持');
+    }
+
+    const parsed = await this.getParsedBook(bookId);
+    if (!parsed) {
+      throw new Error('书籍解析失败，无法读取图片');
+    }
+
+    const bytes = await parsed.loadResource(resourceKey);
+    if (!bytes) {
+      throw new Error(`书籍内找不到该图片：${resourceKey}`);
+    }
+
+    const mimeType = imageMimeTypeFromExtension(path.extname(resourceKey)) ?? '';
+    const [stored] = await attachmentService.storeImages({ images: [{ bytes, mimeType }] });
+    if (!stored) {
+      throw new Error('图片写入附件失败');
+    }
+    return stored;
+  }
+
+  /**
    * 拿 bookId 对应的解析后 EPUB。
    * 命中缓存直接返回；未命中则读 DB 拿到路径 → 读文件 → parseEpubFromBuffer → 写入缓存。
    * 解析失败（文件丢失 / epub 损坏）返回 null，调用方负责降级（空 TOC / 空章节）；
@@ -835,6 +864,7 @@ export class BookService extends BaseService {
         parsedAt: Date.now(),
         rawBook: parsed.rawBook,
         tocs: parsed.tocs,
+        loadResource: parsed.loadResource,
       };
       this.parsedBookCache.set(bookId, entry);
       return entry;

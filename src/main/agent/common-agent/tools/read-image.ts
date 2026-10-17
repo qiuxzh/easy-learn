@@ -2,14 +2,12 @@ import path from 'node:path';
 import { Type } from 'typebox';
 import { Constants } from '@main/constants';
 import { attachmentService } from '@main/service/attachment-service';
+import { IMAGE_EXTENSIONS, isSupportedImageExtension } from '@shared/utils/file-util';
 import { defineSessionTool, SessionTool } from '../agent-definition';
 
 const readImageSchema = Type.Object({
   path: Type.String({ description: 'Path to the image file (relative to the data directory)' }),
 });
-
-/** 支持的图片扩展名 */
-const supportedExtensions = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp']);
 
 /** 把传入路径解析成绝对路径，并校验它落在 data 目录内 */
 function resolveImagePath(input: string): string {
@@ -34,10 +32,9 @@ export function createReadImageTool(): SessionTool<typeof readImageSchema, undef
       }
 
       const absolutePath = resolveImagePath(params.path);
-      const extension = path.extname(absolutePath).toLowerCase();
-      if (!supportedExtensions.has(extension)) {
+      if (!isSupportedImageExtension(path.extname(absolutePath))) {
         throw new Error(
-          `${params.path} 不是支持的图片格式（支持 ${[...supportedExtensions.keys()].join('、')}）`
+          `${params.path} 不是支持的图片格式（支持 ${IMAGE_EXTENSIONS.map(ext => '.' + ext).join('、')}）`
         );
       }
 

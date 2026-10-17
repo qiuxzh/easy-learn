@@ -21,5 +21,12 @@ export {
   collectPlainText,
   collectTextUnits,
   type DomAnchor,
+  type PictureUnitLookup,
 } from './html-text';
-export { createEpubLocatorCodec, createEpubSource, type EpubSegment } from './epub-source';
+export {
+  buildPictureUnit,
+  createEpubLocatorCodec,
+  createEpubSource,
+  resolvePictureKey,
+  type EpubSegment,
+} from './epub-source';

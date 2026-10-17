@@ -5,6 +5,11 @@ import path from 'node:path';
 import mime from 'mime-types';
 import { IpcChannel } from '@shared/ipc-channels';
 import type { AttachmentStoreRequest, ImageContent } from '@shared/types/chat';
+import {
+  IMAGE_EXTENSIONS,
+  imageExtensionFromMimeType,
+  resolveImageMimeType,
+} from '@shared/utils/file-util';
 import { Constants } from '@main/constants';
 import { getMainWindow } from '@main/window';
 import { attachmentRepo } from '@main/db/repo';
@@ -26,15 +31,6 @@ const MAX_SHRINK_ATTEMPTS = 5;
 /** 降质为 JPEG 时使用的质量 */
 const JPEG_QUALITY = 85;
 
-/** 支持的图片类型与对应的文件扩展名 */
-const IMAGE_EXTENSIONS: Record<string, string> = {
-  'image/png': 'png',
-  'image/jpeg': 'jpeg',
-  'image/webp': 'webp',
-  'image/gif': 'gif',
-  'image/bmp': 'bmp',
-};
-
 /** 一张待落盘的图片：处理后的字节与最终类型 */
 interface PreparedImage {
   bytes: Buffer;
@@ -44,27 +40,6 @@ interface PreparedImage {
 /** 计算 base64 编码后的字节数，用于判断是否超出接口限制 */
 function base64Length(bytes: Buffer): number {
   return Math.ceil(bytes.length / 3) * 4;
-}
-
-/** 按文件头识别常见图片类型，声明值缺失或不合法时使用 */
-function sniffImageMime(bytes: Buffer): string | undefined {
-  if (bytes.length < 12) return undefined;
-  if (bytes[0] === 0x89 && bytes.toString('latin1', 1, 4) === 'PNG') return 'image/png';
-  if (bytes[0] === 0xff && bytes[1] === 0xd8) return 'image/jpeg';
-  if (bytes.toString('latin1', 0, 3) === 'GIF') return 'image/gif';
-  if (bytes.toString('latin1', 0, 2) === 'BM') return 'image/bmp';
-  if (bytes.toString('latin1', 0, 4) === 'RIFF' && bytes.toString('latin1', 8, 12) === 'WEBP') {
-    return 'image/webp';
-  }
-  return undefined;
-}
-
-/** 归一化图片类型：优先用声明值，不可用时回退到文件头嗅探 */
-function resolveImageMimeType(bytes: Buffer, declared: string): string | undefined {
-  const base = declared.split(';')[0].trim().toLowerCase();
-  const normalized = base === 'image/jpg' ? 'image/jpeg' : base;
-  if (IMAGE_EXTENSIONS[normalized]) return normalized;
-  return sniffImageMime(bytes);
 }
 
 /** 把图片等比缩放到最长边不超过上限 */
@@ -171,6 +146,15 @@ export class AttachmentService extends BaseService {
     return this.storeImage(bytes, row.mimeType);
   }
 
+  /** 删除若干附件：先删记录再删文件；记录不存在时跳过，文件删除失败只记日志 */
+  async deleteAttachments(attachmentIds: string[]): Promise<void> {
+    if (attachmentIds.length === 0) return;
+
+    const rows = attachmentRepo.findByIds(attachmentIds);
+    attachmentRepo.deleteByIds(attachmentIds);
+    await this.deleteFiles(rows.map(row => row.path));
+  }
+
   /** 删除附件对应的磁盘文件，路径越权或删除失败只记日志，该文件之后不再回收 */
   async deleteFiles(relativePaths: string[]): Promise<void> {
     for (const relativePath of relativePaths) {
@@ -204,7 +188,7 @@ export class AttachmentService extends BaseService {
     }
 
     const prepared = compressImage(originalBytes, mimeType);
-    const extension = IMAGE_EXTENSIONS[prepared.mimeType] ?? 'png';
+    const extension = imageExtensionFromMimeType(prepared.mimeType) ?? 'png';
 
     // 先写文件后插行，插行失败时删掉已写的文件；这步再失败，文件就留在磁盘上不再回收
     const attachmentId = crypto.randomUUID();
@@ -245,7 +229,7 @@ export class AttachmentService extends BaseService {
       title: '选择图片',
       properties: ['openFile', 'multiSelections'],
       filters: [
-        { name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] },
+        { name: '图片', extensions: IMAGE_EXTENSIONS },
         { name: '所有文件', extensions: ['*'] },
       ],
     };

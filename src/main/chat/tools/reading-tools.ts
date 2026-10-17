@@ -9,12 +9,6 @@ import {
 } from '@main/books/book-service';
 import { readingService } from '@main/service/reading-service';
 
-/**
- * 本文件工具的结果统一以 JSON 文本交给模型，details 一律不提供：
- * 界面只读 content，没有消费方，给了等于随会话日志白存一份。
- * 将来界面确实要渲染某类结构化数据时，再单独给对应工具加 details。
- */
-
 /** 书的目录：按 bookId 返回嵌套的 TOCItem 树。 */
 const getBookTocsTool = defineSessionTool({
   name: 'get_book_tocs',
@@ -183,6 +177,32 @@ const getUserReadingStateTool = defineSessionTool({
   },
 });
 
+/** 书内图片：按正文占位里的 bookImage key 读取图片，登记为新附件后交给模型查看。 */
+const readBookImageTool = defineSessionTool({
+  name: 'read_book_image',
+  description:
+    '按书内资源 key 读取书籍里的图片，把图片本身交给模型查看。key 见正文中标注的 bookImage:{key}。',
+  promptSnippet: '根据书内资源 key 查看书籍图片',
+  parameters: Type.Object({
+    bookId: Type.String({ minLength: 1, description: '书的 id' }),
+    resourceKey: Type.String({ description: '图片在书内的资源 key，取自正文中的 bookImage:{key}' }),
+  }),
+  async execute(_toolCallId, params, signal) {
+    if (signal?.aborted) {
+      throw new Error('操作已取消');
+    }
+
+    const stored = await bookService.readBookImage(params.bookId, params.resourceKey);
+    return {
+      content: [
+        { type: 'text' as const, text: `读取书籍图片：${params.resourceKey}` },
+        { type: 'image' as const, attachmentId: stored.attachmentId },
+      ],
+      details: undefined,
+    };
+  },
+});
+
 /** 阅读智能体可用的全部工具。 */
 export const readingTools = [
   getBookTocsTool,
@@ -190,4 +210,5 @@ export const readingTools = [
   searchBookBm25Tool,
   searchBookVectorTool,
   getUserReadingStateTool,
+  readBookImageTool,
 ];

@@ -35,6 +35,11 @@ export async function parseEpubFromZip(
   return {
     rawBook: book,
     tocs: flattenToc(book.toc ?? []),
+    loadResource: async (href: string) => {
+      const entry = zip.file(href);
+      if (!entry || entry.dir) return null;
+      return entry.async('uint8array');
+    },
     metadata: {
       title: typeof metadata.title === 'string' ? metadata.title : '',
       author: extractAuthor(metadata) ?? (await extractOpfFallbackAuthor(zip)),

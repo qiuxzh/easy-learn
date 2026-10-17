@@ -31,6 +31,8 @@ export interface ParsedEpub {
   rawBook: FoliateBook;
   /** 扁平化后的目录树，TOC 面板直接渲染 */
   tocs: TOCItem[];
+  /** 按 zip 内路径读取资源字节；路径不存在或指向目录时返回 null */
+  loadResource: (href: string) => Promise<Uint8Array | null>;
   metadata: {
     title: string;
     author?: string;

@@ -105,12 +105,39 @@ describe('chunkDocument + createEpubSource', () => {
     expect(chunks[0].content).toBe('保留前文\n保留后文');
   });
 
-  it('整节只有空白或图片时不生成空 Chunk', async () => {
+  it('会把图片换成只带资源 key 的占位文本', async () => {
     const chunks = await chunkBook(
       createBookFromMarkup('<p> \n\t </p><img src="cover.jpg" alt="封面"/>')
     );
 
-    expect(chunks).toEqual([]);
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0].content).toBe('[[picture bookImage:cover.jpg alt:封面]]');
+  });
+
+  it('会把图片的相对路径解析成 zip 内路径', async () => {
+    const chunks = await chunkBook(
+      createBookFromSections([
+        createSection('OEBPS/Text/ch1.xhtml', '<p>正文</p><img src="../images/fig1.jpg"/>'),
+      ])
+    );
+
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0].content).toBe('正文\n[[picture bookImage:OEBPS/images/fig1.jpg]]');
+  });
+
+  it('会忽略非图片与外部引用的资源', async () => {
+    const chunks = await chunkBook(
+      createBookFromMarkup(
+        '<p>前文</p>' +
+          '<img src="diagram.svg"/>' +
+          '<img src="https://example.com/a.png"/>' +
+          '<img src="data:image/png;base64,AAAA"/>' +
+          '<p>后文</p>'
+      )
+    );
+
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0].content).toBe('前文\n后文');
   });
 
   it('会按 section 独立编号并保留各自的 CFI', async () => {

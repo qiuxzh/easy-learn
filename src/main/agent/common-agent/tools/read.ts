@@ -3,6 +3,7 @@ import { access as fsAccess, readFile as fsReadFile } from 'node:fs/promises';
 import path from 'node:path';
 import { Type } from 'typebox';
 import { Constants } from '@main/constants';
+import { isSupportedImageExtension } from '@shared/utils/file-util';
 import { defineSessionTool, SessionTool } from '../agent-definition';
 import {
   DEFAULT_MAX_BYTES,
@@ -35,9 +36,6 @@ const defaultReadOperations: ReadOperations = {
   readFile: path => fsReadFile(path),
   access: path => fsAccess(path, constants.R_OK),
 };
-
-/** read 只读文本：这些扩展名一律引导到 read_image */
-const imageExtensions = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp']);
 
 /**
  * 把传入路径解析成绝对路径，并校验它落在工作目录内：
@@ -98,10 +96,7 @@ export function createReadTool(
       `读取应用数据目录（data）下的文本文件内容。offset 指定起始行号（从 1 开始），limit 指定最多读取多少行；` +
       `单次输出最多 ${DEFAULT_MAX_LINES} 行或 ${DEFAULT_MAX_BYTES / 1024}KB，超出时保留头部与尾部、省略中间，并给出继续读取的 offset。`,
     promptSnippet: '读取非二进制的文本文件',
-    promptGuidelines: [
-      'read 适合读取非二进制的文本文件（配置、导出的文本等）。',
-      '需要查看图片时用 read_image（按路径）或 read_attachment_image（按附件 id），不要用 read。',
-    ],
+    promptGuidelines: ['read 适合读取非二进制的文本文件（配置、导出的文本等）。'],
     parameters: readSchema,
     async execute(_toolCallId, params, signal) {
       if (signal?.aborted) {
@@ -109,10 +104,8 @@ export function createReadTool(
       }
 
       const absolutePath = resolveReadPath(params.path, cwd);
-      if (imageExtensions.has(path.extname(absolutePath).toLowerCase())) {
-        throw new Error(
-          `${params.path} 是图片文件，read 不读图片，请改用 read_image（按路径）或 read_attachment_image（按附件 id）`
-        );
+      if (isSupportedImageExtension(path.extname(absolutePath))) {
+        throw new Error(`${params.path} 是图片文件，read 不读图片`);
       }
 
       await defaultReadOperations.access(absolutePath);

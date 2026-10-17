@@ -25,6 +25,10 @@ export const TOOL_PRESENTATION: Record<string, ToolPresentation> = {
   search_book_vector: { label: '语义检索书中内容', summaryFrom: 'query' },
   get_user_reading_state: { label: '获取阅读状态' },
 
+  // 图片
+  read_attachment_image: { label: '查看图片' },
+  read_book_image: { label: '查看书中插图', summaryFrom: 'resourceKey' },
+
   // 闪卡
   list_card_groups: { label: '查看牌组列表' },
   get_flashcard: { label: '查看闪卡' },

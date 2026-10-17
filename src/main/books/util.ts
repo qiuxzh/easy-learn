@@ -1,7 +1,7 @@
 import type { FoliateBook, FoliateDestination } from '@/components/reader/foliate-types';
 import type { BookRow } from '../db/schema';
 import type { BookDoc, BookEmbedding, TOCItem } from '@shared/types/books';
-import { collectPlainText } from './etl/chunking/html-text';
+import { collectPlainText, type PictureUnitLookup } from './etl/chunking/html-text';
 
 interface TextNodeLike {
   nodeType: number;
@@ -21,7 +21,7 @@ export function toBook(row: BookRow, fileSize: number | null, embedding: BookEmb
     id: row.id,
     booksName: row.booksName,
     booksType: row.booksType,
-    coverUrl: row.coverImg ? `app:///${row.coverImg}` : null,
+    coverUrl: toAttachmentUrl(row.coverAttachment),
     totalPages: row.totalPages,
     totalChapters: row.totalChapters,
     description: row.description,
@@ -30,6 +30,11 @@ export function toBook(row: BookRow, fileSize: number | null, embedding: BookEmb
     fileSize,
     embedding,
   };
+}
+
+/** 把附件 id 转成 app:// 附件寻址 URL；无附件时返回 null */
+export function toAttachmentUrl(attachmentId: string | null): string | null {
+  return attachmentId ? `app://attachment-resource/${encodeURIComponent(attachmentId)}` : null;
 }
 
 export function findTocById(items: TOCItem[], tocId: string): TOCItem | null {
@@ -144,9 +149,12 @@ export function clipDocumentRange(doc: Document, from: Element | null, to: Eleme
   }
 }
 
-/** 提取文档单元正文：保留软换行的 DOM 遍历，再做空白归一化。 */
-export function extractSegmentText(doc: Document): string {
-  const text = collectPlainText(doc.documentElement ?? doc);
+/**
+ * 提取文档单元正文：保留软换行的 DOM 遍历，再做空白归一化。
+ * @param lookupPicture 可选：把图片等元素换成占位文本；不传时忽略它们
+ */
+export function extractSegmentText(doc: Document, lookupPicture?: PictureUnitLookup): string {
+  const text = collectPlainText(doc.documentElement ?? doc, lookupPicture);
   return text
     .replace(/\r/g, '')
     .replace(/[ \t\f\v\u00a0]+/g, ' ')

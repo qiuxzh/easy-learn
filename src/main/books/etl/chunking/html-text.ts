@@ -81,12 +81,19 @@ export interface DomAnchor {
 }
 
 /**
+ * 把非文本元素（图片等）换成占位文本单元。
+ * 返回 undefined 表示按普通元素继续遍历；实现必须同步，异步资源解析由调用方在遍历前完成。
+ */
+export type PictureUnitLookup = (element: Element) => TextUnit | undefined;
+
+/**
  * 遍历 DOM，把正文转换为保留原始节点位置的文本单元。
  * @param root 输入：遍历起点，通常是 documentElement
+ * @param lookupPicture 可选：把图片等元素换成占位单元；不传时这类元素按普通元素处理
  * @returns 输出：按阅读顺序排列的文本单元，每个单元带定位锚点；
  *   段落换行等为保留语义插入的单元没有锚点，start / end 为 null
  */
-export function collectTextUnits(root: Node): TextUnit[] {
+export function collectTextUnits(root: Node, lookupPicture?: PictureUnitLookup): TextUnit[] {
   const units: TextUnit[] = [];
 
   /** 递归收集当前节点及其子节点中的可检索正文。 */
@@ -101,6 +108,14 @@ export function collectTextUnits(root: Node): TextUnit[] {
       node.nodeType !== FRAGMENT_NODE_TYPE
     ) {
       return;
+    }
+
+    if (node.nodeType === ELEMENT_NODE_TYPE) {
+      const picture = lookupPicture?.(node as Element);
+      if (picture) {
+        units.push(picture);
+        return;
+      }
     }
 
     const tagName = node.nodeName.toLowerCase();
@@ -123,8 +138,9 @@ export function collectTextUnits(root: Node): TextUnit[] {
  * 遍历 DOM 提取纯文本，不做空白清理，保留文本节点内的换行。
  * 调用方（extractSegmentText）负责后续的空白归一化。
  * @param root 遍历起点，通常是 documentElement
+ * @param lookupPicture 可选：把图片等元素换成占位文本；不传时这类元素按普通元素处理
  */
-export function collectPlainText(root: Node): string {
+export function collectPlainText(root: Node, lookupPicture?: PictureUnitLookup): string {
   if (root.nodeType === TEXT_NODE_TYPE || root.nodeType === CDATA_NODE_TYPE) {
     return root.nodeValue ?? '';
   }
@@ -139,6 +155,10 @@ export function collectPlainText(root: Node): string {
   const tagName = root.nodeName.toLowerCase();
   if (TEXTLESS_TAGS.has(tagName)) return '';
   if (tagName === 'br') return '\n';
+  if (root.nodeType === ELEMENT_NODE_TYPE) {
+    const picture = lookupPicture?.(root as Element);
+    if (picture) return picture.value;
+  }
   if (isMathElement(tagName)) {
     const latex = extractMathFormula(root as Element);
     if (latex) {
@@ -149,7 +169,7 @@ export function collectPlainText(root: Node): string {
 
   let content = '';
   for (let child = root.firstChild; child; child = child.nextSibling) {
-    content += collectPlainText(child);
+    content += collectPlainText(child, lookupPicture);
   }
 
   return BLOCK_TAGS.has(tagName) ? `\n${content}\n` : content;
