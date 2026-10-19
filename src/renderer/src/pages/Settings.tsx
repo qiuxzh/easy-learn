@@ -3,7 +3,6 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { EmbeddingModelSettings } from '@/components/settings/EmbeddingModelSettings';
 import { ReaderSettings } from '@/components/settings/ReaderSettings';
-import { cn } from '@/lib/utils';
 
 /** 配置页左侧的分组类型。 */
 type SettingsSection = 'general' | 'appearance' | 'reader' | 'models';
@@ -28,13 +27,13 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        overlayClassName="bg-black/40"
+        overlayClassName="bg-mask-2"
         className="flex h-[min(640px,calc(100vh-3rem))] w-[min(960px,calc(100vw-3rem))] max-w-none gap-0 overflow-hidden p-0"
         closeButtonClassName="right-2 top-2"
       >
         <DialogTitle className="sr-only">设置</DialogTitle>
 
-        <aside className="w-44 shrink-0 border-r border-border p-3">
+        <aside className="w-44 shrink-0 border-r border-stroke-3 p-3">
           <div
             className="flex flex-col gap-1"
             role="tablist"
@@ -47,12 +46,10 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 type="button"
                 role="tab"
                 variant="ghost"
+                pressed={activeSection === section.value}
+                className="w-full justify-start"
                 aria-selected={activeSection === section.value}
                 aria-controls={`settings-panel-${section.value}`}
-                className={cn(
-                  'w-full justify-start',
-                  activeSection === section.value && 'bg-accent text-accent-foreground'
-                )}
                 onClick={() => setActiveSection(section.value)}
               >
                 {section.label}

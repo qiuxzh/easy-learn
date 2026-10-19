@@ -13,6 +13,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -127,17 +128,12 @@ export function CardEditor({ card, onClose, onSaved, onDeleted }: CardEditorProp
       <div className="flex items-center justify-between gap-3 border-b px-5 py-3">
         <h2 className="text-base font-semibold">编辑卡片</h2>
         <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="删除卡片"
-            onClick={() => setDeleteOpen(true)}
-          >
+          <IconButton label="删除卡片" onClick={() => setDeleteOpen(true)}>
             <Trash2 />
-          </Button>
-          <Button variant="ghost" size="icon" aria-label="关闭编辑栏" onClick={onClose}>
+          </IconButton>
+          <IconButton label="关闭编辑栏" onClick={onClose}>
             <X />
-          </Button>
+          </IconButton>
         </div>
       </div>
 
@@ -148,7 +144,7 @@ export function CardEditor({ card, onClose, onSaved, onDeleted }: CardEditorProp
             value={front}
             onChange={setFront}
             placeholder="输入问题或提示"
-            className="focus-within:border-input focus-within:ring-0"
+            className="focus-within:border-stroke-4"
             minHeightClassName="min-h-40"
           />
         </div>
@@ -159,7 +155,7 @@ export function CardEditor({ card, onClose, onSaved, onDeleted }: CardEditorProp
             value={back}
             onChange={setBack}
             placeholder="输入答案或解释"
-            className="focus-within:border-input focus-within:ring-0"
+            className="focus-within:border-stroke-4"
             minHeightClassName="min-h-40"
           />
         </div>
@@ -167,7 +163,7 @@ export function CardEditor({ card, onClose, onSaved, onDeleted }: CardEditorProp
         <div className="space-y-2">
           <p className="text-sm font-medium">牌组</p>
           <Select value={selectedGroupId} onValueChange={setSelectedGroupId}>
-            <SelectTrigger className="w-full focus-visible:ring-0 focus-visible:ring-offset-0">
+            <SelectTrigger>
               <SelectValue placeholder="请选择牌组" />
             </SelectTrigger>
             <SelectContent
@@ -190,7 +186,6 @@ export function CardEditor({ card, onClose, onSaved, onDeleted }: CardEditorProp
             value={tags}
             onChange={event => setTags(event.target.value)}
             placeholder="使用空格分隔多个标签"
-            className="focus-visible:ring-0 focus-visible:ring-offset-0"
           />
         </div>
       </div>

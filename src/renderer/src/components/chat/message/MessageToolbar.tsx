@@ -1,6 +1,7 @@
-import { useRef, useState } from 'react';
-import { IconCopy, IconCheck, IconGitBranch } from '@tabler/icons-react';
 import { cn } from '@/lib/utils';
+import { useRef, useState } from 'react';
+import { Check, Copy, GitBranch } from 'lucide-react';
+import { IconButton } from '@/components/ui/icon-button';
 
 type CopyButtonProps = {
   text: string;
@@ -25,34 +26,32 @@ function CopyButton({ text, onCopied }: CopyButtonProps) {
   };
 
   return (
-    <button
+    <IconButton
       type="button"
+      label={copied ? '已复制' : '复制'}
       tabIndex={-1}
       onClick={handleCopy}
       onPointerDown={event => {
         event.stopPropagation();
       }}
       onMouseDown={event => event.stopPropagation()}
-      className={cn(
-        'size-6 flex items-center justify-center rounded-md active:scale-[0.97] transition-[background-color,opacity,transform] duration-150 ease-out',
-        'opacity-50 bg-transparent hover:opacity-100 hover:bg-foreground/10'
-      )}
+      className="opacity-50 transition-opacity hover:opacity-100 active:scale-[0.97]"
     >
       <div className="relative w-3.5 h-3.5">
-        <IconCopy
+        <Copy
           className={cn(
             'absolute inset-0 w-3.5 h-3.5 text-muted-foreground transition-[opacity,transform] duration-150 ease-out',
             copied ? 'opacity-0 scale-50' : 'opacity-100 scale-100'
           )}
         />
-        <IconCheck
+        <Check
           className={cn(
             'absolute inset-0 w-3.5 h-3.5 text-muted-foreground transition-[opacity,transform] duration-150 ease-out',
             copied ? 'opacity-100 scale-100' : 'opacity-0 scale-50'
           )}
         />
       </div>
-    </button>
+    </IconButton>
   );
 }
 
@@ -74,22 +73,19 @@ export type MessageToolbarProps = {
  */
 function ForkButton({ onFork }: { onFork: () => void }) {
   return (
-    <button
+    <IconButton
       type="button"
+      label="从这条回复分支出新会话"
       tabIndex={-1}
-      title="从这条回复分支出新会话"
       onClick={onFork}
       onPointerDown={event => {
         event.stopPropagation();
       }}
       onMouseDown={event => event.stopPropagation()}
-      className={cn(
-        'size-6 flex items-center justify-center rounded-md active:scale-[0.97] transition-[background-color,opacity,transform] duration-150 ease-out',
-        'opacity-50 bg-transparent hover:opacity-100 hover:bg-foreground/10'
-      )}
+      className="opacity-50 transition-opacity hover:opacity-100 active:scale-[0.97]"
     >
-      <IconGitBranch className="w-3.5 h-3.5 text-muted-foreground" />
-    </button>
+      <GitBranch className="text-muted-foreground" />
+    </IconButton>
   );
 }
 
@@ -111,11 +107,11 @@ export function MessageToolbar({
     <div
       role="presentation"
       className={cn(
-        'flex items-center gap-1 pt-1 text-xs text-muted-foreground/70 transition-colors duration-100',
+        'flex items-center gap-1 pt-1 text-xs text-ink-secondary transition-colors duration-100',
         heightClass,
         alignClass,
         hoverClass,
-        isVisible && 'text-foreground/80'
+        isVisible && 'text-ink-secondary'
       )}
       onMouseDown={event => event.stopPropagation()}
       onPointerDown={event => event.stopPropagation()}

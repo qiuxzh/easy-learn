@@ -3,7 +3,7 @@ import type { DiagramPlugin, MermaidConfig } from '@streamdown/mermaid';
 import { Copy, Loader2, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import type { CustomRendererProps } from 'streamdown';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { SegmentedToggle } from '@/components/ui/segmented-toggle';
 import {
   DEFAULT_PREVIEW_HEIGHT,
@@ -22,95 +22,111 @@ type MermaidRenderResult = {
   error?: string;
 };
 
-/** Mermaid 节点分色配置，业务主题可通过对应 CSS 变量覆盖。 */
-type MermaidPaletteColor = {
-  fill: string;
-  border: string;
+/** 一套 Mermaid 配色：节点槽位循环使用，另有连线、文字与分组底色。 */
+type MermaidPalette = {
+  node: { fill: string; border: string; text: string }[];
+  line: string;
   text: string;
+  clusterFill: string;
+  clusterBorder: string;
 };
 
-const MERMAID_NODE_PALETTE: MermaidPaletteColor[] = [
-  {
-    fill: 'var(--mermaid-node-1-fill, #e0f2fe)',
-    border: 'var(--mermaid-node-1-border, #38bdf8)',
-    text: 'var(--mermaid-node-1-text, #0c4a6e)',
+/**
+ * Mermaid 配色写字面色而不是 CSS 变量：mermaid 会对 themeVariables 做明暗运算，
+ * 而它依赖的颜色库只认 hex / rgb() / hsl()，传 var() 或 color-mix() 派生的值会直接抛 Unsupported color format。
+ * 代价是取值不跟随 CSS 变量，主题切换靠重新渲染承担（见 useThemeRevision）。
+ */
+const MERMAID_PALETTES: Record<'light' | 'dark', MermaidPalette> = {
+  light: {
+    node: [
+      { fill: '#e0f2fe', border: '#38bdf8', text: '#0c4a6e' },
+      { fill: '#fef3c7', border: '#f59e0b', text: '#78350f' },
+      { fill: '#dcfce7', border: '#22c55e', text: '#14532d' },
+      { fill: '#ede9fe', border: '#8b5cf6', text: '#4c1d95' },
+      { fill: '#ffe4e6', border: '#f43f5e', text: '#881337' },
+      { fill: '#cffafe', border: '#06b6d4', text: '#164e63' },
+    ],
+    line: '#6b7280',
+    text: '#111827',
+    clusterFill: '#f8fafc',
+    clusterBorder: '#cbd5e1',
   },
-  {
-    fill: 'var(--mermaid-node-2-fill, #fef3c7)',
-    border: 'var(--mermaid-node-2-border, #f59e0b)',
-    text: 'var(--mermaid-node-2-text, #78350f)',
+  dark: {
+    node: [
+      { fill: '#0b2a41', border: '#38bdf8', text: '#bae6fd' },
+      { fill: '#3a2f1b', border: '#f59e0b', text: '#fde68a' },
+      { fill: '#14351f', border: '#22c55e', text: '#bbf7d0' },
+      { fill: '#2b2347', border: '#a78bfa', text: '#ddd6fe' },
+      { fill: '#3f1d24', border: '#fb7185', text: '#fecdd3' },
+      { fill: '#0e2e38', border: '#22d3ee', text: '#a5f3fc' },
+    ],
+    line: '#9ca3af',
+    text: '#f4f4f5',
+    clusterFill: '#232324',
+    clusterBorder: '#43454a',
   },
-  {
-    fill: 'var(--mermaid-node-3-fill, #dcfce7)',
-    border: 'var(--mermaid-node-3-border, #22c55e)',
-    text: 'var(--mermaid-node-3-text, #14532d)',
-  },
-  {
-    fill: 'var(--mermaid-node-4-fill, #ede9fe)',
-    border: 'var(--mermaid-node-4-border, #8b5cf6)',
-    text: 'var(--mermaid-node-4-text, #4c1d95)',
-  },
-  {
-    fill: 'var(--mermaid-node-5-fill, #ffe4e6)',
-    border: 'var(--mermaid-node-5-border, #f43f5e)',
-    text: 'var(--mermaid-node-5-text, #881337)',
-  },
-  {
-    fill: 'var(--mermaid-node-6-fill, #cffafe)',
-    border: 'var(--mermaid-node-6-border, #06b6d4)',
-    text: 'var(--mermaid-node-6-text, #164e63)',
-  },
-];
+};
 
 /**
- * 为 Mermaid 节点生成循环分色 CSS。
+ * 生成按节点顺序循环分色的 CSS。
  */
-function buildMermaidThemeCSS(): string {
-  const paletteSize = MERMAID_NODE_PALETTE.length;
+function buildMermaidThemeCSS(palette: MermaidPalette): string {
+  const slotCount = palette.node.length;
 
-  return MERMAID_NODE_PALETTE.map((palette, index) => {
-    const nodeSelector = `.node:nth-child(${paletteSize}n + ${index + 1})`;
+  return palette.node
+    .map((colors, index) => {
+      const nodeSelector = `.node:nth-child(${slotCount}n + ${index + 1})`;
 
-    return `
+      return `
 ${nodeSelector} rect,
 ${nodeSelector} circle,
 ${nodeSelector} ellipse,
 ${nodeSelector} polygon,
 ${nodeSelector} path {
-  fill: ${palette.fill} !important;
-  stroke: ${palette.border} !important;
+  fill: ${colors.fill} !important;
+  stroke: ${colors.border} !important;
 }
 
 ${nodeSelector} .nodeLabel,
 ${nodeSelector} text,
 ${nodeSelector} .label {
-  color: ${palette.text} !important;
-  fill: ${palette.text} !important;
+  color: ${colors.text} !important;
+  fill: ${colors.text} !important;
 }`;
-  }).join('\n');
+    })
+    .join('\n');
 }
 
-const MERMAID_BASE_CONFIG: MermaidConfig = {
-  theme: 'base',
-  themeCSS: buildMermaidThemeCSS(),
-  themeVariables: {
-    background: 'transparent',
-    primaryColor: '#e0f2fe',
-    primaryTextColor: '#111827',
-    primaryBorderColor: '#38bdf8',
-    lineColor: '#6b7280',
-    secondaryColor: '#fef3c7',
-    tertiaryColor: '#dcfce7',
-    textColor: '#111827',
-    mainBkg: '#e0f2fe',
-    nodeBorder: '#38bdf8',
-    clusterBkg: '#f8fafc',
-    clusterBorder: '#cbd5e1',
-    titleColor: '#111827',
-    edgeLabelBackground: '#ffffff',
-    fontFamily: 'inherit',
-  },
-};
+/**
+ * 组装 Mermaid 配置：整套配色取自 MERMAID_PALETTES，按根节点是否带 .dark 选亮/暗一套。
+ */
+function buildMermaidConfig(): MermaidConfig {
+  const isDark = document.documentElement.classList.contains('dark');
+  const palette = MERMAID_PALETTES[isDark ? 'dark' : 'light'];
+  const primary = palette.node[0];
+
+  return {
+    theme: 'base',
+    themeCSS: buildMermaidThemeCSS(palette),
+    themeVariables: {
+      darkMode: isDark,
+      background: 'transparent',
+      fontFamily: 'inherit',
+      primaryColor: primary.fill,
+      primaryBorderColor: primary.border,
+      primaryTextColor: primary.text,
+      mainBkg: primary.fill,
+      nodeBorder: primary.border,
+      secondaryColor: palette.node[1].fill,
+      tertiaryColor: palette.node[2].fill,
+      lineColor: palette.line,
+      textColor: palette.text,
+      titleColor: palette.text,
+      clusterBkg: palette.clusterFill,
+      clusterBorder: palette.clusterBorder,
+    },
+  };
+}
 
 const FALLBACK_CONTENT_WIDTH = 640;
 const FALLBACK_CONTENT_HEIGHT = 320;
@@ -136,7 +152,7 @@ function renderMermaid(renderId: string, source: string): Promise<{ svg: string 
   const renderTask = mermaidRenderQueue.then(async () => {
     const mermaid = await loadMermaidPlugin();
 
-    return mermaid.getMermaid(MERMAID_BASE_CONFIG).render(renderId, source);
+    return mermaid.getMermaid(buildMermaidConfig()).render(renderId, source);
   });
 
   mermaidRenderQueue = renderTask.then(
@@ -244,11 +260,12 @@ export function MermaidBlock({ code, isIncomplete, language }: CustomRendererPro
 
   return (
     <div
-      className="my-4 overflow-hidden rounded-xl border border-border bg-sidebar"
+      className="my-4 overflow-hidden rounded-xl border border-stroke-3 bg-card"
       data-streamdown="mermaid-block"
     >
-      <div className="flex min-h-9 flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/40 px-2 py-1">
-        <span className="ml-1 font-mono text-xs lowercase text-muted-foreground">{language}</span>
+      {/* 表头内是 h-7 控件，min-h-9 与代码块表头同档 36px；纵向内边距超过 3px 就会把表头撑过 36px。用 min-h 而非 h：窄宽度换行时表头还要生长 */}
+      <div className="flex min-h-9 flex-wrap items-center justify-between gap-2 border-b border-stroke-3 bg-surface-2 px-2">
+        <span className="ml-1 font-mono text-sm lowercase text-muted-foreground">{language}</span>
         <div className="flex flex-wrap items-center gap-1">
           <SegmentedToggle
             value={viewMode}
@@ -260,30 +277,18 @@ export function MermaidBlock({ code, isIncomplete, language }: CustomRendererPro
           />
 
           {viewMode === 'source' ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              className="h-7 cursor-pointer w-7 p-0"
-              title="复制源码"
-              aria-label="复制源码"
-              onClick={() => void handleCopySource()}
-            >
+            <IconButton type="button" label="复制源码" onClick={() => void handleCopySource()}>
               <Copy />
-            </Button>
+            </IconButton>
           ) : (
-            <Button
+            <IconButton
               type="button"
-              size="sm"
-              variant="ghost"
-              className="h-7 cursor-pointer w-7 p-0"
-              title="复制图片"
-              aria-label="复制图片"
+              label="复制图片"
               disabled={!currentResult?.svg}
               onClick={() => void handleCopyImage()}
             >
               <Copy />
-            </Button>
+            </IconButton>
           )}
         </div>
       </div>

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { useReaderStore } from '@/stores/reader-store';
 import { cn } from '@/lib/utils';
 
@@ -77,20 +77,17 @@ export function ReaderStatusBar({ readerTabId, className }: ReaderStatusBarProps
   return (
     <div
       className={cn(
-        'flex h-9 shrink-0 items-center gap-2 border-t border-border bg-background px-2 text-xs text-muted-foreground',
+        'flex h-9 shrink-0 items-center gap-2 border-t border-stroke-3 bg-background px-2 text-xs text-muted-foreground',
         className
       )}
     >
-      <Button
-        variant="ghost"
-        size="icon"
-        aria-label="上一页"
+      <IconButton
+        label="上一页"
         disabled={!isReady}
-        className="h-7 w-7 shrink-0"
         onClick={() => useReaderStore.getState().pageTurn(readerTabId, 'prev')}
       >
-        <ChevronLeft className="h-4 w-4" />
-      </Button>
+        <ChevronLeft />
+      </IconButton>
 
       <span className="max-w-[30%] min-w-0 shrink truncate" title={chapterTitle}>
         {chapterTitle || '—'}
@@ -100,7 +97,7 @@ export function ReaderStatusBar({ readerTabId, className }: ReaderStatusBarProps
       <div className="group relative flex h-6 min-w-0 flex-1 items-center">
         <div className="absolute inset-x-0 h-[3px] overflow-hidden rounded-full bg-muted">
           <div
-            className="h-full rounded-full bg-primary/70"
+            className="h-full rounded-full bg-primary-hover"
             style={{ width: `${displayPercent}%` }}
           />
         </div>
@@ -120,23 +117,20 @@ export function ReaderStatusBar({ readerTabId, className }: ReaderStatusBarProps
           className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0 disabled:cursor-default"
         />
         <div
-          className="pointer-events-none absolute h-3 w-3 rounded-full border-2 border-background bg-primary shadow-sm transition-transform group-hover:scale-125"
+          className="pointer-events-none absolute h-3 w-3 rounded-full border-2 border-background bg-primary transition-colors group-hover:border-primary"
           style={{ left: `calc(${displayPercent}% - 6px)` }}
         />
       </div>
 
       <span className="w-9 shrink-0 text-right tabular-nums">{Math.round(displayPercent)}%</span>
 
-      <Button
-        variant="ghost"
-        size="icon"
-        aria-label="下一页"
+      <IconButton
+        label="下一页"
         disabled={!isReady}
-        className="h-7 w-7 shrink-0"
         onClick={() => useReaderStore.getState().pageTurn(readerTabId, 'next')}
       >
-        <ChevronRight className="h-4 w-4" />
-      </Button>
+        <ChevronRight />
+      </IconButton>
     </div>
   );
 }

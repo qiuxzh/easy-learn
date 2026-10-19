@@ -122,7 +122,7 @@ export function CardEditDialog({ card, groupId, onOpenChange, onSaved }: CardEdi
               value={front}
               onChange={setFront}
               placeholder="输入问题或提示"
-              className="focus-within:border-input focus-within:ring-0"
+              className="focus-within:border-stroke-4"
               minHeightClassName="min-h-28"
             />
           </div>
@@ -132,7 +132,7 @@ export function CardEditDialog({ card, groupId, onOpenChange, onSaved }: CardEdi
               value={back}
               onChange={setBack}
               placeholder="输入答案或解释"
-              className="focus-within:border-input focus-within:ring-0"
+              className="focus-within:border-stroke-4"
               minHeightClassName="min-h-28"
             />
           </div>
@@ -140,7 +140,7 @@ export function CardEditDialog({ card, groupId, onOpenChange, onSaved }: CardEdi
             <p className="text-sm font-medium">牌组</p>
             {groups.length ? (
               <Select value={selectedGroupId} onValueChange={setSelectedGroupId}>
-                <SelectTrigger className="w-full focus-visible:ring-0 focus-visible:ring-offset-0">
+                <SelectTrigger>
                   <SelectValue placeholder="请选择牌组" />
                 </SelectTrigger>
                 <SelectContent
@@ -165,7 +165,6 @@ export function CardEditDialog({ card, groupId, onOpenChange, onSaved }: CardEdi
               value={tags}
               onChange={event => setTags(event.target.value)}
               placeholder="使用空格分隔多个标签"
-              className="focus-visible:ring-0 focus-visible:ring-offset-0"
             />
           </div>
         </div>

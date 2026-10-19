@@ -8,7 +8,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { cn } from '@/lib/utils';
 
 /** 浮层的位置与尺寸，单位均为像素。 */
@@ -240,7 +240,7 @@ export function FloatingPanel({
       style={style}
       className={cn(
         // 常驻浮层用 z-panel，低于临时弹层的 z-popover
-        'fixed z-panel flex flex-col rounded-xl border border-border bg-background shadow-xl',
+        'fixed z-panel flex flex-col rounded-xl bg-background shadow-prominent',
         !open && 'invisible opacity-0',
         className
       )}
@@ -249,18 +249,12 @@ export function FloatingPanel({
       <div
         data-floating-panel-drag-handle
         onPointerDown={handleMoveStart}
-        className="flex shrink-0 cursor-move touch-none items-center justify-between gap-2 rounded-t-xl border-b border-border bg-muted/40 px-3 py-1.5 select-none"
+        className="flex shrink-0 cursor-move touch-none items-center justify-between gap-2 rounded-t-xl border-b border-stroke-3 bg-surface-2 px-3 py-1.5 select-none"
       >
         <span className="truncate text-xs font-medium text-muted-foreground">{title}</span>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-6 shrink-0"
-          title="关闭"
-          onClick={onClose}
-        >
-          <X className="size-3.5" />
-        </Button>
+        <IconButton label="关闭" onClick={onClose}>
+          <X />
+        </IconButton>
       </div>
 
       {/* 内容区禁止溢出，圆角由外层的裁剪承担 */}
@@ -280,7 +274,7 @@ export function FloatingPanel({
       {/* 右下角斜纹提示，仅作视觉暗示，不参与命中 */}
       <span
         aria-hidden="true"
-        className="pointer-events-none absolute right-1 bottom-1 size-2.5 border-r-2 border-b-2 border-muted-foreground/50"
+        className="pointer-events-none absolute right-1 bottom-1 size-2.5 border-r-2 border-b-2 border-ink-tertiary"
       />
     </div>,
     document.body

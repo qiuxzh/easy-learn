@@ -303,7 +303,7 @@ export const MessageList = memo(function MessageList({
     <>
       {/* 用原生 div 充当滚动容器：virtualizer 自己控制滚动测量，
           不再需要 Radix ScrollArea 的 rAF 包装（之前会与 virtualizer 产生强制 reflow 竞争）。
-          chat-message-viewport 类用于 chat.css 中的滚动条样式定制。 */}
+          chat-message-viewport 类用于 styles/chat.css 中的滚动条样式定制。 */}
       <div
         ref={viewportRef}
         onScroll={handleViewportScroll}

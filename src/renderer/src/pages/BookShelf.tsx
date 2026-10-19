@@ -1,8 +1,17 @@
-import { useCallback, useEffect, useState, memo } from 'react';
-import { BookOpen, Info, Loader2, MoreVertical, Play, RotateCcw, Trash2 } from 'lucide-react';
-import { IconFileImport } from '@tabler/icons-react';
 import { BookDetailDialog } from '@/components/BookDetailDialog';
+import { memo, useCallback, useEffect, useState } from 'react';
+import {
+  BookOpen,
+  FileInput,
+  Info,
+  Loader2,
+  MoreVertical,
+  Play,
+  RotateCcw,
+  Trash2,
+} from 'lucide-react';
 import { BookIndexBadge } from '@/components/BookIndexBadge';
+import { Button } from '@/components/ui/button';
 import { useBooksStore } from '@/stores/books-store';
 import { useEmbeddingStore } from '@/stores/embedding-store';
 import {
@@ -70,7 +79,7 @@ function BookCard({
   return (
     <div
       className={cn(
-        'group relative flex flex-col items-stretch text-left rounded-md overflow-hidden border border-border bg-card shadow-card hover:border-primary/40 hover:shadow-card-hover transition-all duration-200 hover:scale-105',
+        'group relative flex flex-col items-stretch text-left rounded-xl overflow-hidden hairline border-stroke-3 bg-card hover:border-stroke-4 hover:bg-secondary transition-[background-color,border-color] duration-200',
         deleting && 'pointer-events-none opacity-60'
       )}
     >
@@ -84,7 +93,7 @@ function BookCard({
         <div
           className={cn(
             'relative aspect-[4/5] w-full flex items-center justify-center overflow-hidden',
-            hasCover ? 'bg-muted' : 'bg-gradient-to-br from-primary/15 to-primary/5'
+            hasCover ? 'bg-muted' : 'bg-primary-surface'
           )}
         >
           {deleting ? (
@@ -97,7 +106,7 @@ function BookCard({
               draggable={false}
             />
           ) : (
-            <div className="px-2 text-center text-xs font-medium leading-snug break-all text-foreground/80 select-none">
+            <div className="px-2 text-center text-xs font-medium leading-snug break-all text-ink-secondary select-none">
               {fallbackCoverText(book.booksName)}
             </div>
           )}
@@ -116,7 +125,7 @@ function BookCard({
         <div className="px-2 py-1.5 flex flex-col gap-0.5 min-w-0">
           <div className="text-xs font-medium truncate">{book.booksName}</div>
           {book.author && (
-            <div className="text-[10px] text-muted-foreground truncate">{book.author}</div>
+            <div className="text-xs text-muted-foreground truncate">{book.author}</div>
           )}
         </div>
       </button>
@@ -124,14 +133,17 @@ function BookCard({
       {/* 悬停才显示的右下角菜单按钮 */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="sm"
+            icon
             aria-label="书籍操作菜单"
             disabled={deleting}
-            className="absolute bottom-1.5 right-1.5 h-7 w-7 rounded-full bg-background/80 backdrop-blur-sm border border-border/60 shadow-sm flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-background opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity cursor-pointer disabled:cursor-not-allowed"
+            className="absolute bottom-1.5 right-1.5 rounded-full opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
           >
-            <MoreVertical className="h-4 w-4" />
-          </button>
+            <MoreVertical />
+          </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" side="top" sideOffset={4}>
           <DropdownMenuItem
@@ -142,7 +154,7 @@ function BookCard({
             }}
             className="cursor-pointer"
           >
-            <Info className="h-4 w-4 mr-2" />
+            <Info />
             详情
           </DropdownMenuItem>
           <DropdownMenuSeparator />
@@ -154,7 +166,7 @@ function BookCard({
             }}
             className="cursor-pointer"
           >
-            <Play className="h-4 w-4 mr-2" />
+            <Play />
             {indexCounts.done > 0 ? '继续向量化' : '开始向量化'}
           </DropdownMenuItem>
           <DropdownMenuItem
@@ -164,7 +176,7 @@ function BookCard({
             }}
             className="cursor-pointer"
           >
-            <RotateCcw className="h-4 w-4 mr-2" />
+            <RotateCcw />
             重新向量化
           </DropdownMenuItem>
           <DropdownMenuSeparator />
@@ -175,7 +187,7 @@ function BookCard({
             }}
             className="text-destructive focus:text-destructive cursor-pointer"
           >
-            <Trash2 className="h-4 w-4 mr-2" />
+            <Trash2 />
             删除书籍
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -192,8 +204,8 @@ function ImportCard({ importing, onClick }: { importing: boolean; onClick: () =>
       onClick={onClick}
       disabled={importing}
       className={cn(
-        'group flex flex-col items-stretch text-left rounded-md overflow-hidden border border-dashed border-border bg-transparent shadow-card cursor-pointer',
-        'hover:border-primary/50 hover:bg-primary/5 hover:shadow-card-hover transition-all duration-200 hover:scale-105',
+        'group flex flex-col items-stretch text-left rounded-xl overflow-hidden border border-dashed border-stroke-3 bg-transparent cursor-pointer',
+        'hover:border-stroke-4 hover:bg-hover-fill transition-[background-color,border-color] duration-200',
         importing && 'cursor-not-allowed opacity-70'
       )}
     >
@@ -205,7 +217,7 @@ function ImportCard({ importing, onClick }: { importing: boolean; onClick: () =>
           </>
         ) : (
           <>
-            <IconFileImport className="h-8 w-8" />
+            <FileInput className="h-8 w-8" />
             <div className="text-xs">导入书籍</div>
           </>
         )}
@@ -299,7 +311,7 @@ export const BookShelf = memo(function BookShelf() {
   return (
     <div className="flex flex-col h-full">
       {/* 顶部标题栏 */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-stroke-3 shrink-0">
         <div className="flex items-center gap-2">
           <BookOpen className="h-5 w-5 text-muted-foreground" />
           <h2 className="text-base font-semibold">书库</h2>

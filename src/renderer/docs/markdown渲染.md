@@ -16,18 +16,13 @@ mermaid 渲染通过 Markdown fenced code block 触发，language 为 `mermaid`�
 
 Mermaid 颜色由三层配置组成，优先级从低到高如下。
 
-1. Mermaid 使用 `theme: 'base'` 作为基础主题，并配置一组柔和的多色 palette。
-2. `themeCSS` 会按节点顺序循环应用默认分色。业务主题可以通过 CSS 变量覆盖颜色，未定义时使用内置 fallback。
-3. 组件外层的 CSS 只处理图表背景、边标签和语义高亮节点，不再统一覆盖所有节点颜色。
+1. `theme: 'base'` 配合 `themeVariables`，取值来自 `MermaidBlock.tsx` 的 `MERMAID_PALETTES`。
+2. `themeCSS` 用同一套配色按节点顺序循环施加分色，节点数超过槽位数就从第一槽重新开始。
+3. 组件外层的 CSS（`styles/mermaid.css`）只处理图表背景、边标签和语义高亮节点。
 
-业务主题可覆盖的节点颜色变量：
+整套配色写在 `MermaidBlock.tsx` 的 `MERMAID_PALETTES`，亮暗各一套；换图表配色只改这个常量。
 
-- `--mermaid-node-1-fill`、`--mermaid-node-1-border`、`--mermaid-node-1-text`
-- `--mermaid-node-2-fill`、`--mermaid-node-2-border`、`--mermaid-node-2-text`
-- `--mermaid-node-3-fill`、`--mermaid-node-3-border`、`--mermaid-node-3-text`
-- `--mermaid-node-4-fill`、`--mermaid-node-4-border`、`--mermaid-node-4-text`
-- `--mermaid-node-5-fill`、`--mermaid-node-5-border`、`--mermaid-node-5-text`
-- `--mermaid-node-6-fill`、`--mermaid-node-6-border`、`--mermaid-node-6-text`
+为什么配色是写死的色值而不是 CSS 变量：mermaid 内部会对 `themeVariables` 做明暗运算，而它依赖的颜色库只认 hex / `rgb()` / `hsl()`，传 `var()` 或 `color-mix()` 派生的值会直接抛 `Unsupported color format`。节点分色也因此无法由外部 CSS 变量覆盖。代价是主题切换后图表必须重新渲染才会换色，这一步由 `useThemeRevision` 监听根节点主题属性触发。
 
 ## svg
 

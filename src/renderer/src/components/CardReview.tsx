@@ -6,6 +6,7 @@ import { useCardEditDialog } from '@/hooks/use-card-edit-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
 import type { CardGroupSummary, CardRecord, CardReviewRating } from '@shared/types/flashcards';
 
 /** 复习组件属性。 */
@@ -83,21 +84,21 @@ export function CardReview({ groupId }: CardReviewProps) {
 
   if (loading)
     return (
-      <div className="flex h-full items-center justify-center bg-muted/15 text-sm text-muted-foreground">
+      <div className="flex h-full items-center justify-center bg-surface-1 text-sm text-muted-foreground">
         准备复习队列…
       </div>
     );
   if (!group)
     return (
-      <div className="flex h-full items-center justify-center bg-muted/15 text-sm text-muted-foreground">
+      <div className="flex h-full items-center justify-center bg-surface-1 text-sm text-muted-foreground">
         牌组不存在。
       </div>
     );
 
   const current = queue[0];
   return (
-    <div className="flex h-full flex-col overflow-hidden bg-muted/15 [&_button:not(:disabled)]:cursor-pointer [&_button:disabled]:cursor-not-allowed">
-      <div className="flex items-center justify-between gap-4 border-b bg-background/80 px-6 py-3 backdrop-blur">
+    <div className="flex h-full flex-col overflow-hidden bg-surface-1 [&_button:not(:disabled)]:cursor-pointer [&_button:disabled]:cursor-not-allowed">
+      <div className="flex items-center justify-between gap-4 border-b bg-background px-6 py-3">
         <h1 className="text-lg font-semibold">复习</h1>
         <div className="flex items-center gap-2">
           <Badge variant="secondary">剩余 {queue.length} 张</Badge>
@@ -119,13 +120,13 @@ export function CardReview({ groupId }: CardReviewProps) {
           <ReviewComplete />
         ) : (
           <div className="m-auto flex w-full max-w-3xl flex-col gap-5">
-            <Card className="shadow-sm">
+            <Card>
               <CardContent className="min-h-64 px-7 py-8">
                 <Markdown content={current.fields.front} />
               </CardContent>
             </Card>
             {showAnswer && (
-              <Card className="border-primary/25 bg-primary/5 shadow-sm">
+              <Card className="border-primary-border bg-primary-surface">
                 <CardContent className="px-7 py-8">
                   <Markdown content={current.fields.back} />
                 </CardContent>
@@ -175,9 +176,9 @@ export function CardReview({ groupId }: CardReviewProps) {
 /** 复习完成状态。 */
 function ReviewComplete() {
   return (
-    <Card className="m-auto max-w-md border-dashed bg-background/70 text-center shadow-sm">
+    <Card className="m-auto max-w-md border-dashed bg-card text-center">
       <CardContent className="flex flex-col items-center px-10 py-12">
-        <div className="mb-4 flex size-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+        <div className="mb-4 flex size-12 items-center justify-center rounded-full bg-success-surface text-success-ink">
           <Check className="size-6" />
         </div>
         <h2 className="text-xl font-semibold">本轮复习完成</h2>
@@ -202,21 +203,25 @@ function RatingButton({
   disabled: boolean;
 }) {
   const toneClass = {
-    again:
-      'border-red-300 bg-red-50 text-red-800 hover:bg-red-100 dark:border-red-900 dark:bg-red-950 dark:text-red-200 dark:hover:bg-red-900',
-    hard: 'border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200 dark:hover:bg-amber-900',
-    good: 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200 dark:hover:bg-emerald-900',
-    easy: 'border-sky-300 bg-sky-50 text-sky-800 hover:bg-sky-100 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-200 dark:hover:bg-sky-900',
+    again: 'border-danger-border bg-danger-surface text-danger-ink hover:border-danger-ink',
+    hard: 'border-warn-border bg-warn-surface text-warn-ink hover:border-warn-ink',
+    good: 'border-success-border bg-success-surface text-success-ink hover:border-success-ink',
+    easy: 'border-info-border bg-info-surface text-info-ink hover:border-info-ink',
   }[tone];
   return (
-    <Button
-      variant="outline"
-      className={`h-14 shadow-sm ${toneClass}`}
+    <button
+      type="button"
+      className={cn(
+        'h-14 cursor-pointer rounded-lg border text-sm font-semibold transition-colors',
+        'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+        'disabled:pointer-events-none disabled:opacity-50',
+        toneClass
+      )}
       onClick={onClick}
       disabled={disabled}
     >
-      <span className="font-semibold">{label}</span>
-    </Button>
+      {label}
+    </button>
   );
 }
 

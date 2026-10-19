@@ -1,6 +1,6 @@
-import { memo, useMemo, type ReactNode } from 'react';
-import { IconTool } from '@tabler/icons-react';
 import { cn } from '@/lib/utils';
+import { memo, useMemo, type ReactNode } from 'react';
+import { Wrench } from 'lucide-react';
 import { Markdown } from '@/components/chat/markdown/Markdown';
 import { ToolRowBase } from '../tools/ToolRowBase';
 import { FlashcardToolRow } from '@/components/chat/tools/FlashcardToolRow';
@@ -64,7 +64,7 @@ function readSummaryField(raw: string, field: string): string | undefined {
 /** 用户主动中止时显示的提示 */
 function AbortNotice() {
   return (
-    <div className="flex w-fit items-center gap-1.5 rounded-md border border-muted-foreground/20 bg-muted/40 px-2.5 py-1 text-[12px] text-muted-foreground">
+    <div className="flex w-fit items-center gap-1.5 rounded-md border border-stroke-4 bg-surface-2 px-2.5 py-1 text-xs text-muted-foreground">
       <span>输出已停止</span>
     </div>
   );
@@ -73,7 +73,7 @@ function AbortNotice() {
 /** 流式响应发生错误时显示的提示 */
 function ErrorNotice({ part }: { part: AppErrorPart }) {
   return (
-    <div className="w-fit max-w-full rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2.5 text-sm whitespace-pre-wrap break-words text-destructive">
+    <div className="w-fit max-w-full rounded-lg border border-danger-border bg-danger-surface px-4 py-2.5 text-sm whitespace-pre-wrap break-words text-destructive">
       {part.errorText}
     </div>
   );
@@ -113,7 +113,7 @@ function ToolCallRow({
     // min-w-0 避免 flex item 默认 min-width: auto 在父容器被压窄时把行撑成不可收缩
     <div className="min-w-0">
       <ToolRowBase
-        icon={<IconTool className="size-3" />}
+        icon={<Wrench className="size-3" />}
         shimmerLabel={label}
         completeLabel={label}
         isAnimating={isPending}
@@ -123,23 +123,23 @@ function ToolCallRow({
         }
         expandable
       >
-        <div className="overflow-hidden rounded-md border border-border bg-muted/30">
+        <div className="overflow-hidden rounded-md border border-stroke-3 bg-surface-2">
           {inputText && (
-            <div className="border-b border-border px-2.5 py-1.5">
-              <pre className="overflow-x-auto whitespace-pre-wrap break-all font-mono text-[12px] leading-[16px]">
+            <div className="border-b border-stroke-3 px-2.5 py-1.5">
+              <pre className="overflow-x-auto whitespace-pre-wrap break-all font-mono text-xs leading-[16px]">
                 {inputText}
               </pre>
             </div>
           )}
           <div className="bg-background px-2.5 py-1.5">
             {isPending ? (
-              <span className="font-mono text-[12px] leading-[16px] text-muted-foreground">
+              <span className="font-mono text-xs leading-[16px] text-muted-foreground">
                 等待工具输出…
               </span>
             ) : (
               <pre
                 className={cn(
-                  'max-h-40 overflow-x-auto overflow-y-auto whitespace-pre-wrap break-all font-mono text-[12px] leading-[16px]',
+                  'max-h-40 overflow-x-auto overflow-y-auto whitespace-pre-wrap break-all font-mono text-xs leading-[16px]',
                   isError && 'text-destructive'
                 )}
               >
@@ -191,7 +191,7 @@ export const AssistantParts = memo(function AssistantParts({ msg }: { msg: AppUI
       if (isTextPart(part)) {
         if (!part.text) return;
         elems.push(
-          <div key={key} className="group/assistant-text text-[15px]">
+          <div key={key} className="group/assistant-text text-body-lg">
             <Markdown
               content={part.text}
               className="leading-relaxed [&_p]:leading-relaxed"

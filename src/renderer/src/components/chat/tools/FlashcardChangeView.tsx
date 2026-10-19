@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { IconPencil, IconPlus, IconTrash } from '@tabler/icons-react';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { Markdown } from '@/components/chat/markdown/Markdown';
 import { cn } from '@/lib/utils';
 import type {
@@ -35,9 +35,9 @@ const FIELD_LABELS: Record<FlashcardChangeField, string> = {
 
 /** 每种改动对应的图标与标签。 */
 export const ACTION_META = {
-  create: { label: '新增闪卡', Icon: IconPlus },
-  update: { label: '修改闪卡', Icon: IconPencil },
-  delete: { label: '删除闪卡', Icon: IconTrash },
+  create: { label: '新增闪卡', Icon: Plus },
+  update: { label: '修改闪卡', Icon: Pencil },
+  delete: { label: '删除闪卡', Icon: Trash2 },
 } as const;
 
 /** 校验并取出卡片快照；必需字段缺失或类型不符时返回 null。 */
@@ -138,15 +138,15 @@ function CompactMarkdown({ content, muted }: { content: string; muted?: boolean 
     <Markdown
       content={content}
       className={cn(
-        'text-[12px] leading-[18px]',
-        '[&_p]:my-0 [&_p]:text-[12px] [&_p]:leading-[18px]',
-        '[&_li]:text-[12px] [&_li]:leading-[18px]',
+        'text-xs leading-[18px]',
+        '[&_p]:my-0 [&_p]:text-xs [&_p]:leading-[18px]',
+        '[&_li]:text-xs [&_li]:leading-[18px]',
         '[&_ul]:my-1 [&_ol]:my-1',
-        '[&_h1]:my-1 [&_h1]:text-[13px]',
-        '[&_h2]:my-1 [&_h2]:text-[13px]',
-        '[&_h3]:my-1 [&_h3]:text-[12px]',
-        '[&_h4]:my-1 [&_h4]:text-[12px]',
-        muted && '[&_p]:text-muted-foreground/60 [&_li]:text-muted-foreground/60'
+        '[&_h1]:my-1 [&_h1]:text-body',
+        '[&_h2]:my-1 [&_h2]:text-body',
+        '[&_h3]:my-1 [&_h3]:text-xs',
+        '[&_h4]:my-1 [&_h4]:text-xs',
+        muted && '[&_p]:text-ink-tertiary [&_li]:text-ink-tertiary'
       )}
     />
   );
@@ -156,8 +156,8 @@ function CompactMarkdown({ content, muted }: { content: string; muted?: boolean 
 function SnapshotRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="px-2.5 py-1.5">
-      <div className="text-[11px] text-muted-foreground/70">{label}</div>
-      <div className="mt-0.5 min-w-0 whitespace-pre-wrap break-words text-[12px] leading-[18px]">
+      <div className="text-xs text-ink-secondary">{label}</div>
+      <div className="mt-0.5 min-w-0 whitespace-pre-wrap break-words text-xs leading-[18px]">
         {children}
       </div>
     </div>
@@ -168,14 +168,14 @@ function SnapshotRow({ label, children }: { label: string; children: ReactNode }
 function DiffRow({ label, before, after }: { label: string; before: string; after: string }) {
   return (
     <div className="px-2.5 py-1.5">
-      <div className="text-[11px] text-muted-foreground/70">{label}</div>
+      <div className="text-xs text-ink-secondary">{label}</div>
       <div className="mt-1 grid grid-cols-2 gap-3">
         <div className="min-w-0">
-          <div className="mb-0.5 text-[11px] text-muted-foreground/50">旧</div>
+          <div className="mb-0.5 text-xs text-ink-tertiary">旧</div>
           <CompactMarkdown content={before} muted />
         </div>
-        <div className="min-w-0 border-l border-border/60 pl-3">
-          <div className="mb-0.5 text-[11px] text-muted-foreground/50">新</div>
+        <div className="min-w-0 border-l border-stroke-2 pl-3">
+          <div className="mb-0.5 text-xs text-ink-tertiary">新</div>
           <CompactMarkdown content={after} />
         </div>
       </div>
@@ -190,9 +190,7 @@ export function FlashcardChangeBody({ change }: { change: FlashcardChangeDetail 
   if (action === 'update') {
     const fields = change.changedFields ?? [];
     if (fields.length === 0) {
-      return (
-        <div className="px-2.5 py-1.5 text-[12px] text-muted-foreground">卡片内容没有变化</div>
-      );
+      return <div className="px-2.5 py-1.5 text-xs text-muted-foreground">卡片内容没有变化</div>;
     }
     return (
       <div className="flex flex-col divide-y divide-border">

@@ -33,20 +33,20 @@ export const TraceUsage = memo(function TraceUsage({ messages }: { messages: App
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <div className="flex w-fit cursor-default items-center gap-1.5 rounded-full border border-border/40 bg-muted/40 px-2 py-0.5 text-[11px] tabular-nums transition-colors hover:bg-muted/60">
+        <div className="flex w-fit cursor-default items-center gap-1.5 rounded-full border border-stroke-2 bg-surface-2 px-2 py-0.5 text-xs tabular-nums transition-colors hover:bg-surface-3">
           <span className="flex items-center gap-1">
-            <span className="text-muted-foreground/55">输入</span>
-            <span className="text-foreground/70">{formatNumber(input)}</span>
+            <span className="text-ink-tertiary">输入</span>
+            <span className="text-ink-tertiary">{formatNumber(input)}</span>
           </span>
           <span className="h-3 w-px bg-border" aria-hidden="true" />
           <span className="flex items-center gap-1">
-            <span className="text-muted-foreground/55">输出</span>
-            <span className="text-foreground/70">{formatNumber(output)}</span>
+            <span className="text-ink-tertiary">输出</span>
+            <span className="text-ink-tertiary">{formatNumber(output)}</span>
           </span>
           <span className="h-3 w-px bg-border" aria-hidden="true" />
           <span className="flex items-center gap-1">
-            <span className="text-muted-foreground/55">合计</span>
-            <span className="font-medium text-foreground/85">{formatNumber(total)}</span>
+            <span className="text-ink-tertiary">合计</span>
+            <span className="font-medium text-ink-secondary">{formatNumber(total)}</span>
           </span>
         </div>
       </TooltipTrigger>

@@ -3,13 +3,13 @@ import { Group, Panel, Separator, useGroupRef } from 'react-resizable-panels';
 import { Menu, MessageSquare, Loader2, SlidersHorizontal } from 'lucide-react';
 import { Chat } from '@/pages/Chat';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ReaderSettings } from '@/components/settings/ReaderSettings';
 import { useReaderStore } from '@/stores/reader-store';
 import { TOCPanel } from './TOCPanel';
 import { BookViewer } from './BookViewer';
 import { ReaderStatusBar } from './ReaderStatusBar';
-import { cn } from '@/lib/utils';
 
 /** 侧面板打开时占容器宽度的比例 */
 const TOC_OPEN_RATIO = 0.18;
@@ -109,7 +109,7 @@ export function ReaderView({ tabId: propTabId, bookId = '' }: ReaderViewProps) {
         defaultLayout={{ toc: 0, content: 100, chat: 0 }}
       >
         <Panel id="toc" minSize={0} defaultSize={0} maxSize="25%">
-          <div className="h-full border-r border-border">
+          <div className="h-full border-r border-stroke-3">
             <TOCPanel readerTabId={tabId} className="h-full" />
           </div>
         </Panel>
@@ -122,16 +122,14 @@ export function ReaderView({ tabId: propTabId, bookId = '' }: ReaderViewProps) {
         <Panel id="content" minSize="30%">
           <div className="h-full flex flex-col">
             {/* 工具栏：只放面板开关，翻页控件在底部状态栏 */}
-            <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-border bg-background px-3">
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label={tocOpen ? '隐藏目录' : '显示目录'}
+            <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-stroke-3 bg-background px-3">
+              <IconButton
+                pressed={tocOpen}
+                label={tocOpen ? '隐藏目录' : '显示目录'}
                 onClick={() => togglePanel('toc')}
-                className={cn(tocOpen && 'bg-accent text-accent-foreground')}
               >
-                <Menu className="h-4 w-4" />
-              </Button>
+                <Menu />
+              </IconButton>
 
               <div className="flex items-center gap-1">
                 {/* 阅读设置：翻页方式与栏数。弹层里直接渲染 ReaderSettings，与设置页共用同一个组件。
@@ -140,8 +138,8 @@ export function ReaderView({ tabId: propTabId, bookId = '' }: ReaderViewProps) {
                     iframe 不再可命中，点击落到父文档上即可关闭。代价是这一下点击只用于关闭。 */}
                 <Popover modal>
                   <PopoverTrigger asChild>
-                    <Button variant="ghost" size="icon" aria-label="阅读设置">
-                      <SlidersHorizontal className="h-4 w-4" />
+                    <Button variant="ghost" size="sm" icon aria-label="阅读设置">
+                      <SlidersHorizontal />
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent align="end" side="bottom" className="w-80 p-3">
@@ -149,15 +147,13 @@ export function ReaderView({ tabId: propTabId, bookId = '' }: ReaderViewProps) {
                   </PopoverContent>
                 </Popover>
 
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={chatOpen ? '隐藏对话' : '显示对话'}
+                <IconButton
+                  pressed={chatOpen}
+                  label={chatOpen ? '隐藏对话' : '显示对话'}
                   onClick={() => togglePanel('chat')}
-                  className={cn(chatOpen && 'bg-accent text-accent-foreground')}
                 >
-                  <MessageSquare className="h-4 w-4" />
-                </Button>
+                  <MessageSquare />
+                </IconButton>
               </div>
             </div>
             {/* 内容区域 */}
@@ -175,14 +171,14 @@ export function ReaderView({ tabId: propTabId, bookId = '' }: ReaderViewProps) {
         />
 
         <Panel id="chat" minSize={0} defaultSize={0} maxSize="50%">
-          <div className="h-full border-l border-border">
+          <div className="h-full border-l border-stroke-3">
             <Chat bookId={bookId} />
           </div>
         </Panel>
       </Group>
 
       {!isReady && (
-        <div className="absolute inset-0 z-30 flex items-center justify-center bg-background/80">
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-background">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
             正在加载书籍...

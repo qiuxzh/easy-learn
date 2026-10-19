@@ -55,7 +55,7 @@ export const UserMessage = memo(function UserMessage({
                 <img
                   src={toAttachmentUrl(image.attachmentId)}
                   alt="图片"
-                  className="h-24 w-24 rounded-xl object-cover ring-1 ring-foreground/10 transition-opacity hover:opacity-90"
+                  className="h-24 w-24 rounded-xl object-cover ring-1 ring-stroke-2 transition-opacity hover:opacity-90"
                 />
               </button>
             ))}
@@ -63,7 +63,7 @@ export const UserMessage = memo(function UserMessage({
         )}
 
         {text && (
-          <div className="px-3.5 py-1.5 text-[15px] transition-colors rounded-2xl bg-muted text-foreground">
+          <div className="px-3.5 py-1.5 text-body-lg transition-colors rounded-2xl bg-muted text-foreground">
             <p className="leading-5 wrap-break-word whitespace-pre-wrap">{text}</p>
           </div>
         )}

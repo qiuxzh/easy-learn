@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Pencil, Plus, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { PasswordInput } from '@/components/ui/password-input';
 import { Switch } from '@/components/ui/switch';
@@ -201,9 +202,9 @@ export function EmbeddingModelSettings() {
   const canSubmit = Boolean(form.name.trim() && form.modelId.trim() && form.endpoint.trim());
 
   return (
-    <section className="rounded-lg bg-muted/60 p-4">
+    <section className="rounded-lg bg-surface-3 p-4">
       {/* 标题块：用大标题 + 分隔线把这一节从正文里拎出来 */}
-      <div className="mb-4 flex items-start justify-between gap-3 border-b border-border pb-3">
+      <div className="mb-4 flex items-start justify-between gap-3 border-b border-stroke-3 pb-3">
         <div className="min-w-0">
           <h2 className="text-lg font-semibold tracking-tight text-foreground">向量模型</h2>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -211,7 +212,7 @@ export function EmbeddingModelSettings() {
           </p>
         </div>
         {!formOpen && (
-          <Button variant="outline" className="shrink-0" onClick={openCreateForm}>
+          <Button variant="outline" onClick={openCreateForm}>
             <Plus />
             添加模型
           </Button>
@@ -228,7 +229,9 @@ export function EmbeddingModelSettings() {
             key={name}
             className={cn(
               'rounded-lg border p-3 transition-colors',
-              selected === name ? 'border-primary/50 bg-primary/5' : 'border-border bg-background'
+              selected === name
+                ? 'border-primary-border bg-primary-surface'
+                : 'border-stroke-3 bg-background'
             )}
           >
             <div className="flex items-center justify-between gap-2">
@@ -250,24 +253,21 @@ export function EmbeddingModelSettings() {
                 >
                   {testingName === name ? '测试中' : '测试'}
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={`编辑 ${name}`}
-                  className="text-muted-foreground hover:text-foreground"
+                <IconButton
+                  variant="quiet"
+                  label={`编辑 ${name}`}
                   onClick={() => openEditForm(name, entry)}
                 >
                   <Pencil />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={`删除 ${name}`}
-                  className="text-muted-foreground hover:text-destructive"
+                </IconButton>
+                <IconButton
+                  variant="quiet"
+                  tone="danger"
+                  label={`删除 ${name}`}
                   onClick={() => void removeEntry(name)}
                 >
                   <Trash2 />
-                </Button>
+                </IconButton>
                 <Switch
                   checked={selected === name}
                   onCheckedChange={checked => void selectEntry(name, checked)}
@@ -281,14 +281,14 @@ export function EmbeddingModelSettings() {
       </div>
 
       {formOpen && (
-        <div className="mt-3 space-y-4 rounded-lg border border-border bg-background p-4">
+        <div className="mt-3 space-y-4 rounded-lg border border-stroke-3 bg-background p-4">
           <div className="flex items-center justify-between">
             <h3 className="text-base font-semibold">
               {editingName ? '编辑向量模型' : '添加向量模型'}
             </h3>
-            <Button variant="ghost" size="icon" aria-label="关闭表单" onClick={closeForm}>
+            <IconButton label="关闭表单" onClick={closeForm}>
               <X />
-            </Button>
+            </IconButton>
           </div>
 
           <div className="grid grid-cols-2 gap-4">

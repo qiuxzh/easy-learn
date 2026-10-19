@@ -1,4 +1,4 @@
-﻿import { Fragment, useMemo } from 'react';
+import { Fragment, useMemo } from 'react';
 import { Pin, PinOff, X } from 'lucide-react';
 import type { CSSProperties } from 'react';
 import {
@@ -85,7 +85,7 @@ export function TabsBar() {
                       className={cn(
                         'w-px h-4 shrink-0',
                         tabs[index - 1].pinned !== tab.pinned
-                          ? 'mx-2 bg-foreground/25'
+                          ? 'mx-2 bg-stroke-4'
                           : 'mx-1 bg-border'
                       )}
                     />
@@ -163,8 +163,9 @@ function SortableTabItem({
                 'flex items-center gap-2 h-7 rounded-md cursor-grab active:cursor-grabbing select-none text-sm',
                 tab.pinned ? 'pl-2.5 pr-3' : 'pl-3 pr-7',
                 'min-w-[80px] max-w-[160px]',
-                'hover:bg-accent/60',
-                active ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground'
+                active
+                  ? 'bg-background text-foreground'
+                  : 'text-muted-foreground hover:bg-hover-fill'
               )}
               onClick={onActivate}
               {...attributes}

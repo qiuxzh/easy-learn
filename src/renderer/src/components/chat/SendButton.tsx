@@ -1,5 +1,5 @@
-import { IconArrowUp, IconPlayerStopFilled } from '@tabler/icons-react';
 import { cn } from '@/lib/utils';
+import { ArrowUp, Square } from 'lucide-react';
 
 export type SendButtonProps = {
   state: 'idle' | 'typing' | 'streaming';
@@ -18,7 +18,7 @@ export function SendButton({ state }: SendButtonProps) {
   if (isStreaming) {
     return (
       <div className="size-7 rounded-full bg-foreground flex items-center justify-center cursor-pointer">
-        <IconPlayerStopFilled className="size-4 text-background" />
+        <Square className="size-4 text-background" fill="currentColor" />
       </div>
     );
   }
@@ -30,7 +30,7 @@ export function SendButton({ state }: SendButtonProps) {
         isTyping ? 'bg-primary cursor-pointer' : 'bg-muted cursor-default'
       )}
     >
-      <IconArrowUp
+      <ArrowUp
         className={cn('size-4', isTyping ? 'text-primary-foreground' : 'text-muted-foreground')}
       />
     </div>

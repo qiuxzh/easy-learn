@@ -2,7 +2,7 @@ import { useEffect, useState, type SyntheticEvent } from 'react';
 import { Copy, Loader2, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import type { CustomRendererProps } from 'streamdown';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { SegmentedToggle } from '@/components/ui/segmented-toggle';
 import {
   DEFAULT_PREVIEW_HEIGHT,
@@ -126,11 +126,12 @@ export function SvgBlock({ code, isIncomplete, language }: CustomRendererProps) 
 
   return (
     <div
-      className="my-4 overflow-hidden rounded-xl border border-border bg-sidebar"
+      className="my-4 overflow-hidden rounded-xl border border-stroke-3 bg-card"
       data-streamdown="svg-block"
     >
-      <div className="flex min-h-9 flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/40 px-2 py-1">
-        <span className="ml-1 font-mono text-xs lowercase text-muted-foreground">{language}</span>
+      {/* 表头内是 h-7 控件，min-h-9 与代码块表头同档 36px；纵向内边距超过 3px 就会把表头撑过 36px。用 min-h 而非 h：窄宽度换行时表头还要生长 */}
+      <div className="flex min-h-9 flex-wrap items-center justify-between gap-2 border-b border-stroke-3 bg-surface-2 px-2">
+        <span className="ml-1 font-mono text-sm lowercase text-muted-foreground">{language}</span>
         <div className="flex flex-wrap items-center gap-1">
           <SegmentedToggle
             value={viewMode}
@@ -142,30 +143,18 @@ export function SvgBlock({ code, isIncomplete, language }: CustomRendererProps) 
           />
 
           {viewMode === 'source' ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              className="h-7 cursor-pointer w-7 p-0"
-              title="复制源码"
-              aria-label="复制源码"
-              onClick={() => void handleCopySource()}
-            >
+            <IconButton type="button" label="复制源码" onClick={() => void handleCopySource()}>
               <Copy />
-            </Button>
+            </IconButton>
           ) : (
-            <Button
+            <IconButton
               type="button"
-              size="sm"
-              variant="ghost"
-              className="h-7 cursor-pointer w-7 p-0"
-              title="复制图片"
-              aria-label="复制图片"
+              label="复制图片"
               disabled={Boolean(validationError) || isIncomplete}
               onClick={() => void handleCopyImage()}
             >
               <Copy />
-            </Button>
+            </IconButton>
           )}
         </div>
       </div>

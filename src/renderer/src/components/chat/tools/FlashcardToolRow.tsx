@@ -23,7 +23,7 @@ export function FlashcardToolRow({ change }: { change: FlashcardChangeDetail }) 
         detail={buildDetail(change)}
         expandable
       >
-        <div className="overflow-hidden rounded-md border border-border bg-muted/30">
+        <div className="overflow-hidden rounded-md border border-stroke-3 bg-surface-2">
           <div className="bg-background">
             <FlashcardChangeBody change={change} />
           </div>

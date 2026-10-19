@@ -1,6 +1,6 @@
-import { memo } from 'react';
-import { IconAlertTriangle, IconArrowsMinimize } from '@tabler/icons-react';
 import type { AppUIMessage } from '@/types/message';
+import { memo } from 'react';
+import { Minimize2, TriangleAlert } from 'lucide-react';
 import { isCompactionPart } from '@/utils/message-util';
 import { SpiralLoader } from '../SpiralLoader';
 import { ToolRowBase } from '../tools/ToolRowBase';
@@ -15,8 +15,8 @@ export const CompactionNotice = memo(function CompactionNotice({ msg }: { msg: A
 
   if (part.state === 'error') {
     return (
-      <div className="flex max-w-full items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-2.5 py-1.5 text-[13px] text-destructive">
-        <IconAlertTriangle className="size-3 shrink-0" />
+      <div className="flex max-w-full items-center gap-2 rounded-md border border-danger-border bg-danger-surface px-2.5 py-1.5 text-body text-destructive">
+        <TriangleAlert className="size-3 shrink-0" />
         <span className="shrink-0">上下文压缩失败</span>
         {part.errorText && <span className="min-w-0 truncate opacity-70">{part.errorText}</span>}
       </div>
@@ -27,7 +27,7 @@ export const CompactionNotice = memo(function CompactionNotice({ msg }: { msg: A
 
   return (
     <ToolRowBase
-      icon={isStreaming ? <SpiralLoader size={12} /> : <IconArrowsMinimize className="size-3" />}
+      icon={isStreaming ? <SpiralLoader size={12} /> : <Minimize2 className="size-3" />}
       shimmerLabel="正在压缩上下文"
       completeLabel="上下文已压缩"
       isAnimating={isStreaming}

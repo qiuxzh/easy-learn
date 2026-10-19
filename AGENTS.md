@@ -64,8 +64,9 @@ src/
 ## 文档
 
 如有任何对文档的写入，务必参考：[文档编写说明](docs/references/documents.md)
-在编写代码前，务必查看[注释规范](docs/references/comments.md)
+在新增和修改任意代码注释前，严格遵守[注释规范](docs/references/comments.md)的纪律
 使用git进行写操作前（包括commit、push等），参考[git规范](docs/references/git.md)
+在改动任何 tsx 文件前，阅读[UI规范](docs/references/ui.md)
 
 # 工作思维准则
 
@@ -95,4 +96,6 @@ src/
 - pnpm 下载包时不需要指定store位置，直接使用 `pnpm add` 就可以
 - zustand的store里面使用immer，防止出现代码多层嵌套
 - **组件复用**：有现成组件，就不要自己造轮子。如果没有需要的组件，优先考虑下载，而不是自己实现
+- **尺寸走四档约定**：控件高度只用 `h-8`（默认）、`h-7`（紧凑）、`h-6`（行内最小）、`h-9`（大控件）；载体（页头、标签栏、状态栏）用 `h-9` / `h-10`。不写其它高度值。
+- **新增外观改原语**：确实需要新的外观时，在组件里加一档并集中定义，不要在调用处覆盖。
 - 在renderer里面严禁使用../导入，尽可能用@/...导入组件

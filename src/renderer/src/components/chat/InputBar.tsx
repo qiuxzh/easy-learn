@@ -12,6 +12,7 @@ import {
   type ReactNode,
 } from 'react';
 import { ImagePlus, X } from 'lucide-react';
+import { IconButton } from '@/components/ui/icon-button';
 import { toast } from 'sonner';
 import type { ImageContent } from '@shared/types/chat';
 import { toAttachmentUrl } from '@/utils/image-util';
@@ -195,7 +196,7 @@ export const InputBar = memo(function InputBar({
     <div className="shrink-0 px-3 pb-3">
       <div
         role="presentation"
-        className="relative cursor-text rounded-2xl bg-background shadow-input-bar ring-1 ring-foreground/10"
+        className="relative cursor-text rounded-2xl bg-background shadow-soft"
         onClick={handleContainerClick}
         onKeyDown={handleContainerKeyDown}
       >
@@ -214,7 +215,7 @@ export const InputBar = memo(function InputBar({
                     <img
                       src={toAttachmentUrl(image.attachmentId)}
                       alt="待发送图片"
-                      className="h-16 w-16 rounded-lg object-cover ring-1 ring-foreground/10 transition-opacity hover:opacity-90"
+                      className="h-16 w-16 rounded-md object-cover ring-1 ring-stroke-2 transition-opacity hover:opacity-90"
                     />
                   </button>
                   <button
@@ -238,7 +239,7 @@ export const InputBar = memo(function InputBar({
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             placeholder="发消息…"
-            className="w-full resize-none bg-transparent border-0 outline-none text-[15px] leading-[1.6] text-foreground placeholder:text-muted-foreground/60 min-h-[1.6em] overflow-y-auto"
+            className="w-full resize-none bg-transparent border-0 outline-none text-body-lg leading-[1.6] text-foreground placeholder:text-ink-tertiary min-h-[1.6em] overflow-y-auto"
             style={{ fieldSizing: 'content', maxHeight: '120px' }}
           />
         </div>
@@ -246,16 +247,15 @@ export const InputBar = memo(function InputBar({
         <div className={`flex items-center justify-between gap-3 ${sizeStyle.toolbar}`}>
           <div className="flex items-center gap-1 min-w-0">{leftActions}</div>
           <div className="flex items-center gap-1.5">
-            <button
+            <IconButton
               type="button"
+              variant="quiet"
+              label={isFull ? `最多添加 ${MAX_IMAGES} 张图片` : '添加图片'}
               onClick={handlePickImages}
               disabled={isStoring}
-              title={isFull ? `最多添加 ${MAX_IMAGES} 张图片` : '添加图片'}
-              aria-label="添加图片"
-              className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent p-0 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
             >
-              <ImagePlus className="h-4 w-4" />
-            </button>
+              <ImagePlus />
+            </IconButton>
             <button
               type="button"
               onClick={handleSendButtonClick}

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Collapsible } from '@base-ui/react/collapsible';
 import { TextShimmer } from '../TextShimmer';
-import { IconChevronRight } from '@tabler/icons-react';
+import { ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export type ToolRowBaseProps = {
@@ -62,15 +62,13 @@ export function ToolRowBase({
           )}
         </span>
         {detail && (
-          <span className="font-normal truncate min-w-0 flex-1 text-muted-foreground/60">
-            {detail}
-          </span>
+          <span className="font-normal truncate min-w-0 flex-1 text-ink-tertiary">{detail}</span>
         )}
         {trailingContent}
       </div>
       {expandable && (isComplete || isExpanded || isAnimating) && (
         <div>
-          <IconChevronRight
+          <ChevronRight
             className={cn(
               'shrink-0 text-muted-foreground transition-transform duration-150 ease-out',
               'size-3',
@@ -97,7 +95,7 @@ export function ToolRowBase({
       <Collapsible.Panel
         className={cn(
           'overflow-hidden',
-          'h-[var(--collapsible-panel-height)] transition-all duration-150 ease-out',
+          'h-[var(--collapsible-panel-height)] transition-[height] duration-150 ease-out',
           'data-ending-style:h-0 data-starting-style:h-0',
           "[&[hidden]:not([hidden='until-found'])]:hidden"
         )}

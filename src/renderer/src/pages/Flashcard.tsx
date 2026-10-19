@@ -189,17 +189,17 @@ export function Flashcard() {
 
   if (loading)
     return (
-      <div className="flex h-full items-center justify-center bg-muted/15 text-sm text-muted-foreground">
+      <div className="flex h-full items-center justify-center bg-surface-1 text-sm text-muted-foreground">
         加载闪卡数据…
       </div>
     );
 
   return (
-    <div className="relative flex h-full flex-col overflow-hidden bg-muted/15 [&_button:not(:disabled)]:cursor-pointer [&_button:disabled]:cursor-not-allowed">
-      <div className="border-b bg-background/80 px-6 py-5 backdrop-blur">
+    <div className="relative flex h-full flex-col overflow-hidden bg-surface-1 [&_button:not(:disabled)]:cursor-pointer [&_button:disabled]:cursor-not-allowed">
+      <div className="border-b bg-background px-6 py-5">
         <div className="mx-auto flex max-w-7xl items-start justify-between gap-4">
           <div className="flex items-start gap-3">
-            <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <div className="flex size-10 items-center justify-center rounded-xl bg-primary-surface text-primary">
               <Layers3 className="size-5" />
             </div>
             <div>
@@ -328,13 +328,9 @@ export function Flashcard() {
           />
           <DialogFooter>
             <DialogClose asChild>
-              <Button variant="outline" className="cursor-pointer">
-                取消
-              </Button>
+              <Button variant="outline">取消</Button>
             </DialogClose>
-            <Button className="cursor-pointer" onClick={() => void handleCreateGroup()}>
-              创建牌组
-            </Button>
+            <Button onClick={() => void handleCreateGroup()}>创建牌组</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -359,13 +355,9 @@ export function Flashcard() {
           />
           <DialogFooter>
             <DialogClose asChild>
-              <Button variant="outline" className="cursor-pointer">
-                取消
-              </Button>
+              <Button variant="outline">取消</Button>
             </DialogClose>
-            <Button className="cursor-pointer" onClick={() => void handleRenameGroup()}>
-              保存
-            </Button>
+            <Button onClick={() => void handleRenameGroup()}>保存</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -411,13 +403,15 @@ function SummaryCard({
   return (
     <Card
       className={`h-full gap-0 py-0 shadow-none ${
-        tone === 'primary' ? 'border-primary/25 bg-primary/5' : ''
+        tone === 'primary' ? 'border-primary-border bg-primary-surface' : ''
       }`}
     >
       <CardContent className="flex items-center gap-3 p-3">
         <div
           className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${
-            tone === 'primary' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
+            tone === 'primary'
+              ? 'bg-primary-surface text-primary'
+              : 'bg-muted text-muted-foreground'
           } [&_svg]:size-4`}
         >
           {icon}
@@ -427,7 +421,7 @@ function SummaryCard({
             <p className="text-xl font-semibold tracking-tight tabular-nums">{value}</p>
             <p className="truncate text-xs text-muted-foreground">{label}</p>
           </div>
-          <p className="mt-0.5 truncate text-[11px] text-muted-foreground/75">{detail}</p>
+          <p className="mt-0.5 truncate text-xs text-ink-secondary">{detail}</p>
         </div>
       </CardContent>
     </Card>
@@ -481,7 +475,7 @@ function GroupRow({
       <TableCell>{group.learning}</TableCell>
       <TableCell>
         {group.due > 0 ? (
-          <Badge className="bg-emerald-600 hover:bg-emerald-600">{group.due}</Badge>
+          <Badge tone="success">{group.due}</Badge>
         ) : (
           <span className="text-muted-foreground">0</span>
         )}
@@ -491,8 +485,7 @@ function GroupRow({
         <div className="flex items-center justify-end gap-0.5">
           <Button
             variant="ghost"
-            size="sm"
-            className="px-1.5"
+            size="xs"
             aria-label={`向${group.name}新增卡片`}
             title="新增卡片"
             onClick={onCreateCard}
@@ -500,29 +493,18 @@ function GroupRow({
             <Plus />
             新增
           </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="px-1.5"
-            disabled={availableCount === 0}
-            onClick={onReview}
-          >
+          <Button variant="ghost" size="xs" disabled={availableCount === 0} onClick={onReview}>
             <RotateCcw />
             {actionLabel}
             {group.due > 0 ? (
-              <span className="rounded bg-destructive/10 px-1.5 py-0.5 text-[10px] font-semibold text-destructive tabular-nums">
+              <span className="rounded-sm bg-danger-surface px-1.5 py-0.5 text-xs font-semibold text-destructive tabular-nums">
                 {group.due}
               </span>
             ) : null}
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-8"
-                aria-label={`管理${group.name}`}
-              >
+              <Button variant="ghost" size="sm" icon aria-label={`管理${group.name}`}>
                 <MoreHorizontal />
               </Button>
             </DropdownMenuTrigger>
@@ -551,7 +533,7 @@ function GroupRow({
 function EmptyGroups({ onCreate }: { onCreate: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
-      <div className="mb-4 flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+      <div className="mb-4 flex size-12 items-center justify-center rounded-full bg-primary-surface text-primary">
         <Layers3 />
       </div>
       <h3 className="font-medium">还没有牌组</h3>

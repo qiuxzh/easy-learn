@@ -1,75 +1,41 @@
-:root {
+/* markdown 代码块与公式块的样式。
+ * 块级尺寸语义（--md-*）在 .chat-markdown 上声明一次，取值来自 index.css 的全局刻度。
+ * --sdm-* 与 --shiki-dark* 是 streamdown 的契约变量：它把 token 颜色写进内联样式，这里负责把变量应用回 span。
+ * 全局 token 声明在 @theme inline 里，只有本文件出现对应 var() 引用时才会被写进产物；改名或删掉引用会让取值静默失效。
+ */
+.chat-markdown {
   --sdm-c: inherit;
   --sdm-tbg: transparent;
   --shiki-dark: inherit;
   --shiki-dark-bg: transparent;
+
+  /* 代码块与多行公式块的上下间距：24px */
+  --md-block-gap: calc(var(--spacing) * 6);
+  /* 代码块表头高度：与 h-9 同档，36px；streamdown 自带 h-8，这里必须显式覆盖 */
+  --md-code-header-height: calc(var(--spacing) * 9);
 }
 
 /* === Streamdown 必需样式 === */
 /* streamdown 会把代码块渲染成嵌套结构，外层 [data-streamdown='code-block']，
    header / actions / body 各自是固定子元素。这些选择器无法用 Tailwind 类名表达，
    必须留在 CSS 中。 */
-/* Mermaid SVG 的尺寸由外层容器控制，避免内联宽高导致图表被强制放大。 */
-.chat-markdown [data-mermaid-svg] > svg {
-  display: block;
-  width: 100% !important;
-  max-width: none !important;
-  height: auto;
-}
 
-.chat-markdown [data-mermaid-svg][data-sized='true'] > svg {
-  height: 100% !important;
-}
-
-/* Mermaid 使用自身多色 palette；CSS 只处理背景和语义高亮。 */
-.chat-markdown [data-mermaid-svg] > svg {
-  background: transparent !important;
-}
-
-.chat-markdown [data-mermaid-svg] .edgeLabel rect {
-  fill: hsl(var(--background)) !important;
-}
-
-.chat-markdown [data-mermaid-svg] .edgeLabel,
-.chat-markdown [data-mermaid-svg] .edgeLabel text,
-.chat-markdown [data-mermaid-svg] .edgeLabel span {
-  color: hsl(var(--foreground)) !important;
-  fill: hsl(var(--foreground)) !important;
-}
-
-.chat-markdown [data-mermaid-svg] .node.highlight rect,
-.chat-markdown [data-mermaid-svg] .node.active rect,
-.chat-markdown [data-mermaid-svg] .node.current rect,
-.chat-markdown [data-mermaid-svg] .node.selected rect,
-.chat-markdown [data-mermaid-svg] .node.special rect {
-  fill: hsl(var(--primary)) !important;
-  stroke: hsl(var(--primary)) !important;
-}
-
-.chat-markdown [data-mermaid-svg] .node.highlight .nodeLabel,
-.chat-markdown [data-mermaid-svg] .node.active .nodeLabel,
-.chat-markdown [data-mermaid-svg] .node.current .nodeLabel,
-.chat-markdown [data-mermaid-svg] .node.selected .nodeLabel,
-.chat-markdown [data-mermaid-svg] .node.special .nodeLabel {
-  color: hsl(var(--primary-foreground)) !important;
-  fill: hsl(var(--primary-foreground)) !important;
-}
 .chat-markdown [data-streamdown='code-block'] {
   padding: 0;
-  border: 1px solid hsl(var(--border));
-  border-radius: 0.5rem;
+  border: 1px solid var(--color-stroke-3);
+  border-radius: var(--radius-sm);
   background: transparent;
   gap: 0;
-  margin-top: 1.5rem;
-  margin-bottom: 1.5rem;
+  margin-top: var(--md-block-gap);
+  margin-bottom: var(--md-block-gap);
 }
 
 .chat-markdown [data-streamdown='code-block-header'] {
-  padding: 0 10px 0 8px;
-  height: 28px;
-  font-size: 12px;
-  border-bottom: 1px solid hsl(var(--border));
-  background-color: hsl(var(--muted));
+  padding: 0 calc(var(--spacing) * 2.5) 0 calc(var(--spacing) * 2);
+  height: var(--md-code-header-height);
+  font-size: var(--text-sm);
+  border-bottom: 1px solid var(--color-stroke-3);
+  background-color: var(--color-surface-2);
   position: relative;
 }
 
@@ -78,8 +44,8 @@
   margin: 0;
   top: 0;
   right: 0;
-  height: 28px;
-  padding-right: 8px;
+  height: var(--md-code-header-height);
+  padding-right: calc(var(--spacing) * 2);
 }
 
 .chat-markdown [data-streamdown='code-block-actions'] {
@@ -90,13 +56,13 @@
 }
 
 .chat-markdown [data-streamdown='code-block-actions'] button > svg {
-  width: 14px;
-  height: 14px;
+  width: calc(var(--spacing) * 3.5);
+  height: calc(var(--spacing) * 3.5);
 }
 
 .chat-markdown [data-streamdown='code-block-body'] {
   margin: 0;
-  padding: 8px 12px;
+  padding: calc(var(--spacing) * 2) calc(var(--spacing) * 3);
   background: transparent;
   border: transparent;
   overflow-x: auto;
@@ -104,7 +70,7 @@
 
 .chat-markdown [data-streamdown='code-block'] pre,
 .chat-markdown [data-streamdown='code-block'] code {
-  font-size: 14px; /* 代码字号 */
+  font-size: var(--text-sm); /* 代码字号 */
   background: transparent;
 }
 
@@ -136,16 +102,16 @@
 /* 多行公式块未被识别为块级时，会渲染为 <p><span class="katex">，
    给这类段落加上下间距。:has(> .katex:only-child) 仅匹配子元素全为 katex 的 p */
 .chat-markdown p:has(> .katex:only-child) {
-  margin-top: 1.5rem;
-  margin-bottom: 1.5rem;
+  margin-top: var(--md-block-gap);
+  margin-bottom: var(--md-block-gap);
 }
 /* 备选：公式被识别为 katex-display 块时也加间距 */
 .chat-markdown .katex-display {
-  margin-top: 1.5rem !important;
-  margin-bottom: 1.5rem !important;
+  margin-top: var(--md-block-gap) !important;
+  margin-bottom: var(--md-block-gap) !important;
 }
 /* 行内公式（$...$）与前后文字加微小间距 */
 .chat-markdown .katex {
-  margin-left: 0.125rem;
-  margin-right: 0.125rem;
+  margin-left: calc(var(--spacing) * 0.5);
+  margin-right: calc(var(--spacing) * 0.5);
 }

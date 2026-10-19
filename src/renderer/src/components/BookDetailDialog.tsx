@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { useBooksStore } from '@/stores/books-store';
 import { coverMimeType, fallbackCoverText } from '@/utils/book-cover';
 import { formatDateTime } from '@shared/utils/time-util';
@@ -129,105 +130,108 @@ export function BookDetailDialog({ book, onOpenChange }: BookDetailDialogProps) 
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[calc(100%-4rem)] w-[calc(100%-2rem)] max-w-2xl overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>书籍详情</DialogTitle>
-          <DialogDescription>可以修改书名、作者和封面，保存后立即生效。</DialogDescription>
-        </DialogHeader>
+      <DialogContent className="flex max-h-[calc(100%-4rem)] w-[calc(100%-2rem)] max-w-2xl flex-col">
+        <ScrollArea className="scroll-area-fit min-h-0 flex-1">
+          <div className="flex flex-col gap-4">
+            <DialogHeader>
+              <DialogTitle>书籍详情</DialogTitle>
+              <DialogDescription>可以修改书名、作者和封面，保存后立即生效。</DialogDescription>
+            </DialogHeader>
 
-        <div className="flex gap-5">
-          {/* 封面区：点击更换，悬停显示提示 */}
-          <div className="flex shrink-0 flex-col items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void handlePickCover()}
-              aria-label="更换封面"
-              className="group relative flex aspect-[4/5] w-32 items-center justify-center overflow-hidden rounded-md border border-border bg-muted text-center cursor-pointer"
-            >
-              {coverSrc ? (
-                <img src={coverSrc} alt={booksName} className="h-full w-full object-cover" />
-              ) : (
-                <span className="px-2 text-xs font-medium leading-snug break-all text-foreground/80 select-none">
-                  {fallbackCoverText(booksName)}
-                </span>
-              )}
-              <span className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/50 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100">
-                <ImageUp className="h-5 w-5" />
-                更换封面
-              </span>
-            </button>
-            {(book.coverUrl || preview) && !coverRemoved && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="text-muted-foreground hover:text-destructive"
-                onClick={handleRemoveCover}
-              >
-                <Trash2 />
-                移除封面
-              </Button>
-            )}
-          </div>
+            <div className="flex gap-5">
+              {/* 封面区：点击更换，悬停显示提示 */}
+              <div className="flex shrink-0 flex-col items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handlePickCover()}
+                  aria-label="更换封面"
+                  className="group relative flex aspect-[4/5] w-32 items-center justify-center overflow-hidden rounded-md border border-stroke-3 bg-muted text-center cursor-pointer"
+                >
+                  {coverSrc ? (
+                    <img src={coverSrc} alt={booksName} className="h-full w-full object-cover" />
+                  ) : (
+                    <span className="px-2 text-xs font-medium leading-snug break-all text-ink-secondary select-none">
+                      {fallbackCoverText(booksName)}
+                    </span>
+                  )}
+                  {/* eslint-disable-next-line better-tailwindcss/no-restricted-classes -- TODO(on-mask-ink): 遮罩固定为黑，缺一档不随主题翻转的墨色 token，补齐后删掉本行 */}
+                  <span className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-mask-3 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100">
+                    <ImageUp className="h-5 w-5" />
+                    更换封面
+                  </span>
+                </button>
+                {(book.coverUrl || preview) && !coverRemoved && (
+                  <Button
+                    type="button"
+                    variant="quiet"
+                    tone="danger"
+                    size="sm"
+                    onClick={handleRemoveCover}
+                  >
+                    <Trash2 />
+                    移除封面
+                  </Button>
+                )}
+              </div>
 
-          {/* 表单区 */}
-          <div className="min-w-0 flex-1 space-y-4">
-            <div className="space-y-1.5">
-              <p className="text-sm font-medium">书名</p>
-              <Input
-                value={booksName}
-                onChange={event => setBooksName(event.target.value)}
-                placeholder="请输入书名"
-                className="focus-visible:ring-0 focus-visible:ring-offset-0"
-              />
-            </div>
+              {/* 表单区 */}
+              <div className="min-w-0 flex-1 space-y-4">
+                <div className="space-y-1.5">
+                  <p className="text-sm font-medium">书名</p>
+                  <Input
+                    value={booksName}
+                    onChange={event => setBooksName(event.target.value)}
+                    placeholder="请输入书名"
+                  />
+                </div>
 
-            <div className="space-y-1.5">
-              <p className="text-sm font-medium">作者</p>
-              <Input
-                value={author}
-                onChange={event => setAuthor(event.target.value)}
-                placeholder="未知作者"
-                className="focus-visible:ring-0 focus-visible:ring-offset-0"
-              />
-            </div>
+                <div className="space-y-1.5">
+                  <p className="text-sm font-medium">作者</p>
+                  <Input
+                    value={author}
+                    onChange={event => setAuthor(event.target.value)}
+                    placeholder="未知作者"
+                  />
+                </div>
 
-            <div className="space-y-1.5">
-              <p className="text-sm font-medium">信息</p>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 rounded-md border border-border bg-muted/30 p-3 text-xs">
-                <InfoRow label="格式" value={book.booksType.toUpperCase()} />
-                <InfoRow label="大小" value={formatFileSize(book.fileSize)} />
-                <InfoRow
-                  label="章节数"
-                  value={book.totalChapters === null ? '—' : String(book.totalChapters)}
-                />
-                <InfoRow
-                  label="总页数"
-                  value={book.totalPages === null ? '—' : String(book.totalPages)}
-                />
-                <InfoRow label="导入时间" value={formatDateTime(book.createdAt)} />
+                <div className="space-y-1.5">
+                  <p className="text-sm font-medium">信息</p>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 rounded-md border border-stroke-3 bg-surface-2 p-3 text-xs">
+                    <InfoRow label="格式" value={book.booksType.toUpperCase()} />
+                    <InfoRow label="大小" value={formatFileSize(book.fileSize)} />
+                    <InfoRow
+                      label="章节数"
+                      value={book.totalChapters === null ? '—' : String(book.totalChapters)}
+                    />
+                    <InfoRow
+                      label="总页数"
+                      value={book.totalPages === null ? '—' : String(book.totalPages)}
+                    />
+                    <InfoRow label="导入时间" value={formatDateTime(book.createdAt)} />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <p className="text-sm font-medium">简介</p>
+                  <p className="max-h-24 overflow-y-auto whitespace-pre-wrap break-words text-xs text-muted-foreground">
+                    {book.description?.trim() || '暂无简介'}
+                  </p>
+                </div>
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <p className="text-sm font-medium">简介</p>
-              <p className="max-h-24 overflow-y-auto whitespace-pre-wrap break-words text-xs text-muted-foreground">
-                {book.description?.trim() || '暂无简介'}
-              </p>
-            </div>
+            <BookIndexSection bookId={book.id} />
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                取消
+              </Button>
+              <Button type="button" disabled={saving} onClick={() => void handleSave()}>
+                {saving ? '保存中…' : '保存'}
+              </Button>
+            </DialogFooter>
           </div>
-        </div>
-
-        <BookIndexSection bookId={book.id} />
-
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            取消
-          </Button>
-          <Button type="button" disabled={saving} onClick={() => void handleSave()}>
-            {saving ? '保存中…' : '保存'}
-          </Button>
-        </DialogFooter>
+        </ScrollArea>
       </DialogContent>
     </Dialog>
   );

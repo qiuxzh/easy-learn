@@ -32,7 +32,7 @@ type NodeActionKind = 'start' | 'rebuild' | 'pause' | 'resume' | 'cancel';
 /** 向量化节点上的一个动作。 */
 interface NodeAction {
   label: string;
-  variant: 'default' | 'outline';
+  variant: 'solid' | 'outline';
   icon: ReactNode;
   kind: NodeActionKind;
   /** 需要二次确认时填确认类型，否则直接执行 */
@@ -150,7 +150,7 @@ export function BookIndexSection({ bookId }: BookIndexSectionProps) {
   });
 
   return (
-    <div className="flex flex-col border-t border-border pt-4">
+    <div className="flex flex-col border-t border-stroke-3 pt-4">
       <div className="mb-2.5 flex items-baseline justify-between gap-3">
         <span className="text-sm font-semibold">向量索引</span>
       </div>
@@ -181,7 +181,7 @@ export function BookIndexSection({ bookId }: BookIndexSectionProps) {
             width="14"
             height="26"
             viewBox="0 0 14 26"
-            className={cn(nodes.active ? 'text-primary' : 'text-muted-foreground/45')}
+            className={cn(nodes.active ? 'text-primary' : 'text-ink-caption')}
             aria-hidden
           >
             <line x1="7" y1="0" x2="7" y2="17" stroke="currentColor" strokeWidth="1.5" />
@@ -214,7 +214,7 @@ export function BookIndexSection({ bookId }: BookIndexSectionProps) {
         </FlowNode>
       </div>
 
-      <p className="mt-2.5 rounded-lg bg-muted/45 px-3 py-2.5 text-xs leading-relaxed text-muted-foreground">
+      <p className="mt-2.5 rounded-lg bg-surface-2 px-3 py-2.5 text-xs leading-relaxed text-muted-foreground">
         {nodes.note}
       </p>
 
@@ -254,23 +254,23 @@ function FlowNode({
     <div
       className={cn(
         'rounded-lg border bg-background px-3 py-2.5',
-        tone === 'ok' && 'border-emerald-600/40 bg-emerald-600/5',
-        tone === 'warn' && 'border-amber-500/45 bg-amber-500/10',
-        tone === 'run' && 'border-primary/45 bg-primary/5',
-        tone === 'plain' && 'border-border',
-        tone === 'off' && 'border-border opacity-60'
+        tone === 'ok' && 'border-success-border bg-success-surface',
+        tone === 'warn' && 'border-warn-border bg-warn-surface',
+        tone === 'run' && 'border-primary-border bg-primary-surface',
+        tone === 'plain' && 'border-stroke-3',
+        tone === 'off' && 'border-stroke-3 opacity-60'
       )}
     >
       <div className="flex items-center gap-1.5">
-        <span className="grid h-4 w-4 shrink-0 place-items-center rounded-full border border-border text-[10px] text-muted-foreground">
+        <span className="grid h-4 w-4 shrink-0 place-items-center rounded-full border border-stroke-3 text-xs text-muted-foreground">
           {index}
         </span>
         <span className="text-xs font-semibold">{name}</span>
         <span
           className={cn(
-            'ml-auto whitespace-nowrap text-[10.5px] tabular-nums text-muted-foreground',
-            tone === 'ok' && 'text-emerald-600 dark:text-emerald-400',
-            tone === 'warn' && 'text-amber-600 dark:text-amber-400',
+            'ml-auto whitespace-nowrap text-xs tabular-nums text-muted-foreground',
+            tone === 'ok' && 'text-success-ink',
+            tone === 'warn' && 'text-warn-ink',
             tone === 'run' && 'text-foreground'
           )}
         >
@@ -282,13 +282,13 @@ function FlowNode({
         <div
           className={cn(
             'mt-1.5 h-1.5 overflow-hidden rounded-full',
-            tone === 'warn' ? 'bg-amber-500/20' : 'bg-muted'
+            tone === 'warn' ? 'bg-warn-surface' : 'bg-muted'
           )}
         >
           <div
             className={cn(
               'h-full rounded-full transition-[width] duration-300',
-              tone === 'warn' ? 'bg-amber-500' : 'bg-primary'
+              tone === 'warn' ? 'bg-warn-ink' : 'bg-primary'
             )}
             style={{ width: `${Math.round(Math.max(0, Math.min(1, progress)) * 100)}%` }}
           />
@@ -300,7 +300,7 @@ function FlowNode({
       {(hint || children) && (
         <div className="mt-2 flex items-center justify-end gap-2">
           {hint && (
-            <span className="mr-auto truncate text-[10.5px] tabular-nums text-muted-foreground">
+            <span className="mr-auto truncate text-xs tabular-nums text-muted-foreground">
               {hint}
             </span>
           )}
@@ -400,7 +400,7 @@ function buildNodes(input: {
       body: `${done} / ${total}`,
       progress: ratio,
       actions: [
-        { label: '继续', variant: 'default', icon: <Play />, kind: 'resume' },
+        { label: '继续', variant: 'solid', icon: <Play />, kind: 'resume' },
         { label: '取消', variant: 'outline', icon: <X />, kind: 'cancel' },
       ],
     };
@@ -431,7 +431,7 @@ function buildNodes(input: {
       actions: [
         {
           label: done > 0 ? '继续向量化' : '开始向量化',
-          variant: 'default',
+          variant: 'solid',
           icon: <Play />,
           kind: 'start',
         },
@@ -497,7 +497,7 @@ function ConfirmDialogs({
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction
               onClick={onConfirm}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive-hover"
             >
               重新分片
             </AlertDialogAction>

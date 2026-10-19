@@ -1,7 +1,7 @@
 :root {
   --scrollbar-size: 8px;
-  --scrollbar-thumb: hsl(var(--muted-foreground) / 0.4);
-  --scrollbar-thumb-hover: hsl(var(--muted-foreground) / 0.6);
+  --scrollbar-thumb: color-mix(in srgb, var(--muted-foreground) 40%, transparent);
+  --scrollbar-thumb-hover: color-mix(in srgb, var(--muted-foreground) 60%, transparent);
 }
 
 *::-webkit-scrollbar {

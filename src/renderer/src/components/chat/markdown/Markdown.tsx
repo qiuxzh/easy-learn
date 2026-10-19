@@ -69,13 +69,13 @@ export function Markdown({ content, className, isStreaming }: MarkdownProps) {
       </h4>
     ),
     p: ({ children, ...props }) => (
-      <p className="text-[15px] leading-relaxed text-foreground/95" {...props}>
+      <p className="text-body-lg leading-relaxed text-foreground" {...props}>
         {children}
       </p>
     ),
     ul: ({ children, ...props }) => (
       <ul
-        className="list-disc list-outside space-y-0.5 text-[15px] mb-2 pl-4 text-foreground/95"
+        className="list-disc list-outside space-y-0.5 text-body-lg mb-2 pl-4 text-foreground"
         {...props}
       >
         {children}
@@ -83,14 +83,14 @@ export function Markdown({ content, className, isStreaming }: MarkdownProps) {
     ),
     ol: ({ children, ...props }) => (
       <ol
-        className="list-decimal list-outside space-y-0.5 text-[15px] mb-2 pl-7 text-foreground/95"
+        className="list-decimal list-outside space-y-0.5 text-body-lg mb-2 pl-7 text-foreground"
         {...props}
       >
         {children}
       </ol>
     ),
     li: ({ children, ...props }) => (
-      <li className="text-[15px] pl-0.5 text-foreground/95" {...props}>
+      <li className="text-body-lg pl-0.5 text-foreground" {...props}>
         {children}
       </li>
     ),
@@ -116,18 +116,18 @@ export function Markdown({ content, className, isStreaming }: MarkdownProps) {
     },
     blockquote: ({ children, ...props }) => (
       <blockquote
-        className="pl-3 italic mb-2 text-[15px] border-l-2 border-border text-foreground/70"
+        className="pl-3 italic mb-2 text-body-lg border-l-2 border-stroke-3 text-ink-tertiary"
         {...props}
       >
         {children}
       </blockquote>
     ),
-    hr: ({ ...props }) => <hr className="my-4 border-border" {...props} />,
+    hr: ({ ...props }) => <hr className="my-4 border-stroke-3" {...props} />,
 
     table: ({ children, ...props }) => (
-      <div className="overflow-x-auto my-3 border border-border rounded-md">
+      <div className="overflow-x-auto my-3 border border-stroke-3 rounded-md">
         <table
-          className="w-full text-[15px] [&>thead]:bg-muted [&>thead>tr>th]:bg-muted"
+          className="w-full text-body-lg [&>thead]:bg-muted [&>thead>tr>th]:bg-muted"
           {...props}
         >
           {children}
@@ -140,7 +140,7 @@ export function Markdown({ content, className, isStreaming }: MarkdownProps) {
       </th>
     ),
     td: ({ children, ...props }) => (
-      <td className="px-3 py-2 border-t border-border text-foreground/95" {...props}>
+      <td className="px-3 py-2 border-t border-stroke-3 text-foreground" {...props}>
         {children}
       </td>
     ),

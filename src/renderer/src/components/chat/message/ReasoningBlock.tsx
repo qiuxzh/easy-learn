@@ -1,5 +1,5 @@
-import { IconBulb } from '@tabler/icons-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Lightbulb } from 'lucide-react';
 import { ToolRowBase } from '../tools/ToolRowBase';
 import type { AppReasoningPart } from '@/types/message';
 
@@ -11,13 +11,13 @@ export function ReasoningBlock({ part }: { part: AppReasoningPart }) {
 
   return (
     <ToolRowBase
-      icon={<IconBulb className="size-4" />}
+      icon={<Lightbulb className="size-4" />}
       shimmerLabel="思考"
       completeLabel="思考"
       isAnimating={isStreaming}
       expandable={Boolean(part.text)}
     >
-      {/* chat-inline-scroll 负责限高与滚动条（见 chat.css） */}
+      {/* chat-inline-scroll 负责限高与滚动条（见 styles/chat.css） */}
       <ScrollArea className="chat-inline-scroll">
         <p className="text-sm whitespace-pre-wrap text-muted-foreground">{part.text}</p>
       </ScrollArea>

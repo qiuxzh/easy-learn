@@ -22,8 +22,8 @@ function TOCNode({ node, readerTabId }: { node: TOCItem; readerTabId: string }) 
   // 不同层级使用不同粗细和颜色
   const levelStyles = {
     0: 'font-semibold text-foreground',
-    1: 'font-medium text-foreground/90',
-    2: 'text-foreground/80',
+    1: 'font-medium text-foreground',
+    2: 'text-ink-secondary',
   }[Math.min(node.level, 2)];
 
   const indent = `${12 + node.level * 16}px`;
@@ -83,7 +83,7 @@ function TOCNode({ node, readerTabId }: { node: TOCItem; readerTabId: string }) 
         <span className="min-w-0 flex-1 truncate">{node.title || '未命名章节'}</span>
       </button>
       {open && (
-        <div className="ml-3 border-l border-border/50 pl-1">
+        <div className="ml-3 border-l border-stroke-1 pl-1">
           {node.subitems?.map(child => (
             <TOCNode key={child.id} node={child} readerTabId={readerTabId} />
           ))}
@@ -99,7 +99,7 @@ export function TOCPanel({ readerTabId, className }: TOCPanelProps) {
   const list = useMemo(() => tocs ?? [], [tocs]);
 
   return (
-    <div className={cn('flex h-full flex-col border-r border-border bg-background', className)}>
+    <div className={cn('flex h-full flex-col border-r border-stroke-3 bg-background', className)}>
       <div className="shrink-0 px-3 py-2 text-sm font-semibold text-muted-foreground">目录</div>
       <ScrollArea className="scroll-area-fit min-w-0 flex-1">
         <div className="space-y-0.5 p-2">

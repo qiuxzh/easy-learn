@@ -82,7 +82,7 @@ export function ReaderSettings() {
 
   return (
     <div className="space-y-2">
-      <div className="rounded-lg border border-border bg-background p-3">
+      <div className="rounded-lg border border-stroke-3 bg-background p-3">
         <div className="flex items-center justify-between gap-2">
           <span className="text-sm font-medium">翻页方式</span>
           <SegmentedToggle
@@ -96,7 +96,7 @@ export function ReaderSettings() {
         </p>
       </div>
 
-      <div className="rounded-lg border border-border bg-background p-3">
+      <div className="rounded-lg border border-stroke-3 bg-background p-3">
         <div className="flex items-center justify-between gap-2">
           <span className="text-sm font-medium">正文栏数</span>
           <SegmentedToggle
@@ -110,7 +110,7 @@ export function ReaderSettings() {
         </p>
       </div>
 
-      <div className="rounded-lg border border-border bg-background p-3">
+      <div className="rounded-lg border border-stroke-3 bg-background p-3">
         <div className="flex items-center justify-between gap-2">
           <span className="text-sm font-medium">PDF 缩放</span>
           <SegmentedToggle value={zoomChoice} options={ZOOM_OPTIONS} onChange={handleZoomChoice} />

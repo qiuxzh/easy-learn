@@ -1,15 +1,10 @@
+import { toast } from 'sonner';
 import { useCallback, useMemo, useState } from 'react';
 import { Collapsible } from '@base-ui/react/collapsible';
-import {
-  IconCards,
-  IconChevronRight,
-  IconChevronsDown,
-  IconChevronsUp,
-  IconPencil,
-} from '@tabler/icons-react';
-import { toast } from 'sonner';
+import { ChevronRight, ChevronsDown, ChevronsUp, Pencil, WalletCards } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useCardEditDialog } from '@/hooks/use-card-edit-dialog';
+import { IconButton } from '@/components/ui/icon-button';
 import {
   ACTION_META,
   buildDetail,
@@ -27,9 +22,9 @@ import type { FlashcardChangeDetail } from '@shared/types/flashcards';
 
 /** 每种操作的图标底色，沿用项目里 emerald/sky/red 的既有配色习惯。 */
 const ACTION_CHIP_CLASS: Record<FlashcardChangeDetail['action'], string> = {
-  create: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
-  update: 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300',
-  delete: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',
+  create: 'bg-success-surface text-success-ink',
+  update: 'bg-info-surface text-info-ink',
+  delete: 'bg-danger-surface text-danger-ink',
 };
 
 /** 从 trace 内的助手消息里收集本轮成功的闪卡写入操作，按发生顺序排列。 */
@@ -83,7 +78,7 @@ function FlashcardChangeItem({
   return (
     <Collapsible.Root open={open} onOpenChange={onOpenChange}>
       {/* 展开触发器与编辑按钮是同级按钮：避免按钮嵌套，也无需阻断冒泡 */}
-      <div className="flex items-center transition-colors hover:bg-muted/50">
+      <div className="flex items-center transition-colors hover:bg-surface-2">
         <Collapsible.Trigger
           className={cn(
             'group flex h-9 min-w-0 flex-1 cursor-pointer items-center gap-2.5 px-3 text-left'
@@ -92,44 +87,44 @@ function FlashcardChangeItem({
         >
           <span
             className={cn(
-              'flex size-5 shrink-0 items-center justify-center rounded',
+              'flex size-5 shrink-0 items-center justify-center rounded-sm',
               ACTION_CHIP_CLASS[change.action]
             )}
           >
             <Icon className="size-4" />
           </span>
-          <span className="shrink-0 text-[13px] font-medium text-foreground/75">{label}</span>
-          <span className="min-w-0 flex-1 truncate text-[12px] text-muted-foreground/70">
+          <span className="shrink-0 text-body font-medium text-ink-secondary">{label}</span>
+          <span className="min-w-0 flex-1 truncate text-xs text-ink-secondary">
             {buildDetail(change)}
           </span>
-          <IconChevronRight
+          <ChevronRight
             className={cn(
-              'size-3.5 shrink-0 text-muted-foreground/50 transition-transform duration-150 ease-out',
+              'size-3.5 shrink-0 text-ink-tertiary transition-transform duration-150 ease-out',
               'rotate-0 group-data-panel-open:rotate-90'
             )}
           />
         </Collapsible.Trigger>
         {onEdit && (
-          <button
+          <IconButton
             type="button"
-            title="编辑卡片"
-            aria-label="编辑卡片"
+            variant="quiet"
+            label="编辑卡片"
+            className="mr-2"
             onClick={onEdit}
-            className="mr-2 flex size-6 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground/45 transition-colors hover:bg-muted hover:text-foreground/80"
           >
-            <IconPencil className="size-3.5" />
-          </button>
+            <Pencil />
+          </IconButton>
         )}
       </div>
       <Collapsible.Panel
         className={cn(
-          'overflow-hidden bg-muted/20',
-          'h-[var(--collapsible-panel-height)] transition-all duration-150 ease-out',
+          'overflow-hidden bg-surface-1',
+          'h-[var(--collapsible-panel-height)] transition-[height] duration-150 ease-out',
           'data-ending-style:h-0 data-starting-style:h-0',
           "[&[hidden]:not([hidden='until-found'])]:hidden"
         )}
       >
-        <div className="mx-3 mb-2 overflow-hidden rounded-md border border-border bg-background">
+        <div className="mx-3 mb-2 overflow-hidden rounded-md border border-stroke-3 bg-background">
           <FlashcardChangeBody change={change} />
         </div>
       </Collapsible.Panel>
@@ -199,25 +194,21 @@ export function FlashcardChangesBlock({
   };
 
   return (
-    <div className="w-full overflow-hidden rounded-lg border border-border bg-muted/20">
-      <div className="flex items-center gap-2 border-b border-border bg-muted/40 px-3 py-2">
-        <IconCards className="size-4 shrink-0 text-muted-foreground/60" />
-        <span className="text-[13px] font-medium text-foreground/80">{buildSummary(changes)}</span>
-        <button
+    <div className="w-full overflow-hidden rounded-lg border border-stroke-3 bg-surface-1">
+      <div className="flex items-center gap-2 border-b border-stroke-3 bg-surface-2 px-3 py-2">
+        <WalletCards className="size-4 shrink-0 text-ink-tertiary" />
+        <span className="text-body font-medium text-ink-secondary">{buildSummary(changes)}</span>
+        <IconButton
           type="button"
+          variant="quiet"
+          label={allOpen ? '收起全部' : '展开全部'}
+          className="ml-auto"
           onClick={toggleAll}
-          title={allOpen ? '收起全部' : '展开全部'}
-          aria-label={allOpen ? '收起全部' : '展开全部'}
-          className="ml-auto flex size-5 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground/80"
         >
-          {allOpen ? (
-            <IconChevronsUp className="size-3.5" />
-          ) : (
-            <IconChevronsDown className="size-3.5" />
-          )}
-        </button>
+          {allOpen ? <ChevronsUp /> : <ChevronsDown />}
+        </IconButton>
       </div>
-      <div className="flex flex-col divide-y divide-border/60">
+      <div className="flex flex-col divide-y divide-ink-caption">
         {changes.map((change, index) => {
           const key = keys[index];
           return (

@@ -1,0 +1,47 @@
+/* mermaid 图表块的结构样式。
+ * 配色不在这里：整套调色板写在 MermaidBlock.tsx 的 MERMAID_PALETTES，随配置传给 mermaid。
+ * themeCSS 生成的节点分色带 !important，本文件覆盖同一批属性时必须同样带 !important，否则不生效。
+ */
+
+/* Mermaid SVG 的尺寸由外层容器控制，避免内联宽高导致图表被强制放大；背景同样由容器决定。 */
+.chat-markdown [data-mermaid-svg] > svg {
+  display: block;
+  width: 100% !important;
+  max-width: none !important;
+  height: auto;
+  background: transparent !important;
+}
+
+.chat-markdown [data-mermaid-svg][data-sized='true'] > svg {
+  height: 100% !important;
+}
+
+/* Mermaid 使用自身多色 palette；CSS 只处理边标签和语义高亮。 */
+.chat-markdown [data-mermaid-svg] .edgeLabel rect {
+  fill: var(--background) !important;
+}
+
+.chat-markdown [data-mermaid-svg] .edgeLabel,
+.chat-markdown [data-mermaid-svg] .edgeLabel text,
+.chat-markdown [data-mermaid-svg] .edgeLabel span {
+  color: var(--foreground) !important;
+  fill: var(--foreground) !important;
+}
+
+.chat-markdown [data-mermaid-svg] .node.highlight rect,
+.chat-markdown [data-mermaid-svg] .node.active rect,
+.chat-markdown [data-mermaid-svg] .node.current rect,
+.chat-markdown [data-mermaid-svg] .node.selected rect,
+.chat-markdown [data-mermaid-svg] .node.special rect {
+  fill: var(--primary) !important;
+  stroke: var(--primary) !important;
+}
+
+.chat-markdown [data-mermaid-svg] .node.highlight .nodeLabel,
+.chat-markdown [data-mermaid-svg] .node.active .nodeLabel,
+.chat-markdown [data-mermaid-svg] .node.current .nodeLabel,
+.chat-markdown [data-mermaid-svg] .node.selected .nodeLabel,
+.chat-markdown [data-mermaid-svg] .node.special .nodeLabel {
+  color: var(--primary-foreground) !important;
+  fill: var(--primary-foreground) !important;
+}

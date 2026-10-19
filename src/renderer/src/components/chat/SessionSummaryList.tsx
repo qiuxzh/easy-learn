@@ -164,7 +164,7 @@ export function SessionSummaryList({
   return (
     <div className="chat-session-summary-list">
       {/* 列表标题区 */}
-      <div className="px-4 py-3 border-b border-border">
+      <div className="px-4 py-3 border-b border-stroke-3">
         <h3 className="text-sm font-semibold">会话历史</h3>
       </div>
 
@@ -201,8 +201,8 @@ export function SessionSummaryList({
                           className={cn(
                             'group relative flex items-center gap-2.5 rounded-lg px-2 py-2 text-sm cursor-pointer transition-colors',
                             isActive
-                              ? 'bg-primary/10 text-foreground'
-                              : 'hover:bg-accent text-foreground/80 hover:text-foreground'
+                              ? 'bg-primary-surface text-foreground'
+                              : 'hover:bg-accent text-ink-secondary hover:text-foreground'
                           )}
                           onClick={() => void handleSelect(session.id)}
                           onKeyDown={e => {
@@ -230,7 +230,8 @@ export function SessionSummaryList({
                                   if (e.key === 'Enter') void handleSubmitRename();
                                   if (e.key === 'Escape') setRenamingId(null);
                                 }}
-                                className="h-6 text-sm px-1.5"
+                                // 行内重命名，比默认控件矮一档
+                                className="h-6 px-1.5"
                               />
                             ) : (
                               <div className="flex flex-col">
@@ -249,12 +250,13 @@ export function SessionSummaryList({
                               <DropdownMenuTrigger asChild>
                                 <Button
                                   variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  size="sm"
+                                  icon
+                                  className="opacity-0 group-hover:opacity-100 transition-opacity"
                                   // 阻止冒泡，否则会触发外层的 handleSelect
                                   onClick={e => e.stopPropagation()}
                                 >
-                                  <MoreHorizontal className="h-4 w-4" />
+                                  <MoreHorizontal />
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
@@ -264,7 +266,7 @@ export function SessionSummaryList({
                                     handleStartRename(session.id, session.title);
                                   }}
                                 >
-                                  <Pencil className="h-4 w-4 mr-2" />
+                                  <Pencil />
                                   重命名
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
@@ -274,7 +276,7 @@ export function SessionSummaryList({
                                     void handleDelete(session.id);
                                   }}
                                 >
-                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  <Trash2 />
                                   删除
                                 </DropdownMenuItem>
                               </DropdownMenuContent>

@@ -1,9 +1,12 @@
-'use client';
-
-import { memo, useCallback, useState, type ComponentType } from 'react';
-import { IconCheck, IconChevronDown } from '@tabler/icons-react';
 import { cn } from '@/lib/utils';
-import { Popover } from './Popover';
+import { memo, useCallback, useState, type ComponentType } from 'react';
+import { Check, ChevronDown } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 export type ModeOption = {
   id: string;
@@ -21,8 +24,9 @@ export type ModeSelectorProps = {
 };
 
 /**
- * 模式选择器：左侧 icon + 当前模式名 + 右侧 chevron，点击展开浮层。
+ * 模式选择器：左侧 icon + 当前模式名 + 右侧 chevron，点击展开菜单。
  * 受控/非受控均可，单模式时退化为静态标签。
+ * 菜单用 ui/dropdown-menu，与书库、会话列表的菜单共用同一套条目规格。
  */
 export const ModeSelector = memo(function ModeSelector({
   modes,
@@ -41,7 +45,6 @@ export const ModeSelector = memo(function ModeSelector({
     (id: string) => {
       if (!isControlled) setInternalValue(id);
       onChange?.(id);
-      setOpen(false);
     },
     [isControlled, onChange]
   );
@@ -54,7 +57,7 @@ export const ModeSelector = memo(function ModeSelector({
     <button
       type="button"
       className={cn(
-        'inline-flex h-8 items-center gap-1.5 rounded-[6px] px-2.5 text-[13px] leading-none text-foreground/70 transition-colors hover:bg-foreground/5 cursor-pointer',
+        'inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md px-2.5 text-body leading-none text-ink-tertiary transition-colors hover:bg-hover-fill',
         !hasMultiple && 'pointer-events-none',
         className
       )}
@@ -62,38 +65,35 @@ export const ModeSelector = memo(function ModeSelector({
     >
       {ActiveIcon && <ActiveIcon className="size-4 shrink-0" />}
       <span className="font-medium">{activeMode?.label}</span>
-      {hasMultiple && <IconChevronDown className="size-3.5 text-foreground/50" />}
+      {hasMultiple && <ChevronDown className="size-3.5 text-ink-caption" />}
     </button>
   );
 
+  // 只有一个模式时没有可选项，不需要菜单
   if (!hasMultiple) return trigger;
 
   return (
-    <Popover open={open} onOpenChange={setOpen} side="top" align="start" trigger={trigger}>
-      {modes.map(mode => {
-        const isActive = mode.id === activeMode?.id;
-        const Icon = mode.icon;
-        return (
-          <button
-            key={mode.id}
-            type="button"
-            onClick={() => handleSelect(mode.id)}
-            className={cn(
-              'flex w-full items-start gap-2 rounded-[6px] px-3 py-2 text-left text-[13px] leading-5 text-foreground transition-colors hover:bg-foreground/5 cursor-pointer',
-              isActive && 'bg-foreground/5'
-            )}
-          >
-            {Icon && <Icon className="mt-0.5 size-4 shrink-0" />}
-            <span className="flex-1 min-w-0">
-              <span className="block truncate font-medium">{mode.label}</span>
-              {mode.description && (
-                <span className="block truncate text-foreground/40">{mode.description}</span>
-              )}
-            </span>
-            {isActive && <IconCheck className="mt-0.5 size-4 shrink-0 text-foreground/60" />}
-          </button>
-        );
-      })}
-    </Popover>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
+      <DropdownMenuContent side="top" align="start">
+        {modes.map(mode => {
+          const isActive = mode.id === activeMode?.id;
+          const Icon = mode.icon;
+          return (
+            <DropdownMenuItem
+              key={mode.id}
+              // 条目不渲染说明文字，保持与其它菜单同为单行；说明放在悬停提示里
+              title={mode.description}
+              onSelect={() => handleSelect(mode.id)}
+              className="cursor-pointer"
+            >
+              {Icon && <Icon />}
+              <span className="min-w-0 flex-1 truncate font-medium">{mode.label}</span>
+              {isActive && <Check className="text-ink-tertiary" />}
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 });

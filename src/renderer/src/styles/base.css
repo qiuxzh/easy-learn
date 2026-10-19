@@ -1,0 +1,17 @@
+/* 全局元素基底：默认描边走语义色，页面底色与正文色跟随主题变量 */
+* {
+  border-color: var(--border);
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family:
+    'Segoe UI Variable Display', 'Segoe UI', system-ui, 'Microsoft YaHei UI', 'PingFang SC',
+    sans-serif;
+}
+
+/* 中性描边的发丝线宽度：0.5px 在 Chromium 下渲染为一个设备像素 */
+@utility hairline {
+  border-width: 0.5px;
+}

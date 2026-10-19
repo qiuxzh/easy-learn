@@ -11,10 +11,11 @@ const ScrollArea = React.forwardRef<
 >(({ className, children, scrollBarClassName, showHorizontalScrollBar = false, ...props }, ref) => (
   <ScrollAreaPrimitive.Root
     ref={ref}
-    className={cn('relative overflow-hidden', className)}
+    className={cn('relative flex flex-col overflow-hidden', className)}
     {...props}
   >
-    <ScrollAreaPrimitive.Viewport className="h-full w-full rounded-[inherit] overflow-hidden">
+    {/* 视口用 flex-1 而不是 h-full：Root 的高度常常来自 flex 或 max-height，不是确定值，百分比高度解析不到会让视口长到内容高度、滚不动 */}
+    <ScrollAreaPrimitive.Viewport className="min-h-0 w-full flex-1 rounded-[inherit] overflow-hidden">
       {children}
     </ScrollAreaPrimitive.Viewport>
     <ScrollBar className={scrollBarClassName} />

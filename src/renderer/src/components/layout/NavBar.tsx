@@ -1,11 +1,7 @@
-﻿import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import { SunIcon, MoonIcon, GearIcon, ChatBubbleIcon } from '@radix-ui/react-icons';
-import { BookOpen } from 'lucide-react';
-import { IconCards } from '@tabler/icons-react';
-import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { BookOpen, MessageCircle, Moon, Settings, Sun, WalletCards } from 'lucide-react';
+import { IconButton } from '@/components/ui/icon-button';
 import { SettingsDialog } from '@/pages/Settings';
 import { useTabsStore, type TabType } from '@/stores/tabs-store';
 
@@ -16,10 +12,13 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { type: 'chat', label: '对话', icon: <ChatBubbleIcon className="h-5 w-5" /> },
-  { type: 'bookshelf', label: '书库', icon: <BookOpen className="h-5 w-5" /> },
-  { type: 'card-management', label: '闪卡', icon: <IconCards className="h-5 w-5" /> },
+  { type: 'chat', label: '对话', icon: <MessageCircle /> },
+  { type: 'bookshelf', label: '书库', icon: <BookOpen /> },
+  { type: 'card-management', label: '闪卡', icon: <WalletCards /> },
 ];
+
+/** 导航栏图标键的统一档：栏底是 secondary，quiet/md 与栏宽匹配，提示朝右避让窗口边缘 */
+const NAV_KEY_PROPS = { side: 'right', variant: 'quiet', size: 'md' } as const;
 
 /** 左侧固定导航栏：上方功能按钮 + 下方暗色/设置 */
 export function NavBar() {
@@ -39,53 +38,33 @@ export function NavBar() {
 
   return (
     <>
-      <div className="w-10 border-r border-border flex flex-col shrink-0 bg-secondary/90">
-        <div className="flex flex-col flex-1">
-          {NAV_ITEMS.map(item => (
-            <NavButton key={item.type} label={item.label} onClick={() => addTab(item.type)}>
-              {item.icon}
-            </NavButton>
-          ))}
-        </div>
+      <div className="flex w-11 shrink-0 flex-col items-center gap-1 border-r border-stroke-3 bg-secondary py-2">
+        {NAV_ITEMS.map(item => (
+          <IconButton
+            key={item.type}
+            label={item.label}
+            {...NAV_KEY_PROPS}
+            onClick={() => addTab(item.type)}
+          >
+            {item.icon}
+          </IconButton>
+        ))}
 
-        <div className="flex flex-col">
-          <NavButton
+        <div className="mt-auto flex flex-col items-center gap-1">
+          <IconButton
             label={isDark ? '切换亮色模式' : '切换暗色模式'}
+            {...NAV_KEY_PROPS}
             onClick={() => setIsDark(v => !v)}
           >
-            {isDark ? <SunIcon className="h-5 w-5" /> : <MoonIcon className="h-5 w-5" />}
-          </NavButton>
-          <NavButton label="设置" onClick={() => setSettingsOpen(true)}>
-            <GearIcon className="h-5 w-5" />
-          </NavButton>
+            {isDark ? <Sun /> : <Moon />}
+          </IconButton>
+          <IconButton label="设置" {...NAV_KEY_PROPS} onClick={() => setSettingsOpen(true)}>
+            <Settings />
+          </IconButton>
         </div>
       </div>
 
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
     </>
-  );
-}
-
-interface NavButtonProps {
-  label: string;
-  onClick: () => void;
-  children: ReactNode;
-}
-
-function NavButton({ label, onClick, children }: NavButtonProps) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          className={cn('h-10 w-10 rounded-md hover:bg-accent')}
-          onClick={onClick}
-        >
-          {children}
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent side="right">{label}</TooltipContent>
-    </Tooltip>
   );
 }

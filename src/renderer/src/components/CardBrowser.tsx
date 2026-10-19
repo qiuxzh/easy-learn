@@ -27,6 +27,7 @@ import { Chat } from '@/pages/Chat';
 import { useTabsStore } from '@/stores/tabs-store';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { Input } from '@/components/ui/input';
@@ -226,11 +227,11 @@ export function CardBrowser({ tabId, groupId }: CardBrowserProps) {
   return (
     <div
       ref={browserRootRef}
-      className="relative flex h-full min-h-0 flex-col overflow-hidden bg-muted/15 [&_button:not(:disabled)]:cursor-pointer [&_button:disabled]:cursor-not-allowed"
+      className="relative flex h-full min-h-0 flex-col overflow-hidden bg-surface-1 [&_button:not(:disabled)]:cursor-pointer [&_button:disabled]:cursor-not-allowed"
     >
-      <div className="flex items-center justify-between gap-4 border-b bg-background/80 px-5 py-3 backdrop-blur">
+      <div className="flex items-center justify-between gap-4 border-b bg-background px-5 py-3">
         <div className="flex shrink-0 items-center gap-3">
-          <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary-surface text-primary">
             <GalleryHorizontalEnd className="size-5" />
           </div>
           <div className="min-w-0">
@@ -246,7 +247,7 @@ export function CardBrowser({ tabId, groupId }: CardBrowserProps) {
               onChange={event => handleSearchChange(event.target.value)}
               placeholder="筛选卡片内容"
               aria-label="筛选卡片内容"
-              className="h-9 pl-9 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
+              className="pl-9"
             />
           </div>
           <Badge variant="secondary">{filteredCards.length} 张卡片</Badge>
@@ -256,7 +257,8 @@ export function CardBrowser({ tabId, groupId }: CardBrowserProps) {
           </Button>
           <Button
             size="sm"
-            variant={assistantVisible ? 'secondary' : 'outline'}
+            variant="outline"
+            pressed={assistantVisible}
             aria-pressed={assistantVisible}
             onClick={handleOpenAssistant}
           >
@@ -427,8 +429,10 @@ function FilterButton({
   return (
     <Button
       type="button"
-      variant={active ? 'secondary' : 'ghost'}
-      className="h-9 w-full justify-start gap-2 px-2.5 font-normal"
+      variant="ghost"
+      pressed={active}
+      size="lg"
+      className="w-full justify-start"
       onClick={onClick}
     >
       <span className="text-muted-foreground">{icon}</span>
@@ -542,7 +546,7 @@ function CardListPanel({
                   <col key={column.key} style={{ width: columnWidths[index] }} />
                 ))}
               </colgroup>
-              <TableHeader className="bg-muted/70 [&_th]:font-semibold">
+              <TableHeader className="bg-surface-3 [&_th]:font-semibold">
                 <TableRow>
                   {CARD_COLUMNS.map((column, index) => (
                     <TableHead
@@ -553,7 +557,7 @@ function CardListPanel({
                           : index === CARD_COLUMNS.length - 1
                             ? 'pr-5'
                             : 'px-2 pr-3'
-                      } ${index < CARD_COLUMNS.length - 1 ? 'border-r border-border/60' : ''}`}
+                      } ${index < CARD_COLUMNS.length - 1 ? 'border-r border-stroke-2' : ''}`}
                     >
                       {column.label}
                       {/* 最后一列右侧就是表格边缘，没有右邻列可以让出宽度，因此不放手柄 */}
@@ -621,17 +625,17 @@ function CardListRow({
       className="cursor-pointer"
       onClick={onClick}
     >
-      <TableCell className="border-r border-border/60 overflow-hidden pl-5 pr-3">
+      <TableCell className="border-r border-stroke-2 overflow-hidden pl-5 pr-3">
         <p className="line-clamp-2 text-sm font-medium leading-5">{plainText(card.fields.front)}</p>
       </TableCell>
-      <TableCell className="border-r border-border/60 overflow-hidden px-2 pr-3">
+      <TableCell className="border-r border-stroke-2 overflow-hidden px-2 pr-3">
         <div className="flex flex-wrap gap-1">
           {card.tags.length ? (
             card.tags.slice(0, 3).map(tag => (
               <Badge
                 key={tag}
                 variant="secondary"
-                className="max-w-32 truncate text-[11px] font-normal"
+                className="max-w-32 truncate text-xs font-normal"
               >
                 #{tag}
               </Badge>
@@ -644,16 +648,16 @@ function CardListRow({
           )}
         </div>
       </TableCell>
-      <TableCell className="border-r border-border/60 truncate px-2 pr-3 text-xs text-muted-foreground">
+      <TableCell className="border-r border-stroke-2 truncate px-2 pr-3 text-xs text-muted-foreground">
         {groupName}
       </TableCell>
-      <TableCell className="border-r border-border/60 px-2 pr-3">
+      <TableCell className="border-r border-stroke-2 px-2 pr-3">
         <StatusBadge state={card.state} />
       </TableCell>
-      <TableCell className="border-r border-border/60 whitespace-nowrap px-2 pr-3 text-xs text-muted-foreground">
+      <TableCell className="border-r border-stroke-2 whitespace-nowrap px-2 pr-3 text-xs text-muted-foreground">
         {formatReviewDue(card)}
       </TableCell>
-      <TableCell className="border-r border-border/60 px-2 pr-3 text-center text-xs tabular-nums">
+      <TableCell className="border-r border-stroke-2 px-2 pr-3 text-center text-xs tabular-nums">
         {card.reps}
       </TableCell>
       <TableCell className="pr-5 text-xs tabular-nums text-muted-foreground">
@@ -679,34 +683,28 @@ function CardPagination({
   const end = Math.min(page * CARD_PAGE_SIZE, totalCards);
 
   return (
-    <div className="flex shrink-0 items-center justify-between gap-3 border-t bg-background/60 px-4 py-2">
+    <div className="flex shrink-0 items-center justify-between gap-3 border-t bg-background px-4 py-2">
       <p className="text-xs text-muted-foreground">
         {totalCards ? `显示 ${start}-${end} / 共 ${totalCards} 张` : '暂无卡片'}
       </p>
       <nav aria-label="卡片分页" className="flex items-center gap-1">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-8"
-          aria-label="上一页"
+        <IconButton
+          label="上一页"
           disabled={page <= 1}
           onClick={() => onPageChange(Math.max(1, page - 1))}
         >
           <ChevronLeft />
-        </Button>
+        </IconButton>
         <span className="min-w-16 text-center text-xs tabular-nums text-muted-foreground">
           {page} / {pageCount}
         </span>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-8"
-          aria-label="下一页"
+        <IconButton
+          label="下一页"
           disabled={page >= pageCount}
           onClick={() => onPageChange(Math.min(pageCount, page + 1))}
         >
           <ChevronRight />
-        </Button>
+        </IconButton>
       </nav>
     </div>
   );
@@ -735,27 +733,18 @@ function formatInterval(days: number): string {
 function StatusBadge({ state }: { state: CardRecord['state'] }) {
   if (state === 0)
     return (
-      <Badge
-        variant="outline"
-        className="shrink-0 border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-300"
-      >
+      <Badge variant="outline" tone="info" className="shrink-0">
         未学习
       </Badge>
     );
   if (state === 1 || state === 3)
     return (
-      <Badge
-        variant="outline"
-        className="shrink-0 border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300"
-      >
+      <Badge variant="outline" tone="warn" className="shrink-0">
         学习中
       </Badge>
     );
   return (
-    <Badge
-      variant="outline"
-      className="shrink-0 border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300"
-    >
+    <Badge variant="outline" tone="success" className="shrink-0">
       复习
     </Badge>
   );

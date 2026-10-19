@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { Copy as RestoreIcon, Minus, Square, X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 
 /** 窗口控件：最小化 / 最大化（还原） / 关闭 */
 export function WindowControls() {
@@ -16,33 +16,19 @@ export function WindowControls() {
 
   return (
     <div className="flex gap-1" style={{ WebkitAppRegion: 'no-drag' } as CSSProperties}>
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={() => window.api.minimize()}
-        className="h-8 w-8 rounded-full hover:bg-foreground/15"
-        title="最小化"
-      >
+      <IconButton side="bottom" label="最小化" onClick={() => window.api.minimize()}>
         <Minus />
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon"
+      </IconButton>
+      <IconButton
+        side="bottom"
+        label={isMaximized ? '还原' : '最大化'}
         onClick={() => window.api.maximize()}
-        className="h-8 w-8 rounded-full hover:bg-foreground/15 [&_svg]:size-3"
-        title={isMaximized ? '还原' : '最大化'}
       >
         {isMaximized ? <RestoreIcon /> : <Square />}
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={() => window.api.close()}
-        className="h-8 w-8 rounded-full hover:bg-destructive hover:text-destructive-foreground"
-        title="关闭"
-      >
+      </IconButton>
+      <IconButton side="bottom" tone="danger" label="关闭" onClick={() => window.api.close()}>
         <X />
-      </Button>
+      </IconButton>
     </div>
   );
 }

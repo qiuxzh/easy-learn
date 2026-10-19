@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { IconGitBranch } from '@tabler/icons-react';
 import { Button } from '@/components/ui/button';
+import { useState } from 'react';
+import { GitBranch } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -70,7 +70,7 @@ export function ForkSessionDialog({
             取消
           </Button>
           <Button onClick={handleSubmit} disabled={pending}>
-            <IconGitBranch className="h-4 w-4" />
+            <GitBranch />
             {pending ? '创建中…' : '创建分支'}
           </Button>
         </DialogFooter>

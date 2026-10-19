@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react';
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { WindowControls } from './WindowControls';
 import { TabsBar } from './TabsBar';
 import { useUiStore } from '@/stores/ui-store';
@@ -12,19 +12,17 @@ export function TopBar() {
 
   return (
     <div
-      className="h-10 flex items-center gap-2 px-2 shrink-0 bg-secondary/90"
+      className="h-10 flex items-center gap-2 px-2 shrink-0 bg-secondary"
       style={{ WebkitAppRegion: 'drag' } as CSSProperties}
     >
-      <Button
-        variant="ghost"
-        size="icon"
+      <IconButton
+        side="bottom"
+        label={navCollapsed ? '展开导航栏' : '收起导航栏'}
         onClick={toggleNav}
-        className="h-8 w-8 shrink-0 hover:bg-foreground/15"
-        title={navCollapsed ? '展开导航栏' : '收起导航栏'}
         style={{ WebkitAppRegion: 'no-drag' } as CSSProperties}
       >
         {navCollapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
-      </Button>
+      </IconButton>
       <TabsBar />
       <WindowControls />
     </div>

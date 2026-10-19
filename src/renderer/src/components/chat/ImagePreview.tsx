@@ -29,6 +29,7 @@ export function ImagePreviewDialog({ src, onOpenChange }: ImagePreviewDialogProp
 
   return (
     <Dialog open={Boolean(src)} onOpenChange={handleOpenChange}>
+      {/* eslint-disable-next-line better-tailwindcss/no-restricted-classes -- TODO(on-mask-ink): 整层压在图片上，缺一档不随主题翻转的墨色 token，补齐后删掉本行 */}
       <DialogContent className="max-w-[90vw] border-0 bg-transparent p-0 text-white shadow-none">
         {/* Radix 要求内容区必须有无障碍标题，这里只供读屏使用 */}
         <DialogTitle className="sr-only">图片预览</DialogTitle>

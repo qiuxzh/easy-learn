@@ -36,7 +36,7 @@ export function SegmentedToggle<T extends string>({
     >
       <span
         aria-hidden
-        className="absolute inset-y-0.5 left-0.5 rounded-full bg-card shadow-sm transition-transform duration-200 ease-out"
+        className="absolute inset-y-0.5 left-0.5 rounded-full bg-card transition-transform duration-200 ease-out"
         style={{ width: segmentWidth, transform: `translateX(${selectedIndex * 100}%)` }}
       />
       {options.map(option => (
@@ -44,7 +44,7 @@ export function SegmentedToggle<T extends string>({
           key={option.value}
           type="button"
           className={cn(
-            'relative z-10 cursor-pointer whitespace-nowrap rounded-full px-3 font-medium transition-colors',
+            'relative z-10 cursor-pointer whitespace-nowrap rounded-full px-2.5 font-medium transition-colors',
             value === option.value
               ? 'font-semibold text-card-foreground'
               : 'text-muted-foreground hover:text-foreground'

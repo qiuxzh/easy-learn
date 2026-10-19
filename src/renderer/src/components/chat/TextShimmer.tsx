@@ -11,7 +11,7 @@ export type TextShimmerProps = {
 
 /**
  * 流光文字：在 muted → foreground → muted 之间循环渐变扫光。
- * 颜色与动画由 chat.css 的 .chat-shimmer 规则统一控制。
+ * 颜色与动画由 styles/chat.css 的 .chat-shimmer 规则统一控制。
  */
 function TextShimmerComponent({
   children,

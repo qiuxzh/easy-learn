@@ -57,16 +57,14 @@ export function BookIndexBadge({ state, counts, stale, className }: BookIndexBad
       aria-label={label}
       className={cn(
         'flex items-center gap-1 rounded-full border px-1.5 py-0.5',
-        isWarn &&
-          'border-amber-500/45 bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
-        isDone &&
-          'border-emerald-600/35 bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
-        isRunning && 'border-primary/40 bg-background text-primary',
-        !isRunning && !isDone && !isWarn && 'border-border bg-muted text-muted-foreground',
+        isWarn && 'border-warn-border bg-warn-surface text-warn-ink',
+        isDone && 'border-success-border bg-success-surface text-success-ink',
+        isRunning && 'border-primary-border bg-background text-primary',
+        !isRunning && !isDone && !isWarn && 'border-stroke-3 bg-muted text-muted-foreground',
         className
       )}
     >
-      <span className="text-[10px] leading-none whitespace-nowrap tabular-nums">{text}</span>
+      <span className="text-xs leading-none whitespace-nowrap tabular-nums">{text}</span>
       {isRunning && <RingGlyph progress={ratio} />}
     </span>
   );

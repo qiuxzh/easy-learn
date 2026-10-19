@@ -64,17 +64,17 @@ export function MarkdownEditor({
       attributes: {
         class: cn(
           minHeightClassName,
-          'max-w-none px-5 py-4 text-[15px] leading-7 outline-none',
+          'max-w-none px-5 py-4 text-body-lg leading-7 outline-none',
           '[&_h1]:mb-4 [&_h1]:mt-2 [&_h1]:text-3xl [&_h1]:font-bold',
           '[&_h2]:mb-3 [&_h2]:mt-2 [&_h2]:text-2xl [&_h2]:font-semibold',
           '[&_h3]:mb-2 [&_h3]:mt-2 [&_h3]:text-xl [&_h3]:font-semibold',
           '[&_p]:my-2 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6',
           '[&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-6',
-          '[&_blockquote]:my-3 [&_blockquote]:border-l-4 [&_blockquote]:border-primary/40 [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-muted-foreground',
-          '[&_code]:rounded [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[0.9em]',
+          '[&_blockquote]:my-3 [&_blockquote]:border-l-4 [&_blockquote]:border-primary-border [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-muted-foreground',
+          '[&_code]:rounded-sm [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-sm',
           '[&_pre]:my-3 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-muted [&_pre]:p-4',
           '[&_pre_code]:bg-transparent [&_pre_code]:p-0',
-          '[&_hr]:my-5 [&_hr]:border-border'
+          '[&_hr]:my-5 [&_hr]:border-stroke-3'
         ),
         'aria-label': placeholder ?? 'Markdown 编辑器',
         'data-placeholder': placeholder ?? '',
@@ -93,11 +93,11 @@ export function MarkdownEditor({
   return (
     <div
       className={cn(
-        'overflow-hidden rounded-xl border bg-background shadow-sm transition-shadow focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/20',
+        'overflow-hidden rounded-xl hairline border-stroke-3 bg-background transition-shadow',
         className
       )}
     >
-      <div className="flex min-h-11 items-center justify-between gap-2 border-b bg-muted/35 px-2 py-1.5">
+      <div className="flex min-h-11 items-center justify-between gap-2 border-b bg-surface-2 px-2 py-1.5">
         <div
           className={cn(
             'flex min-w-0 flex-wrap items-center gap-0.5',
@@ -119,7 +119,7 @@ export function MarkdownEditor({
       {mode === 'live' ? (
         <div className="relative">
           {!value.trim() && (
-            <div className="pointer-events-none absolute left-5 top-4 text-[15px] leading-7 text-muted-foreground/65">
+            <div className="pointer-events-none absolute left-5 top-4 text-body-lg leading-7 text-ink-secondary">
               {placeholder}
             </div>
           )}
@@ -134,7 +134,7 @@ export function MarkdownEditor({
           spellCheck={false}
           className={cn(
             minHeightClassName,
-            'resize-y rounded-none border-0 bg-muted/15 px-5 py-4 font-mono text-[14px] leading-6 shadow-none focus-visible:ring-0'
+            'resize-y rounded-none border-0 bg-surface-1 px-5 py-4 font-mono text-sm leading-6 shadow-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
           )}
         />
       )}
@@ -327,12 +327,11 @@ function ToolbarButton({ label, active, disabled, onClick, children }: ToolbarBu
       <TooltipTrigger asChild>
         <Toggle
           type="button"
-          size="sm"
           pressed={active}
           disabled={disabled}
           aria-label={label}
           onPressedChange={() => onClick()}
-          className="size-8 p-0"
+          className="p-0"
         >
           {children}
         </Toggle>
