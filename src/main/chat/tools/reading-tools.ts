@@ -36,11 +36,12 @@ const readBookTocTextTool = defineSessionTool({
   name: 'read_book_toc_text',
   description:
     '根据书的 id 和目录 toc id 读取该目录项对应的正文，范围从该目录项开头到下一个同级或更高层目录项之前。' +
-    '可使用 offset 和 length 分段读取；返回 truncated 为 true 时表示后面还有正文。',
+    '可使用 offset 和 length 分段读取。返回 JSON，含 text、offset、length、totalChars、truncated、nextOffset 等字段（totalChars 无法确定时为 null）；' +
+    'truncated=true 时直接用 nextOffset 继续读取；truncated=false 表示已到该目录项末尾，不代表全书读完。失败时 error 字段说明原因。',
   promptSnippet: '读取某个章节的正文',
   promptGuidelines: [
     '调用 read_book_toc_text 之前需要确保调用过 get_book_tocs 获取目录结构（含 id），否则无法获取到 tocId',
-    'read_book_toc_text 返回 truncated=true 时，把当前 offset（未传时按 0）加上已返回文本长度，作为新的 offset 继续读取后续内容。',
+    'read_book_toc_text 返回 truncated=true 时，直接用返回 JSON 里的 nextOffset 作为下一次调用的 offset 继续读取，不要自己累加字符数。',
   ],
   parameters: Type.Object({
     bookId: Type.String({ minLength: 1, description: '书的 id' }),
@@ -55,7 +56,7 @@ const readBookTocTextTool = defineSessionTool({
       Type.Integer({
         minimum: 1,
         maximum: MAX_READ_LENGTH,
-        description: `可选，本次返回文本的最大字符数，默认 ${DEFAULT_READ_LENGTH}，最大 ${MAX_READ_LENGTH}`,
+        description: `可选，本次最多返回的字符数，默认 ${DEFAULT_READ_LENGTH}，最大 ${MAX_READ_LENGTH}；实际生效值见返回的 length`,
       })
     ),
   }),
@@ -67,8 +68,34 @@ const readBookTocTextTool = defineSessionTool({
       params.length
     );
 
+    if (!result.success) {
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(result) }],
+        details: undefined,
+      };
+    }
+
+    const offset = params.offset ?? DEFAULT_READ_OFFSET;
+    const length = params.length ?? DEFAULT_READ_LENGTH;
+    const returnedChars = result.text.length;
+    const nextOffset = result.truncated ? offset + returnedChars : null;
+    // offset 大于 0 且窗口为空时，service 分不清「刚好到本章末尾」和「offset 越界」，
+    // 两种情况 truncatedChars 都是 0，拿不到真实总长。
+    const totalChars =
+      returnedChars > 0 || result.truncatedChars > 0 || offset === 0
+        ? offset + returnedChars + result.truncatedChars
+        : null;
+
+    const payload = {
+      ...result,
+      offset,
+      length,
+      totalChars,
+      nextOffset,
+    };
+
     return {
-      content: [{ type: 'text' as const, text: JSON.stringify(result) }],
+      content: [{ type: 'text' as const, text: JSON.stringify(payload) }],
       details: undefined,
     };
   },
@@ -165,7 +192,7 @@ const getUserReadingStateTool = defineSessionTool({
     if (!state) {
       // 用户尚未同步过状态，把"没有"讲清楚，避免模型把它当成读取失败
       return {
-        content: [{ type: 'text' as const, text: '用户当前没有阅读状态，尚未同步过阅读进度。' }],
+        content: [{ type: 'text' as const, text: '用户并没有阅读状态' }],
         details: undefined,
       };
     }

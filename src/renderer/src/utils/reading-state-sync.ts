@@ -6,6 +6,9 @@ import { useTabsStore } from '@/stores/tabs-store';
 let intervalId: number | null = null;
 let lastSentSignature: string | null = null;
 
+/** 没有阅读状态时的哨兵签名：与任何真实签名都不相等，也区别于「还没推过」（null） */
+const NO_STATE_SIGNATURE = '(none)';
+
 function buildReadingStatePayload(): ReadingStatePayload | null {
   const { tabs, activeTabId } = useTabsStore.getState();
   const activeTab = tabs.find(tab => tab.id === activeTabId);
@@ -44,9 +47,7 @@ export function initReadingStateSync(): void {
 
   intervalId = window.setInterval(async () => {
     const payload = buildReadingStatePayload();
-    if (!payload) return;
-
-    const signature = getReadingStateSignature(payload);
+    const signature = payload ? getReadingStateSignature(payload) : NO_STATE_SIGNATURE;
     if (signature === lastSentSignature) {
       return;
     }

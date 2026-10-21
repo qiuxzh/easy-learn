@@ -169,7 +169,7 @@ export const api = {
     ipcRenderer.on(IpcChannel.Book_EmbeddingRuntime, listener);
     return () => ipcRenderer.removeListener(IpcChannel.Book_EmbeddingRuntime, listener);
   },
-  pushReadingState: (payload: ReadingStatePayload) =>
+  pushReadingState: (payload: ReadingStatePayload | null) =>
     ipcRenderer.invoke(IpcChannel.Reading_PushState, payload) as Promise<void>,
   // 闪卡
   listCardGroups: () =>
