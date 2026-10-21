@@ -1,11 +1,18 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { EditorContent, useEditor, useEditorState, type Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
+import { TableKit } from '@tiptap/extension-table';
 import { Markdown } from '@tiptap/markdown';
 import {
+  ArrowDownToLine,
+  ArrowLeftToLine,
+  ArrowRightToLine,
+  ArrowUpToLine,
   Bold,
   Braces,
+  ChevronDown,
   Code,
+  Columns3,
   Eraser,
   Heading1,
   Heading2,
@@ -16,9 +23,22 @@ import {
   Minus,
   Quote,
   Redo2,
+  Rows3,
   Strikethrough,
+  Table as TableIcon,
+  TableCellsMerge,
+  TableCellsSplit,
+  Trash2,
   Undo2,
 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Separator } from '@/components/ui/separator';
 import { SegmentedToggle } from '@/components/ui/segmented-toggle';
 import { Textarea } from '@/components/ui/textarea';
@@ -57,7 +77,7 @@ export function MarkdownEditor({
 }: MarkdownEditorProps) {
   const [mode, setMode] = useState<MarkdownEditorMode>('live');
   const editor = useEditor({
-    extensions: [StarterKit, Markdown],
+    extensions: [StarterKit, Markdown, TableKit],
     content: value,
     contentType: 'markdown',
     editorProps: {
@@ -74,7 +94,14 @@ export function MarkdownEditor({
           '[&_code]:rounded-sm [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-sm',
           '[&_pre]:my-3 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-muted [&_pre]:p-4',
           '[&_pre_code]:bg-transparent [&_pre_code]:p-0',
-          '[&_hr]:my-5 [&_hr]:border-stroke-3'
+          '[&_hr]:my-5 [&_hr]:border-stroke-3',
+          '[&_.tableWrapper]:my-3 [&_.tableWrapper]:overflow-x-auto',
+          '[&_.tableWrapper]:rounded-sm [&_.tableWrapper]:border [&_.tableWrapper]:border-stroke-3',
+          '[&_table]:w-full [&_table]:border-collapse [&_table]:text-body-lg',
+          '[&_th]:bg-surface-2 [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:align-top [&_th]:font-semibold',
+          '[&_td]:border-t [&_td]:border-stroke-3 [&_td]:px-3 [&_td]:py-2 [&_td]:align-top',
+          '[&_th_p]:my-0 [&_td_p]:my-0',
+          '[&_.selectedCell]:bg-primary-surface'
         ),
         'aria-label': placeholder ?? 'Markdown 编辑器',
         'data-placeholder': placeholder ?? '',
@@ -268,6 +295,8 @@ function MarkdownToolbar({
         <Minus />
       </ToolbarButton>
       <ToolbarSeparator />
+      <TableMenu editor={editor} state={state} disabled={disabled} />
+      <ToolbarSeparator />
       <ToolbarButton
         label="清除格式"
         disabled={disabled}
@@ -276,6 +305,153 @@ function MarkdownToolbar({
         <Eraser />
       </ToolbarButton>
     </>
+  );
+}
+
+/** 插入表格网格的候选尺寸，逐格对应可插入的列数与行数。 */
+const TABLE_GRID = Array.from({ length: 20 }, (_, index) => ({
+  cols: (index % 5) + 1,
+  rows: Math.floor(index / 5) + 1,
+}));
+
+/** 表格插入与单元格操作的工具栏菜单。 */
+function TableMenu({
+  editor,
+  state,
+  disabled,
+}: {
+  editor: Editor;
+  state: ReturnType<typeof useMarkdownEditorState>;
+  disabled: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [hoverSize, setHoverSize] = useState({ rows: 3, cols: 3 });
+  const inTable = state?.inTable ?? false;
+
+  /** 插入表格并收起菜单；GFM 表格必须有表头行，插入时固定带上。 */
+  function insertTable(rows: number, cols: number) {
+    editor.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run();
+    setOpen(false);
+  }
+
+  return (
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger asChild>
+        <Toggle
+          type="button"
+          pressed={inTable}
+          disabled={disabled}
+          aria-label="表格"
+          className={cn('gap-0.5 px-1.5', inTable && 'bg-accent')}
+        >
+          <TableIcon />
+          <ChevronDown className="size-3 opacity-70" />
+        </Toggle>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="start"
+        className="w-[264px]"
+        onCloseAutoFocus={event => {
+          event.preventDefault();
+          if (!editor.isDestroyed) editor.commands.focus();
+        }}
+      >
+        <DropdownMenuLabel className="flex items-center justify-between px-2 py-1 text-xs font-medium text-muted-foreground">
+          <span>{inTable ? `表格 ${state?.tableSize}` : '插入表格'}</span>
+          <span className="tabular-nums">
+            {hoverSize.cols} × {hoverSize.rows}
+          </span>
+        </DropdownMenuLabel>
+        <div className="grid w-[170px] grid-cols-5 gap-1 px-2 pb-1">
+          {TABLE_GRID.map(({ rows, cols }) => {
+            const active = cols <= hoverSize.cols && rows <= hoverSize.rows;
+            return (
+              <button
+                key={`${rows}-${cols}`}
+                type="button"
+                aria-label={`插入 ${cols} 列 ${rows} 行表格`}
+                disabled={inTable}
+                className={cn(
+                  'h-4 rounded-xs border transition-colors',
+                  active ? 'border-primary-border bg-primary-surface' : 'border-stroke-3',
+                  inTable && 'cursor-not-allowed opacity-40'
+                )}
+                onMouseEnter={() => setHoverSize({ rows, cols })}
+                onClick={() => insertTable(rows, cols)}
+              />
+            );
+          })}
+        </div>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          disabled={!inTable}
+          onSelect={() => editor.chain().focus().addRowBefore().run()}
+        >
+          <ArrowUpToLine />
+          上方插入行
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          disabled={!inTable}
+          onSelect={() => editor.chain().focus().addRowAfter().run()}
+        >
+          <ArrowDownToLine />
+          下方插入行
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          disabled={!inTable}
+          onSelect={() => editor.chain().focus().addColumnBefore().run()}
+        >
+          <ArrowLeftToLine />
+          左侧插入列
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          disabled={!inTable}
+          onSelect={() => editor.chain().focus().addColumnAfter().run()}
+        >
+          <ArrowRightToLine />
+          右侧插入列
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          disabled={!state?.canMerge}
+          onSelect={() => editor.chain().focus().mergeCells().run()}
+        >
+          <TableCellsMerge />
+          合并单元格
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          disabled={!state?.canSplit}
+          onSelect={() => editor.chain().focus().splitCell().run()}
+        >
+          <TableCellsSplit />
+          拆分单元格
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          disabled={!inTable}
+          onSelect={() => editor.chain().focus().deleteRow().run()}
+        >
+          <Rows3 />
+          删除行
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          disabled={!inTable}
+          onSelect={() => editor.chain().focus().deleteColumn().run()}
+        >
+          <Columns3 />
+          删除列
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          disabled={!inTable}
+          className="text-destructive focus:text-destructive"
+          onSelect={() => editor.chain().focus().deleteTable().run()}
+        >
+          <Trash2 />
+          删除表格
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -297,10 +473,15 @@ function useMarkdownEditorState(editor: Editor | null) {
           orderedList: false,
           blockquote: false,
           codeBlock: false,
+          inTable: false,
+          tableSize: '',
+          canMerge: false,
+          canSplit: false,
           canUndo: false,
           canRedo: false,
         };
       }
+      const table = findTableNode(currentEditor);
       return {
         bold: currentEditor.isActive('bold'),
         italic: currentEditor.isActive('italic'),
@@ -313,11 +494,25 @@ function useMarkdownEditorState(editor: Editor | null) {
         orderedList: currentEditor.isActive('orderedList'),
         blockquote: currentEditor.isActive('blockquote'),
         codeBlock: currentEditor.isActive('codeBlock'),
+        inTable: Boolean(table),
+        tableSize: table ? `${table.firstChild?.childCount ?? 0} × ${table.childCount}` : '',
+        canMerge: Boolean(table) && currentEditor.can().mergeCells(),
+        canSplit: Boolean(table) && currentEditor.can().splitCell(),
         canUndo: currentEditor.can().chain().focus().undo().run(),
         canRedo: currentEditor.can().chain().focus().redo().run(),
       };
     },
   });
+}
+
+/** 光标所在的表格节点，光标不在表格内时为 null。 */
+function findTableNode(editor: Editor) {
+  const { $from } = editor.state.selection;
+  for (let depth = $from.depth; depth > 0; depth -= 1) {
+    const node = $from.node(depth);
+    if (node.type.name === 'table') return node;
+  }
+  return null;
 }
 
 /** 带 Tooltip 和激活态的 Markdown 工具栏按钮。 */
