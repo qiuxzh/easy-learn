@@ -23,7 +23,7 @@ import { toast } from 'sonner';
 import { CardEditor } from '@/components/CardEditor';
 import { FloatingPanel } from '@/components/FloatingPanel';
 import { useCardEditDialog } from '@/hooks/use-card-edit-dialog';
-import { Chat } from '@/pages/Chat';
+import { SideChat } from '@/components/chat/SideChat';
 import { useTabsStore } from '@/stores/tabs-store';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -80,7 +80,7 @@ export function CardBrowser({ tabId, groupId }: CardBrowserProps) {
     () => cards.find(card => card.id === selectedCardId),
     [cards, selectedCardId]
   );
-  /** 是否已创建过 AI 助手浮层；一旦为 true 就不再复位，使 Chat 组件常驻并保留会话。 */
+  /** 是否已创建过 AI 助手浮层；一旦为 true 就不再复位，使 SideChat 常驻并保留会话。 */
   const [assistantMounted, setAssistantMounted] = useState(false);
   /** 用户是否主动打开了 AI 助手；关闭只隐藏组件，会话留到下次打开。 */
   const [assistantOpen, setAssistantOpen] = useState(false);
@@ -332,7 +332,7 @@ export function CardBrowser({ tabId, groupId }: CardBrowserProps) {
           title="AI 助手"
           storageKey="flashcard-assistant-size"
         >
-          <Chat />
+          <SideChat />
         </FloatingPanel>
       )}
     </div>

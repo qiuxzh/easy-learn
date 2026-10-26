@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Group, Panel, Separator, useGroupRef } from 'react-resizable-panels';
 import { Menu, MessageSquare, Loader2, SlidersHorizontal } from 'lucide-react';
-import { Chat } from '@/pages/Chat';
+import { SideChat } from '@/components/chat/SideChat';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -172,7 +172,7 @@ export function ReaderView({ tabId: propTabId, bookId = '' }: ReaderViewProps) {
 
         <Panel id="chat" minSize={0} defaultSize={0} maxSize="50%">
           <div className="h-full border-l border-stroke-3">
-            <Chat bookId={bookId} />
+            <SideChat bookId={bookId} />
           </div>
         </Panel>
       </Group>

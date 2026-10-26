@@ -9,19 +9,38 @@ import {
   type ClipboardEvent as ReactClipboardEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
-  type ReactNode,
 } from 'react';
-import { ImagePlus, X } from 'lucide-react';
+import { Brain, ImagePlus, Sparkles, X, Zap } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';
 import { toast } from 'sonner';
-import type { ImageContent } from '@shared/types/chat';
+import type { ImageContent, ThinkingLevel } from '@shared/types/chat';
 import { toAttachmentUrl } from '@/utils/image-util';
 import { SendButton } from './SendButton';
 import { ImagePreviewDialog } from './ImagePreview';
+import { ModeSelector, type ModeOption } from './ModeSelector';
 import type { ChatStatus } from './message/utils';
 
 /** 单条消息允许携带的图片数量上限 */
 const MAX_IMAGES = 5;
+
+/** 思考级别选项：id 直接取 ThinkingLevel 的取值 */
+const THINKING_MODES: ModeOption[] = [
+  { id: 'off', label: '快速回答', icon: Zap, description: '直接作答，不额外推理' },
+  { id: 'medium', label: '思考', icon: Brain, description: '先推理再作答' },
+  { id: 'max', label: '深度思考', icon: Sparkles, description: '花更多推理时间处理复杂问题' },
+];
+
+/** 把模式 id 收敛到思考级别；未知取值（如旧版本存下的模式名）一律按不思考处理 */
+function toThinkingLevel(modeId: string | null): ThinkingLevel {
+  switch (modeId) {
+    case 'medium':
+      return 'medium';
+    case 'max':
+      return 'max';
+    default:
+      return 'off';
+  }
+}
 
 const INPUT_SIZE_STYLE: Record<
   'sm' | 'md' | 'lg',
@@ -40,14 +59,19 @@ const INPUT_SIZE_STYLE: Record<
   },
 };
 
+/** 输入区产出的消息：思考级别由输入区自己决定，调用方不需要知道 */
+export type InputBarSendPayload = {
+  content: string;
+  images: ImageContent[];
+  thinkingLevel: ThinkingLevel;
+};
+
 export type InputBarProps = {
-  onSend: (message: { role: 'user'; content: string; images: ImageContent[] }) => void;
+  onSend: (message: InputBarSendPayload) => void;
   status: ChatStatus;
   onStop: () => void;
   /** 输入框尺寸，影响内边距和整体高度 */
   size?: 'sm' | 'md' | 'lg';
-  /** 渲染在工具栏左侧、发送按钮右侧的内容（如模式选择器） */
-  leftActions?: ReactNode;
 };
 
 /**
@@ -59,9 +83,12 @@ export const InputBar = memo(function InputBar({
   status,
   onStop,
   size = 'md',
-  leftActions,
 }: InputBarProps) {
   const [input, setInput] = useState('');
+  /** 思考级别是输入区的偏好：初值读 localStorage，改动即写回 */
+  const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel>(() =>
+    toThinkingLevel(localStorage.getItem('thinkingMode'))
+  );
   /** 待发送图片，只保存附件 id */
   const [images, setImages] = useState<ImageContent[]>([]);
   /** 是否有图片正在落盘，期间禁用再次添加 */
@@ -148,10 +175,10 @@ export const InputBar = memo(function InputBar({
   const handleSubmit = useCallback(() => {
     const trimmed = input.trim();
     if ((!trimmed && images.length === 0) || isStreaming) return;
-    onSend({ role: 'user', content: trimmed, images });
+    onSend({ content: trimmed, images, thinkingLevel });
     setInput('');
     setImages([]);
-  }, [input, images, isStreaming, onSend]);
+  }, [input, images, isStreaming, onSend, thinkingLevel]);
 
   const handleKeyDown = useCallback(
     (e: ReactKeyboardEvent) => {
@@ -183,6 +210,11 @@ export const InputBar = memo(function InputBar({
   useEffect(() => {
     if (!isStreaming) textareaRef.current?.focus();
   }, [isStreaming]);
+
+  // 思考级别是跨会话保留的偏好，改动后立即持久化
+  useEffect(() => {
+    localStorage.setItem('thinkingMode', thinkingLevel);
+  }, [thinkingLevel]);
 
   const hasContent = input.trim().length > 0 || images.length > 0;
   const sizeStyle = INPUT_SIZE_STYLE[size];
@@ -245,7 +277,11 @@ export const InputBar = memo(function InputBar({
         </div>
 
         <div className={`flex items-center justify-between gap-3 ${sizeStyle.toolbar}`}>
-          <div className="flex items-center gap-1 min-w-0">{leftActions}</div>
+          <ModeSelector
+            modes={THINKING_MODES}
+            value={thinkingLevel}
+            onChange={id => setThinkingLevel(toThinkingLevel(id))}
+          />
           <div className="flex items-center gap-1.5">
             <IconButton
               type="button"

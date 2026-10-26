@@ -1,8 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { MessageCircle, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
-import { toast } from 'sonner';
-import { useSessions } from '@/hooks/use-sessions';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { ScrollBar } from '@/components/ui/scroll-area';
 import {
@@ -18,27 +23,27 @@ import {
 } from '@/components/ui/dropdown-menu';
 import type { SessionSummary } from '@shared/types/chat';
 import { formatTime } from '@shared/utils/time-util';
-import { SessionOccupiedError } from '@/hooks/use-chat';
 
 /**
- * 会话历史列表
+ * 会话列表（展示层）
  * ----------------------------------------------------------------
- * 数据源：useSessions()（后端 DB）+ activeSessionId（高亮用）
- * 主要职责：
- *   1. 按最近活跃时间分组展示（今天 / 昨天 / 前天 / 一周内 / 一个月内 / 更早）
- *   2. 点击会话 → switchSession；已被其他 Chat 组件占有时弹 alert
- *   3. 重命名 / 删除单条会话
- * 加载策略：组件首次挂载时拉取一次；open 从 false 变 true 时再拉一次
+ * 数据与行为都由容器提供：ChatPage 左栏与 SideChat 历史弹层共用本组件，
+ * 两者只差高度与容器，加载 / 切换 / 占用处理都在 useSessionActions 里。
+ * 职责：
+ *   1. 按最近活跃时间分组（今天 / 昨天 / 前天 / 一周内 / 一个月内 / 更早）
+ *   2. 点击 → onSelect
+ *   3. 弹窗重命名 / 直接删除 → onRename / onDelete
  */
 interface SessionSummaryListProps {
+  sessions: SessionSummary[];
   /** 当前激活的会话 id（用于高亮） */
   activeSessionId: string | null;
-  /** 切换到指定会话的函数，可能抛出 SessionOccupiedError（已被其他 Chat 组件占有） */
-  switchSession: (sessionId: string) => Promise<void>;
-  /** 点击某条会话后的回调（通常用于关闭列表面板） */
-  onSelect?: () => void;
-  /** 列表面板是否处于打开状态；变 true 时触发刷新 */
-  open?: boolean;
+  /** sidebar：撑满父容器；popover：保持 60vh 限高 */
+  variant?: 'sidebar' | 'popover';
+  /** 点击会话；返回值列表不关心，调用方可据此决定是否关闭弹层 */
+  onSelect: (sessionId: string) => void | Promise<unknown>;
+  onRename: (sessionId: string, title: string) => void | Promise<unknown>;
+  onDelete: (sessionId: string) => void | Promise<unknown>;
 }
 
 /** 时间分组键：固定 6 档 */
@@ -79,29 +84,21 @@ function getGroupKey(updatedAt: number, now: Date): GroupKey {
   return 'older';
 }
 
-/** 会话历史列表 */
+/** 会话列表 */
 export function SessionSummaryList({
+  sessions,
   activeSessionId,
-  switchSession,
+  variant = 'popover',
   onSelect,
-  open,
+  onRename,
+  onDelete,
 }: SessionSummaryListProps) {
-  const { sessions, loadSessions, renameSession, deleteSession } = useSessions();
+  /** 正在重命名的会话；null 表示弹窗关闭。先弹窗、确认后才提交 */
+  const [renameTarget, setRenameTarget] = useState<SessionSummary | null>(null);
+  /** 重命名请求是否在途 */
+  const [renamePending, setRenamePending] = useState(false);
 
-  // 当前正在重命名的会话 id；为 null 表示不在重命名态
-  const [renamingId, setRenamingId] = useState<string | null>(null);
-  // 重命名输入框的临时值
-  const [renameValue, setRenameValue] = useState('');
-
-  /** 兜底加载：组件首次挂载时拉一次（即使父组件从未把 open 置 true，也能加载） */
-  useEffect(() => {
-    void loadSessions();
-  }, [loadSessions]);
-
-  /** 每次面板打开时刷新：保证本会话内新创建的会话能立刻展示 */
-  useEffect(() => {
-    if (open) void loadSessions();
-  }, [open, loadSessions]);
+  const isSidebar = variant === 'sidebar';
 
   /**
    * 按最近活跃时间分组归类 sessions
@@ -120,60 +117,51 @@ export function SessionSummaryList({
     );
   }, [sessions]);
 
-  /**
-   * 点击会话条目
-   * - 处于重命名态时点击不切换（避免误触）
-   * - 调用 switchSession：成功则关闭面板；已被其他 Chat 组件占有则弹 alert
-   */
+  /** 点击会话：切换失败的处理在调用方 */
   const handleSelect = async (id: string) => {
-    if (renamingId === id) return;
+    await onSelect(id);
+  };
+
+  /**
+   * 弹窗确认重命名：成功后关闭；失败保留弹窗与输入，方便重试。
+   * 具体错误提示由调用方负责。
+   */
+  const handleRenameConfirm = async (title: string) => {
+    if (!renameTarget) return;
+
+    setRenamePending(true);
     try {
-      await switchSession(id);
-      onSelect?.();
-    } catch (e) {
-      if (e instanceof SessionOccupiedError) {
-        alert(e.message);
-      } else {
-        throw e;
-      }
+      await onRename(renameTarget.id, title);
+      setRenameTarget(null);
+    } catch {
+      /* 保持弹窗打开 */
+    } finally {
+      setRenamePending(false);
     }
-  };
-
-  /** 进入重命名态：填充当前标题到输入框 */
-  const handleStartRename = (id: string, currentTitle: string) => {
-    setRenamingId(id);
-    setRenameValue(currentTitle);
-  };
-
-  /** 提交重命名（onBlur / Enter 触发）：空值或纯空白视为取消 */
-  const handleSubmitRename = async () => {
-    if (!renamingId || !renameValue.trim()) {
-      setRenamingId(null);
-      return;
-    }
-    await renameSession(renamingId, renameValue.trim());
-    setRenamingId(null);
   };
 
   /** 删除单条会话 */
   const handleDelete = async (id: string) => {
-    await deleteSession(id);
-    toast.success('会话已删除');
+    await onDelete(id);
   };
 
   return (
-    <div className="chat-session-summary-list">
-      {/* 列表标题区 */}
-      <div className="px-4 py-3 border-b border-stroke-3">
-        <h3 className="text-sm font-semibold">会话历史</h3>
-      </div>
-
-      {/* 列表主体：高度自适应但不超过 60vh。
+    <div className={cn('chat-session-summary-list', isSidebar && 'flex min-h-0 flex-1 flex-col')}>
+      {/* 列表主体：侧栏撑满父容器；弹层高度自适应但不超过 60vh。
          w-full + min-w-0：嵌入 Popover(320px) 时不被内部 table wrapper 撑爆。 */}
-      <ScrollAreaRoot className="relative overflow-hidden max-h-[60vh] w-full min-w-0">
+      <ScrollAreaRoot
+        className={cn(
+          'relative w-full min-w-0 overflow-hidden',
+          isSidebar ? 'min-h-0 flex-1' : 'max-h-[60vh]'
+        )}
+      >
         <ScrollAreaViewport
           className="w-full rounded-[inherit]"
-          style={{ maxHeight: '60vh', overflowX: 'hidden', overflowY: 'auto' }}
+          style={
+            isSidebar
+              ? { height: '100%', overflowX: 'hidden', overflowY: 'auto' }
+              : { maxHeight: '60vh', overflowX: 'hidden', overflowY: 'auto' }
+          }
         >
           {sessions.length === 0 ? (
             <div className="flex flex-col items-center justify-center px-4 py-12 text-muted-foreground">
@@ -192,96 +180,70 @@ export function SessionSummaryList({
                   <div className="px-2 space-y-0.5">
                     {group.items.map(session => {
                       const isActive = session.id === activeSessionId;
-                      const isRenaming = renamingId === session.id;
                       return (
                         <div
                           key={session.id}
                           role="button"
                           tabIndex={0}
+                          title={session.title}
                           className={cn(
-                            'group relative flex items-center gap-2.5 rounded-lg px-2 py-2 text-sm cursor-pointer transition-colors',
+                            'group relative flex items-center gap-2 rounded-sm py-1.5 pr-2 pl-2 text-sm cursor-pointer transition-colors',
                             isActive
-                              ? 'bg-primary-surface text-foreground'
-                              : 'hover:bg-accent text-ink-secondary hover:text-foreground'
+                              ? 'bg-accent text-foreground'
+                              : 'text-ink-secondary hover:bg-hover-fill hover:text-foreground'
                           )}
                           onClick={() => void handleSelect(session.id)}
                           onKeyDown={e => {
-                            if ((e.key === 'Enter' || e.key === ' ') && !isRenaming) {
+                            if (e.key === 'Enter' || e.key === ' ') {
                               e.preventDefault();
                               void handleSelect(session.id);
                             }
                           }}
                         >
-                          {/* 激活态的左侧高亮条 */}
-                          {isActive && (
-                            <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r bg-primary" />
-                          )}
-                          {/* 会话标题 / 时间 / 重命名输入框 */}
-                          <div className="flex-1 min-w-0">
-                            {isRenaming ? (
-                              <Input
-                                autoFocus
-                                value={renameValue}
-                                onChange={e => setRenameValue(e.target.value)}
-                                // 输入框点击不能冒泡触发外层 onClick（否则会触发切换）
+                          {/* 单行：标题占满剩余宽度，时间贴右；hover 时让位给操作菜单 */}
+                          <span className="min-w-0 flex-1 truncate font-medium">
+                            {session.title || '新会话'}
+                          </span>
+                          <span className="shrink-0 text-xs text-muted-foreground tabular-nums transition-opacity group-hover:opacity-0">
+                            {formatTime(session.updatedAt)}
+                          </span>
+
+                          {/* 操作菜单浮在时间上，不占行宽 */}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                icon
+                                className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 pointer-events-none transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
+                                // 阻止冒泡，否则会触发外层的 handleSelect
                                 onClick={e => e.stopPropagation()}
-                                onBlur={handleSubmitRename}
-                                onKeyDown={e => {
-                                  if (e.key === 'Enter') void handleSubmitRename();
-                                  if (e.key === 'Escape') setRenamingId(null);
+                              >
+                                <MoreHorizontal />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  setRenameTarget(session);
                                 }}
-                                // 行内重命名，比默认控件矮一档
-                                className="h-6 px-1.5"
-                              />
-                            ) : (
-                              <div className="flex flex-col">
-                                <span className="truncate font-medium">
-                                  {session.title || '新会话'}
-                                </span>
-                                <span className="text-xs text-muted-foreground truncate">
-                                  {formatTime(session.updatedAt)}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                          {/* 操作菜单（hover 才显示）；重命名态下隐藏避免冲突 */}
-                          {!isRenaming && (
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  icon
-                                  className="opacity-0 group-hover:opacity-100 transition-opacity"
-                                  // 阻止冒泡，否则会触发外层的 handleSelect
-                                  onClick={e => e.stopPropagation()}
-                                >
-                                  <MoreHorizontal />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem
-                                  onClick={e => {
-                                    e.stopPropagation();
-                                    handleStartRename(session.id, session.title);
-                                  }}
-                                >
-                                  <Pencil />
-                                  重命名
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  className="text-destructive focus:text-destructive"
-                                  onClick={e => {
-                                    e.stopPropagation();
-                                    void handleDelete(session.id);
-                                  }}
-                                >
-                                  <Trash2 />
-                                  删除
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          )}
+                              >
+                                <Pencil />
+                                重命名
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="text-destructive focus:text-destructive"
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  void handleDelete(session.id);
+                                }}
+                              >
+                                <Trash2 />
+                                删除
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       );
                     })}
@@ -293,6 +255,72 @@ export function SessionSummaryList({
         </ScrollAreaViewport>
         <ScrollBar />
       </ScrollAreaRoot>
+
+      {renameTarget && (
+        <RenameSessionDialog
+          session={renameTarget}
+          pending={renamePending}
+          onOpenChange={open => {
+            if (!open && !renamePending) {
+              setRenameTarget(null);
+            }
+          }}
+          onConfirm={title => void handleRenameConfirm(title)}
+        />
+      )}
     </div>
+  );
+}
+
+interface RenameSessionDialogProps {
+  session: SessionSummary;
+  /** 重命名请求在途：按钮置忙，且不允许关闭 */
+  pending: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: (title: string) => void;
+}
+
+/**
+ * 重命名会话弹窗：只保留标题、名称输入与确认，交互与分支会话弹窗一致。
+ * 由调用方按需挂载，输入初值直接取会话标题，不需要额外的重置逻辑。
+ */
+function RenameSessionDialog({
+  session,
+  pending,
+  onOpenChange,
+  onConfirm,
+}: RenameSessionDialogProps) {
+  const [title, setTitle] = useState(session.title);
+  const canSubmit = title.trim().length > 0 && !pending;
+
+  const handleSubmit = () => {
+    if (!canSubmit) return;
+    onConfirm(title.trim());
+  };
+
+  return (
+    <Dialog open onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-sm" aria-describedby={undefined}>
+        <DialogHeader>
+          <DialogTitle>重命名会话</DialogTitle>
+        </DialogHeader>
+
+        <Input
+          autoFocus
+          value={title}
+          onChange={event => setTitle(event.target.value)}
+          onKeyDown={event => {
+            if (event.key === 'Enter') handleSubmit();
+          }}
+          placeholder="给这个会话起个名字"
+        />
+
+        <DialogFooter>
+          <Button onClick={handleSubmit} disabled={!canSubmit}>
+            {pending ? '保存中…' : '重命名'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

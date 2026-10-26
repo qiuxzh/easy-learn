@@ -1,5 +1,5 @@
 import { memo, type ComponentType, type ReactElement } from 'react';
-import { Chat } from '@/pages/Chat';
+import { ChatPage } from '@/pages/ChatPage';
 import { BookShelf } from '@/pages/BookShelf';
 import { Flashcard } from '@/pages/Flashcard';
 import { Home } from '@/pages/Home';
@@ -18,7 +18,7 @@ type TabContentProps = {
 /** Tab 类型到内容组件的映射。 */
 const TAB_COMPONENTS: Record<TabType, ComponentType<TabContentProps>> = {
   home: Home as ComponentType<TabContentProps>,
-  chat: Chat as ComponentType<TabContentProps>,
+  chat: ChatPage as ComponentType<TabContentProps>,
   bookshelf: BookShelf as ComponentType<TabContentProps>,
   'card-management': Flashcard as ComponentType<TabContentProps>,
   'card-browser': CardBrowser as ComponentType<TabContentProps>,
