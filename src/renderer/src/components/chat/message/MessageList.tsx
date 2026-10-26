@@ -146,11 +146,10 @@ function TraceItem({
               )
             )}
           </div>
-          {/* 本轮闪卡改动汇总：跑完才显示，运行中还会继续产生改动；
-              最新一条默认展开改动详情，历史记录默认折叠 */}
+          {/* 本轮闪卡改动汇总：跑完才显示，运行中还会继续产生改动 */}
           {!isTraceStreaming && (
             <div className="mt-2">
-              <FlashcardChangesBlock messages={assistantMsgs} defaultExpanded={isLastTrace} />
+              <FlashcardChangesBlock messages={assistantMsgs} />
             </div>
           )}
           {/* 复制按钮靠左，统计靠右；两者都不渲染时该行高度为 0 */}

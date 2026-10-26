@@ -1,9 +1,18 @@
 import { toast } from 'sonner';
 import { useCallback, useMemo, useState } from 'react';
 import { Collapsible } from '@base-ui/react/collapsible';
-import { ChevronRight, ChevronsDown, ChevronsUp, Pencil, WalletCards } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
+  ChevronsDown,
+  ChevronsUp,
+  Pencil,
+  WalletCards,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useCardEditDialog } from '@/hooks/use-card-edit-dialog';
+import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import {
   ACTION_META,
@@ -26,6 +35,9 @@ const ACTION_CHIP_CLASS: Record<FlashcardChangeDetail['action'], string> = {
   update: 'bg-info-surface text-info-ink',
   delete: 'bg-danger-surface text-danger-ink',
 };
+
+/** 收起状态下最多直接列出的条目数；多出来的折进底部“显示全部”。 */
+const COLLAPSED_VISIBLE_COUNT = 10;
 
 /** 从 trace 内的助手消息里收集本轮成功的闪卡写入操作，按发生顺序排列。 */
 export function collectFlashcardChanges(messages: AppUIMessage[]): FlashcardChangeDetail[] {
@@ -135,21 +147,15 @@ function FlashcardChangeItem({
 /**
  * 本轮闪卡改动汇总。没有改动时整块不渲染。
  * 由调用方保证只在该 trace 结束后渲染——运行中还会继续产生改动，提前展示会误导。
+ * 明细一律默认折叠：只给一行汇总，用户点开哪条才看哪条的内容；
+ * 条目超过 COLLAPSED_VISIBLE_COUNT 时先只列前几条，其余折进底部的“显示全部”。
  */
-export function FlashcardChangesBlock({
-  messages,
-  defaultExpanded = false,
-}: {
-  messages: AppUIMessage[];
-  /** 条目的默认展开状态；调用方按 trace 新旧决定（最新一条默认展开）。 */
-  defaultExpanded?: boolean;
-}) {
+export function FlashcardChangesBlock({ messages }: { messages: AppUIMessage[] }) {
   const changes = useMemo(() => collectFlashcardChanges(messages), [messages]);
-  /**
-   * 用户手动操作过的条目展开状态；null 表示尚未操作，此时跟随 defaultExpanded。
-   * 这样新的 trace 出现后，未被动过的旧 trace 会自动回到折叠态。
-   */
-  const [openKeys, setOpenKeys] = useState<Set<string> | null>(null);
+  /** 用户手动展开的条目；初始为空集，也就是全部折叠。 */
+  const [openKeys, setOpenKeys] = useState<Set<string>>(new Set());
+  /** 是否放开被折叠的其余条目。 */
+  const [showAllItems, setShowAllItems] = useState(false);
   // 编辑弹窗由本组件持有：弹窗只被这一处触发，无需引入全局状态或上下文
   const { openEditCard, cardEditDialog } = useCardEditDialog();
 
@@ -169,17 +175,23 @@ export function FlashcardChangesBlock({
     [openEditCard]
   );
 
-  const keys = changes.map((change, index) => `${change.card.id}-${index}`);
+  // 条目身份用卡片 id + 序号：同一张卡片一轮里可能被改动多次
+  const items = changes.map((change, index) => ({
+    change,
+    key: `${change.card.id}-${index}`,
+  }));
+  const hasOverflow = items.length > COLLAPSED_VISIBLE_COUNT;
+  const visibleItems = showAllItems ? items : items.slice(0, COLLAPSED_VISIBLE_COUNT);
 
   if (changes.length === 0) return null;
 
-  /** 某条目当前是否展开：手动状态优先，否则取默认值。 */
-  const isOpen = (key: string) => (openKeys ? openKeys.has(key) : defaultExpanded);
-  const allOpen = keys.every(isOpen);
+  /** 某条目当前是否展开。 */
+  const isOpen = (key: string) => openKeys.has(key);
+  const allOpen = items.every(item => isOpen(item.key));
 
-  /** 展开/收起单条，并在首次操作时把默认状态固化成显式状态。 */
+  /** 展开/收起单条。 */
   const toggleItem = (key: string, open: boolean) => {
-    const next = new Set(openKeys ?? (defaultExpanded ? keys : []));
+    const next = new Set(openKeys);
     if (open) {
       next.add(key);
     } else {
@@ -188,9 +200,9 @@ export function FlashcardChangesBlock({
     setOpenKeys(next);
   };
 
-  /** 一键展开/收起全部条目。 */
+  /** 一键展开/收起全部条目（含被“显示全部”折起来的部分）。 */
   const toggleAll = () => {
-    setOpenKeys(allOpen ? new Set() : new Set(keys));
+    setOpenKeys(allOpen ? new Set() : new Set(items.map(item => item.key)));
   };
 
   return (
@@ -209,20 +221,30 @@ export function FlashcardChangesBlock({
         </IconButton>
       </div>
       <div className="flex flex-col divide-y divide-ink-caption">
-        {changes.map((change, index) => {
-          const key = keys[index];
-          return (
-            <FlashcardChangeItem
-              key={key}
-              change={change}
-              open={isOpen(key)}
-              onOpenChange={open => toggleItem(key, open)}
-              // 删除的记录卡片已不存在，不提供编辑入口
-              onEdit={change.action === 'delete' ? undefined : () => void handleEdit(change)}
-            />
-          );
-        })}
+        {visibleItems.map(({ change, key }) => (
+          <FlashcardChangeItem
+            key={key}
+            change={change}
+            open={isOpen(key)}
+            onOpenChange={open => toggleItem(key, open)}
+            // 删除的记录卡片已不存在，不提供编辑入口
+            onEdit={change.action === 'delete' ? undefined : () => void handleEdit(change)}
+          />
+        ))}
       </div>
+      {hasOverflow && (
+        <div className="flex justify-center border-t border-stroke-3 py-1">
+          <Button
+            type="button"
+            variant="quiet"
+            size="sm"
+            onClick={() => setShowAllItems(prev => !prev)}
+          >
+            {showAllItems ? <ChevronUp /> : <ChevronDown />}
+            {showAllItems ? '收起' : `显示全部 ${items.length} 条`}
+          </Button>
+        </div>
+      )}
       {cardEditDialog}
     </div>
   );
