@@ -359,6 +359,20 @@ async function renderPdfPage(page: pdfjs.PDFPageProxy, doc: Document, zoom: numb
 // ============================================================
 
 /**
+ * 页资源的保留半径：以当前渲染的页为中心，前后各留 PAGE_RETAIN_RADIUS 页。
+ *
+ * foliate 的固定版式跨页会把同一页放在左侧或右侧（取决于配对奇偶），只按当前页保留
+ * 会误伤同屏的另一页；留一页半径同时覆盖跨页与回翻。窗口之外的页在下次渲染前释放。
+ */
+const PAGE_RETAIN_RADIUS = 1;
+
+/** 一页的运行时资源：iframe 骨架（blob URL）与 pdf.js 页代理 */
+interface PdfPageEntry {
+  source: FoliateFixedLayoutSource;
+  page: pdfjs.PDFPageProxy;
+}
+
+/**
  * PDF 适配后的 Book 对象。
  *
  * 用 class 而不是对象字面量：BookEntity 会被存进 zustand（immer 中间件），
@@ -378,8 +392,14 @@ class PdfBook implements FoliateBook {
   /** 目录项 href → 页号。跳转/进度定位都靠它，保证 resolveHref 是同步的 */
   private readonly destPages: Map<string, number>;
 
-  /** 每页的 iframe 骨架（blob URL）与缩放回调，按页缓存 */
-  private readonly pageSources = new Map<number, FoliateFixedLayoutSource>();
+  /**
+   * 已建立 iframe 骨架的页，key 是页下标。
+   *
+   * 只保留当前页 ±{@link PAGE_RETAIN_RADIUS}，其余在下次渲染前释放，见 {@link releaseOutside}。
+   */
+  private readonly pages = new Map<number, PdfPageEntry>();
+  /** 文档已销毁。异步渲染的回调可能晚于 destroy 到达，用它止损 */
+  private destroyed = false;
 
   constructor(
     pdf: pdfjs.PDFDocumentProxy,
@@ -400,28 +420,67 @@ class PdfBook implements FoliateBook {
     );
   }
 
-  /** 生成第 index 页的 section（foliate 只要求 id / size / load） */
+  /**
+   * 生成第 index 页的 section（foliate 只要求 id / size / load）。
+   *
+   * 页资源按需创建、按窗口释放：`onZoom` 由 foliate 在该页 iframe 载入之后调用，
+   * 以它为锚点裁窗口，既能保证窗口外的页确实不在屏幕上，也保证它们的 blob 地址
+   * 不再有消费者（换页时 foliate 已经 `replaceChildren`）。
+   */
   private createSection(index: number): FoliateSection {
     return {
       // id 用字符串化的页号：foliate 只把它当 Map 键，但必须与 splitTOCHref 的返回值一致
       id: String(index),
       size: PAGE_SIZE_WEIGHT,
       load: async () => {
-        const cached = this.pageSources.get(index);
-        if (cached) return cached;
+        const cached = this.pages.get(index);
+        if (cached) return cached.source;
 
         const page = await this.pdf.getPage(index + 1);
+        // 等待期间书可能已被销毁：empty src 会让 foliate 建空帧，不再产生需要回收的资源
+        if (this.destroyed) {
+          page.cleanup();
+          return { src: '' };
+        }
+
         const viewport = page.getViewport({ scale: 1 });
-        const source: FoliateFixedLayoutSource = {
-          src: URL.createObjectURL(
-            new Blob([buildPageHtml(viewport.width, viewport.height)], { type: 'text/html' })
-          ),
-          onZoom: ({ doc, scale }) => renderPdfPage(page, doc, scale),
+        const entry: PdfPageEntry = {
+          page,
+          source: {
+            src: URL.createObjectURL(
+              new Blob([buildPageHtml(viewport.width, viewport.height)], { type: 'text/html' })
+            ),
+            onZoom: async ({ doc, scale }) => {
+              // 先裁窗口再渲染：清理不挡渲染，且此时同跨页的另一页已在窗口内，不会被误删
+              this.releaseOutside(index);
+              try {
+                await renderPdfPage(page, doc, scale);
+              } catch (error) {
+                console.warn('[pdf-book] 页面渲染失败', index, error);
+              }
+            },
+          },
         };
-        this.pageSources.set(index, source);
-        return source;
+        this.pages.set(index, entry);
+        return entry.source;
       },
     };
+  }
+
+  /**
+   * 释放窗口外的页资源。
+   *
+   * `page.cleanup()` 返回 false 只表示该页还有渲染任务在跑（换页时上一页的画布
+   * 可能还没画完）；pdf.js 已记下待清理标记，会在任务结束时自己补一次，所以这里不重试。
+   */
+  private releaseOutside(center: number): void {
+    if (this.destroyed) return;
+    for (const [index, entry] of this.pages) {
+      if (Math.abs(index - center) <= PAGE_RETAIN_RADIUS) continue;
+      entry.page.cleanup();
+      URL.revokeObjectURL(entry.source.src);
+      this.pages.delete(index);
+    }
   }
 
   /** 目录项 href → 页号。查不到（伪造目录之外的意外值）时回退到首页 */
@@ -466,9 +525,18 @@ class PdfBook implements FoliateBook {
     return new Uint8Array(await blob.arrayBuffer());
   }
 
-  /** 释放 pdf.js 文档；共享 worker 不在这里销毁 */
+  /**
+   * 释放 pdf.js 文档；共享 worker 不在这里销毁。
+   *
+   * 页资源与 blob URL 在这里一并收尾：直接丢引用的话，blob 会一直存活到进程退出。
+   */
   async destroy(): Promise<void> {
-    this.pageSources.clear();
+    this.destroyed = true;
+    for (const entry of this.pages.values()) {
+      entry.page.cleanup();
+      URL.revokeObjectURL(entry.source.src);
+    }
+    this.pages.clear();
     await this.loadingTask.destroy();
   }
 }
