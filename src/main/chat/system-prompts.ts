@@ -22,10 +22,15 @@ SVG 示例：
 \`\`\`
 `;
 
+export const ContentStylePrompt = `
+输出格式要求：
+- 行内公式使用“$...$”报告，公式块使用“$$...$$包裹。不使用latex的\\[...\\]等其他语法”
+`;
+
 export async function buildChatSystemPrompt(bookId?: string) {
   return buildSystemPrompt({
     basePrompt: readingAgent.systemPrompt,
     tools: readingAgent.tools,
-    sections: [bookId ? buildBookSection(bookId) : undefined, DiagramPrompt],
+    sections: [bookId ? buildBookSection(bookId) : undefined, DiagramPrompt, ContentStylePrompt],
   });
 }
