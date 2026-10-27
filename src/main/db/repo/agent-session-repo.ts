@@ -17,10 +17,15 @@ export class AgentSessionRepo {
     return db.select().from(agentSessionTable).where(eq(agentSessionTable.id, id)).get();
   }
 
-  /** 查询全部会话，按最近活跃倒序 */
-  findAll() {
+  /** 会话列表用：排除临时会话，按最近活跃倒序 */
+  findPersistent() {
     const db = getDatabase();
-    return db.select().from(agentSessionTable).orderBy(desc(agentSessionTable.updatedAt)).all();
+    return db
+      .select()
+      .from(agentSessionTable)
+      .where(eq(agentSessionTable.ephemeral, false))
+      .orderBy(desc(agentSessionTable.updatedAt))
+      .all();
   }
 
   /** 修改会话标题 */

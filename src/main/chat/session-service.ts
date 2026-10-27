@@ -94,10 +94,10 @@ export class SessionService extends BaseService {
 
   /**
    * 会话摘要列表，按 updatedAt 倒序。
-   * 只含元数据，运行态取自运行时池，不加载消息内容。
+   * 只含元数据，运行态取自运行时池，不加载消息内容。临时会话不进列表。
    */
   listSessionSummary(): SessionSummary[] {
-    return agentSessionRepo.findAll().map(row => this.toSummary(row));
+    return agentSessionRepo.findPersistent().map(row => this.toSummary(row));
   }
 
   /**
@@ -175,7 +175,7 @@ export class SessionService extends BaseService {
   async streamSend(req: StreamSendRequest): Promise<StreamSendResponse> {
     const thinkingLevel: ThinkingLevel = req.thinkingLevel ?? 'medium';
     // 首次组装会往会话日志写模型记录，会话行必须先存在
-    this.ensureSessionRow(req.sessionId, req.text, req.images?.length ?? 0);
+    this.ensureSessionRow(req.sessionId, req.text, req.images?.length ?? 0, req.ephemeral);
 
     // 首次组装就带上本次的思考级别，运行时建立后不必再补一次设置
     const session = this.getOrCreateRuntime(req.sessionId, thinkingLevel);
@@ -220,13 +220,21 @@ export class SessionService extends BaseService {
     };
   }
 
-  /** 首次发送消息时补建会话行，标题由首条消息截取；首条消息只有图片时用占位标题。 */
-  private ensureSessionRow(sessionId: string, text: string, imageCount: number): void {
+  /**
+   * 首次发送消息时补建会话行，标题由首条消息截取；首条消息只有图片时用占位标题。
+   * 临时会话在此打上标记。
+   */
+  private ensureSessionRow(
+    sessionId: string,
+    text: string,
+    imageCount: number,
+    ephemeral = false
+  ): void {
     if (agentSessionRepo.findById(sessionId)) {
       return;
     }
     const title = titleFromText(text) || (imageCount > 0 ? '[图片]' : '');
-    agentSessionRepo.create({ id: sessionId, title });
+    agentSessionRepo.create({ id: sessionId, title, ephemeral });
   }
 
   /** 取得会话运行时；首次访问时按要求的思考级别组装，并订阅事件转发给渲染层。 */

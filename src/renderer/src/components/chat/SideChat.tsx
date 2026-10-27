@@ -15,7 +15,7 @@ import { useSessionActions } from '@/hooks/use-session-actions';
  * 整页形态见 pages/ChatPage 的 ChatPage。
  */
 export const SideChat = memo(function SideChat({ bookId }: { bookId?: string }) {
-  const session = useChat(bookId);
+  const session = useChat({ bookId });
   const [historyOpen, setHistoryOpen] = useState(false);
 
   return (

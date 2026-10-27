@@ -10,6 +10,11 @@ export const agentSessionTable = sqliteTable('agent_session', {
   title: text().notNull().default(''),
   /** 活动分支的末端 entry id；空会话为 NULL。 */
   tipEntryId: text('tip_entry_id'),
+  /**
+   * 临时会话标记：不进会话列表，界面关闭时由渲染层删除。
+   * 进程被强杀时这一步不会执行，留下的残留行不清理，也不会出现在列表里。
+   */
+  ephemeral: integer('ephemeral', { mode: 'boolean' }).notNull().default(false),
   /** 创建时间，Unix 毫秒。 */
   createdAt: integer('created_at')
     .notNull()
@@ -28,6 +33,7 @@ CREATE TABLE IF NOT EXISTS agent_session (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL DEFAULT '',
   tip_entry_id TEXT,
+  ephemeral INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000),
   updated_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000)
 );

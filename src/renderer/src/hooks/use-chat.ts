@@ -18,14 +18,22 @@ export class SessionOccupiedError extends Error {
   }
 }
 
+/** 对话界面持有的会话配置 */
+export interface ChatOptions {
+  /** 关联书籍 id，随每次发送交给主进程；临时会话不传，退化为通用问答 */
+  bookId?: string;
+  /** 临时会话：落库时打标记、不进会话列表，界面卸载时连库一起删除 */
+  ephemeral?: boolean;
+}
+
 /**
- * useChat：每个对话界面（SideChat / ChatPage）独享一份聊天状态。
+ * useChat：每个对话界面（SideChat / ChatPage / TempSideChat）独享一份聊天状态。
  * - activeSessionId 由前端生成：组件挂载即持有一个新会话 id
  * - messages / isStreaming 从 sessionStore 派生（订阅驱动）
  * - bookId 在创建时绑定，随每次发送交给主进程
- * - 组件卸载时自动 release 当前会话
+ * - 组件卸载时自动 release 当前会话；临时会话额外删除库中的会话与 entry
  */
-export function useChat(bookId?: string) {
+export function useChat({ bookId, ephemeral = false }: ChatOptions = {}) {
   const [activeSessionId, setActiveSessionId] = useState<string>(() => crypto.randomUUID());
   /** 正在从库里载入要切换到的会话；期间消息区只显示加载态 */
   const [isLoadingSession, setIsLoadingSession] = useState(false);
@@ -40,13 +48,29 @@ export function useChat(bookId?: string) {
   const messages = useSessionStore(s => s.sessionsMap[activeSessionId]?.messages ?? EMPTY_MESSAGES);
   const isStreaming = useSessionStore(s => s.sessionsMap[activeSessionId]?.isStreaming ?? false);
 
-  /** 组件卸载：释放当前会话 */
+  /** 卸载清理要能判断该释放还是销毁，而 effect 闭包里读不到最新 props，这里用 effect 同步 */
+  const ephemeralRef = useRef(ephemeral);
   useEffect(() => {
+    ephemeralRef.current = ephemeral;
+  }, [ephemeral]);
+
+  /** 组件卸载：释放当前会话；临时会话连同挂载时创建的那个会话一起销毁 */
+  useEffect(() => {
+    // 挂载时的会话 id 在这里取：分支会把 activeSessionId 换成持久会话，清理时按当前值删会误删
+    const ephemeralSessionId = activeRef.current;
+
     return () => {
-      const oldId = activeRef.current;
-      if (oldId) {
-        useSessionStore.getState().releaseSession(oldId);
+      const currentId = activeRef.current;
+      if (currentId) {
+        useSessionStore.getState().releaseSession(currentId);
       }
+      if (!ephemeralRef.current) return;
+      // 临时会话会在组件销毁时移除
+      useSessionStore.getState().removeSession(ephemeralSessionId);
+      // 首条消息之前库里没有会话行，删除对不存在的会话是空操作；失败时没有可提示的地方，残留行不影响列表
+      window.api.deleteSession({ sessionId: ephemeralSessionId }).catch((error: unknown) => {
+        console.error('[useChat] 临时会话删除失败:', error);
+      });
     };
   }, []);
 
@@ -111,16 +135,17 @@ export function useChat(bookId?: string) {
           images: payload.images,
           thinkingLevel: payload.thinkingLevel,
           bookId,
+          ephemeral,
         });
-        // 首条消息才会在库里建会话行，通知历史列表重新拉取
-        if (isFirstMessage) {
+        // 首条消息才会在库里建会话行，通知历史列表重新拉取；临时会话不进列表，没有可刷新的
+        if (isFirstMessage && !ephemeral) {
           notifySessionsChanged();
         }
       } catch {
         toast.error('发送消息失败，请重试');
       }
     },
-    [bookId]
+    [bookId, ephemeral]
   );
 
   /** 中止当前流式响应 */

@@ -402,6 +402,11 @@ export interface StreamSendRequest {
   thinkingLevel?: ThinkingLevel;
   /** 关联的书籍 id，供阅读场景下的提问使用。 */
   bookId?: string;
+  /**
+   * 本次创建的会话是否为临时会话。
+   * 临时会话不进会话列表，且由前端在界面关闭时删除；会话行已存在时该标记不生效。
+   */
+  ephemeral?: boolean;
 }
 
 /** 发送消息响应。 */
