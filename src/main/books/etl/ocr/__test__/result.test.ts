@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { DocParsingResult } from '@paddleocr/api-sdk';
+import type { BookPageBlock } from '@shared/types/ocr';
 import { parsePaddleResult, parseImageBox } from '../paddle/parser';
-import { mergePageBlocks, type OcrTextBlock } from '../result';
+import { mergePageBlocks, ocrBlocksToText, type OcrTextBlock } from '../result';
 
 /** 造一页服务端返回，`prunedResult` 是 unknown，直接给它块数组即可。 */
 function page(list: Array<Record<string, unknown>>, images: Record<string, string> = {}) {
@@ -130,5 +131,22 @@ describe('mergePageBlocks', () => {
     );
 
     expect(merged.map(block => block.bbox)).toEqual([null, null]);
+  });
+});
+
+describe('ocrBlocksToText', () => {
+  it('按数组顺序拼接文字块，图片块跳过，表格 HTML 原样保留', () => {
+    const blocks: BookPageBlock[] = [
+      { type: 'title', text: '标题', bbox: [0, 0, 1, 1] },
+      { type: 'text', text: '正文', bbox: null },
+      { type: 'image', attachmentId: 'attachment-1', bbox: null },
+      { type: 'table', text: '<table/>', bbox: null },
+    ];
+
+    expect(ocrBlocksToText(blocks)).toBe('标题\n正文\n<table/>');
+  });
+
+  it('只有图片块时返回空字符串', () => {
+    expect(ocrBlocksToText([{ type: 'image', attachmentId: 'a', bbox: null }])).toBe('');
   });
 });

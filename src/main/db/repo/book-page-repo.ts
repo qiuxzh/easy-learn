@@ -19,7 +19,7 @@ export interface BookPageContent {
  * 没有状态列：行存在就是识别完成，空块表示空白页。
  * 这里的写操作只按书整体替换或按块追加，所以「页数」始终等于已识别的页数。
  *
- * 对外给的是解析后的块（`listBlocks`），列里存的是 JSON 这件事只留在这一层。
+ * 对外给的是解析后的块（`listBlocks` / `listPages`），列里存的是 JSON 这件事只留在这一层。
  */
 export class BookPageRepo {
   /** 按页序读出整本书的识别结果，块已解析；供分片与附件清理使用。 */
@@ -30,7 +30,7 @@ export class BookPageRepo {
     }));
   }
 
-  /** 原始行只在这里用；对外一律给 `listBlocks`。 */
+  /** 原始行只在这里用；对外一律给解析后的块。 */
   private listRows(bookId: string): BookPageRow[] {
     return getDatabase()
       .select()
@@ -38,6 +38,18 @@ export class BookPageRepo {
       .where(eq(bookPageTable.bookId, bookId))
       .orderBy(asc(bookPageTable.page))
       .all();
+  }
+
+  /** 按页号读取若干页的识别结果，块已解析；不存在的页不返回。 */
+  listPages(bookId: string, pages: number[]): BookPageContent[] {
+    if (pages.length === 0) return [];
+    return getDatabase()
+      .select()
+      .from(bookPageTable)
+      .where(and(eq(bookPageTable.bookId, bookId), inArray(bookPageTable.page, pages)))
+      .orderBy(asc(bookPageTable.page))
+      .all()
+      .map(row => ({ page: row.page, blocks: parseBlocks(row.blocks) }));
   }
 
   /** 已识别的页号集合，用来跳过已经完成的块。 */

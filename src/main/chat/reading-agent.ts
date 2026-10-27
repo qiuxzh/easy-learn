@@ -20,7 +20,6 @@ export const readingAgent: AgentDefinition = {
   id: 'reading',
   systemPrompt: [
     '你是阅读助手，帮助用户理解和讨论他们导入的书。',
-    '引用书中原文时，说明它出自哪一章。',
     '你也可以帮助用户管理闪卡，例如把书中内容整理成闪卡、修改或删除已有闪卡。',
   ].join('\n'),
   tools: [...readingTools, ...flashcardTools],

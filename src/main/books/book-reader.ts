@@ -8,7 +8,7 @@ import { parseEpubFromBuffer } from '@shared/utils/book-parser';
 import { imageMimeTypeFromExtension } from '@shared/utils/file-util';
 import { attachmentService } from '@main/service/attachment-service';
 import { Constants } from '../constants';
-import { bookRepo } from '../db/repo';
+import { bookPageRepo, bookRepo } from '../db/repo';
 import {
   clampReadLength,
   clampReadOffset,
@@ -22,6 +22,8 @@ import {
 } from './util';
 import { initFoliatePolyfill } from './foliate-polyfill';
 import { buildPictureUnit } from './etl/chunking';
+import { ocrBlocksToText } from './etl/ocr/result';
+import { readPdfPageTexts, renderPdfPagePng, type PdfTextPage } from './etl/pdf/pdf-pages';
 
 export const DEFAULT_READ_OFFSET = 0;
 export const DEFAULT_READ_LENGTH = 12000;
@@ -90,7 +92,7 @@ export async function getBookTocs(bookId: string): Promise<TOCItem[]> {
 }
 
 /**
- * AI 工具读取指定章节的纯文本（reading-tools 的核心入口）。
+ * AI 工具读取指定章节的纯文本。
  *
  * 先取解析结果与扁平 TOC 中的目标项，再按 href 解析出阅读顺序下标与锚点；下一个同级或
  * 更高层目录项作为结束边界，本节没有锚点时退化为读到节尾。最后按 offset 与 length
@@ -345,4 +347,125 @@ async function getParsedBook(bookId: string): Promise<ParsedBookCacheEntry | nul
     log.error(`[BookReader] getParsedBook failed for ${bookId}:`, e);
     return null;
   }
+}
+
+/** 一次按页读取 PDF 文本的结果；`pages` 就是本次读到的页。 */
+export interface ReadPdfPageTextResult {
+  bookId: string;
+  bookTitle: string;
+  pageCount: number;
+  startPage: number;
+  /** 实际返回的最后一页；请求范围超过总页数时小于请求的 endPage */
+  endPage: number;
+  pages: PdfTextPage[];
+}
+
+/** 一次 PDF 页面图读取的结果；`image` 已登记为附件。 */
+export interface ReadPdfPageImageResult {
+  bookId: string;
+  bookTitle: string;
+  page: number;
+  pageCount: number;
+  image: ImageContent;
+}
+
+/**
+ * 按 bookId 定位 PDF 源文件。
+ *
+ * @throws 书不存在、不是 PDF，或源文件缺失时抛出可直接展示的原因
+ */
+function resolvePdfBook(bookId: string): { bookTitle: string; filePath: string } {
+  const row = bookRepo.findById(bookId);
+  if (!row) {
+    throw new Error(`书籍不存在：${bookId}`);
+  }
+  if (row.booksType !== 'pdf') {
+    throw new Error('这本书不是 PDF，无法按页读取');
+  }
+
+  const filePath = path.join(Constants.booksDir, row.booksStoreName);
+  if (!fs.existsSync(filePath)) {
+    throw new Error('PDF 源文件不存在，可能已被移动或删除');
+  }
+  return { bookTitle: row.booksName, filePath };
+}
+
+/**
+ * 用该书已完成的 OCR 结果填入文本层为空的页。
+ *
+ * 只处理 trim 后为空的页；没有对应 book_page 行的页保持空字符串。
+ */
+function fillEmptyPagesFromOcr(bookId: string, pages: PdfTextPage[]): void {
+  const emptyPages = new Set(
+    pages.filter(page => page.text.trim().length === 0).map(page => page.page)
+  );
+  if (emptyPages.size === 0) return;
+
+  const ocrTexts = new Map(
+    bookPageRepo
+      .listPages(bookId, [...emptyPages])
+      .map(page => [page.page, ocrBlocksToText(page.blocks)])
+  );
+  for (const page of pages) {
+    if (emptyPages.has(page.page)) {
+      page.text = ocrTexts.get(page.page) ?? '';
+    }
+  }
+}
+
+/**
+ * 按页范围读取 PDF 文本层。
+ *
+ * 文本层为空的页回退到该书已完成的 OCR 结果（book_page）；两边都没有时返回空字符串。
+ *
+ * @param startPage 起始页，从 1 开始
+ * @param endPage 结束页，从 1 开始，含；省略时只读 startPage
+ * @returns 逐页文本与总页数
+ * @throws 书不存在、不是 PDF、文件缺失、页码越界、PDF 无法读取，或 OCR 结果读取失败时抛出
+ */
+export async function readPdfPageText(
+  bookId: string,
+  startPage: number,
+  endPage?: number
+): Promise<ReadPdfPageTextResult> {
+  if (endPage !== undefined && endPage < startPage) {
+    throw new Error('页码范围无效：endPage 不能小于 startPage');
+  }
+
+  const { bookTitle, filePath } = resolvePdfBook(bookId);
+  const texts = await readPdfPageTexts(filePath, startPage, endPage ?? startPage);
+  fillEmptyPagesFromOcr(bookId, texts.pages);
+
+  return {
+    bookId,
+    bookTitle,
+    pageCount: texts.pageCount,
+    startPage,
+    endPage: texts.pages[texts.pages.length - 1].page,
+    pages: texts.pages,
+  };
+}
+
+/**
+ * 把 PDF 的一页渲染成图片并登记为附件。
+ *
+ * @param page 页码，从 1 开始
+ * @returns 附件引用与总页数；附件由工具结果持有
+ * @throws 书不存在、不是 PDF、文件缺失、页码越界、PDF 无法读取，或附件写入失败时抛出
+ */
+export async function readPdfPageImage(
+  bookId: string,
+  page: number
+): Promise<ReadPdfPageImageResult> {
+  const { bookTitle, filePath } = resolvePdfBook(bookId);
+  const rendered = await renderPdfPagePng(filePath, page);
+
+  const [image] = await attachmentService.storeImages({
+    images: [{ bytes: rendered.png, mimeType: 'image/png' }],
+  });
+  if (!image) {
+    throw new Error('页面图写入附件失败');
+  }
+
+  return { bookId, bookTitle, page, pageCount: rendered.pageCount, image };
 }

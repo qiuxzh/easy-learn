@@ -9,10 +9,15 @@ import { bookPageRepo, bookRepo, bookStageRepo } from '@main/db/repo';
 import type { BookPageBlock, OcrCommandResult, OcrEvent, OcrRuntime } from '@shared/types/ocr';
 import { attachmentService } from '@main/service/attachment-service';
 import { DEFAULT_CHUNK_OPTIONS, chunkDocument, createPdfSource } from './etl/chunking';
-import type { PdfTextReport } from './etl/pdf/text-layer';
+import type { PdfTextReport } from './etl/pdf/pdf-pages';
 import { OCR_MODEL_ID, OcrClient, isRetryableOcrError } from './etl/ocr/paddle/client';
 import { parsePaddleResult } from './etl/ocr/paddle/parser';
-import { mergePageBlocks, type OcrImage, type OcrPageResult } from './etl/ocr/result';
+import {
+  mergePageBlocks,
+  ocrBlocksToText,
+  type OcrImage,
+  type OcrPageResult,
+} from './etl/ocr/result';
 import { splitPdf, type PdfChunk } from './etl/pdf/split';
 import { replaceBookChunks } from './book-content';
 
@@ -303,7 +308,7 @@ export class BookOcrRunner {
 
     const report: PdfTextReport = {
       pageCount: pages.length,
-      pages: pages.map(page => ({ page: page.page, text: blocksToText(page.blocks) })),
+      pages: pages.map(page => ({ page: page.page, text: ocrBlocksToText(page.blocks) })),
     };
 
     const drafts = await chunkDocument(createPdfSource(report), DEFAULT_CHUNK_OPTIONS);
@@ -350,14 +355,6 @@ function isChunkDone(chunk: PdfChunk, existing: Set<number>): boolean {
     if (!existing.has(page)) return false;
   }
   return true;
-}
-
-/** 把页块转成分片用的纯文本：图片块没有文字，跳过；表格的 HTML 原样保留。 */
-function blocksToText(blocks: BookPageBlock[]): string {
-  return blocks
-    .filter((block): block is Extract<BookPageBlock, { text: string }> => block.type !== 'image')
-    .map(block => block.text)
-    .join('\n');
 }
 
 /** 读配置里的令牌；空串与缺失都视为未配置。 */

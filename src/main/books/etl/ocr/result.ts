@@ -67,6 +67,19 @@ export function mergePageBlocks(
   return merged;
 }
 
+/**
+ * 把一页的 OCR 块拼成纯文本。
+ *
+ * 图片块没有文字，跳过；表格块的 text 是 HTML，原样保留。
+ * 块数组的顺序就是阅读顺序，不再排序。
+ */
+export function ocrBlocksToText(blocks: BookPageBlock[]): string {
+  return blocks
+    .filter((block): block is Extract<BookPageBlock, { text: string }> => block.type !== 'image')
+    .map(block => block.text)
+    .join('\n');
+}
+
 /** 插入位置：返回在 blocks 中的下标，范围 0..blocks.length。 */
 function findInsertIndex(blocks: OcrTextBlock[], bbox: OcrRect | null): number {
   if (!bbox) return blocks.length;

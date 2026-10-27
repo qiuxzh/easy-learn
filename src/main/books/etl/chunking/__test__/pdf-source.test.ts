@@ -7,8 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { chunkDocument } from '../chunk-document';
 import { createPdfSource } from '../pdf-source';
-import { PDF_PAGE_TEXT_MIN_CHARS } from '../../pdf/text-layer';
-import type { PdfTextReport } from '../../pdf/text-layer';
+import { PDF_PAGE_TEXT_MIN_CHARS, type PdfTextReport } from '../../pdf/pdf-pages';
 
 function reportOf(texts: string[]): PdfTextReport {
   return {

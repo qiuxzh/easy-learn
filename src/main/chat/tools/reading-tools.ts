@@ -8,6 +8,8 @@ import {
   DEFAULT_READ_LENGTH,
   DEFAULT_READ_OFFSET,
   MAX_READ_LENGTH,
+  readPdfPageImage,
+  readPdfPageText,
 } from '@main/books/book-reader';
 import { readingService } from '@main/service/reading-service';
 
@@ -17,9 +19,6 @@ const getBookTocsTool = defineSessionTool({
   description:
     '根据书的 id 获取该书的完整目录（嵌套结构，含 id、层级、子章节、href 等），用于回答用户关于书籍章节结构的问题',
   promptSnippet: '查看某本书的目录结构',
-  promptGuidelines: [
-    '检索返回的片段不足以回答时，用 get_book_tocs 查看目录结构，再用 read_book_toc_text 读整章。',
-  ],
   parameters: Type.Object({
     bookId: Type.String({ minLength: 1, description: '书的 id' }),
   }),
@@ -41,10 +40,6 @@ const readBookTocTextTool = defineSessionTool({
     '可使用 offset 和 length 分段读取。返回 JSON，含 text、offset、length、totalChars、truncated、nextOffset 等字段（totalChars 无法确定时为 null）；' +
     'truncated=true 时直接用 nextOffset 继续读取；truncated=false 表示已到该目录项末尾，不代表全书读完。失败时 error 字段说明原因。',
   promptSnippet: '读取某个章节的正文',
-  promptGuidelines: [
-    '调用 read_book_toc_text 之前需要确保调用过 get_book_tocs 获取目录结构（含 id），否则无法获取到 tocId',
-    'read_book_toc_text 返回 truncated=true 时，直接用返回 JSON 里的 nextOffset 作为下一次调用的 offset 继续读取，不要自己累加字符数。',
-  ],
   parameters: Type.Object({
     bookId: Type.String({ minLength: 1, description: '书的 id' }),
     tocId: Type.String({ minLength: 1, description: '目录项的 id，由 get_book_tocs 返回' }),
@@ -106,7 +101,6 @@ const searchBookBm25Tool = defineSessionTool({
     '根据关键词在指定书籍的正文中做字面检索。返回片段正文、分数（越大越相关）' +
     '适合术语、人名、专有名词这类能给出准确关键词的查询；如片段不足，再调用 read_book_toc_text 阅读完整章节。',
   promptSnippet: '按关键词在指定书中检索正文片段',
-  promptGuidelines: ['需要术语、人名、专有名词等字面匹配时，用 search_book_bm25 在指定书里检索。'],
   parameters: Type.Object({
     bookId: Type.String({ minLength: 1, description: '书的 id' }),
     query: Type.String({ minLength: 1, description: '需要检索的关键词或问题' }),
@@ -137,9 +131,6 @@ const searchBookVectorTool = defineSessionTool({
   description:
     '根据问题或描述在指定书籍的正文中做语义检索。返回片段正文、相似度分数（越大越相关，最大是1）',
   promptSnippet: '按语义在指定书中检索正文片段',
-  promptGuidelines: [
-    '给不出准确关键词、或问法与书中用词不一致时，用 search_book_vector 做语义检索。',
-  ],
   parameters: Type.Object({
     bookId: Type.String({ minLength: 1, description: '书的 id' }),
     query: Type.String({ minLength: 1, description: '需要检索的问题或描述' }),
@@ -176,13 +167,9 @@ const searchBookVectorTool = defineSessionTool({
 const getUserReadingStateTool = defineSessionTool({
   name: 'get_user_reading_state',
   description:
-    '获取用户最近一次同步到主进程的阅读状态，包含当前书籍、目录 tocId、章节标题、章节 href 和阅读进度。',
+    '获取用户最近一次同步到主进程的阅读状态。PDF 返回当前物理页码与总页数；EPUB 返回目录 tocId、章节标题、章节 href 与阅读进度。',
   promptSnippet: '获取用户当前阅读状态',
-  promptGuidelines: [
-    '不确定用户说的是哪本书时，先调用 get_user_reading_state 看当前的阅读状态。',
-    'get_user_reading_state 获取的信息可能不是最新的，你需要重新调用来获取最新的',
-    '先调用 get_user_reading_state 获取tocId，再使用 read_book_toc_text 可以阅读到用户正在阅读的整个章节',
-  ],
+  promptGuidelines: ['不确定用户在看哪本书时，先查阅读状态。'],
   parameters: Type.Object({}),
   async execute() {
     const state = readingService.getCurrentReadingState();
@@ -227,6 +214,74 @@ const readBookImageTool = defineSessionTool({
   },
 });
 
+/** read_pdf_page_text 单次最多返回的页数；超出部分由调用方换 startPage 再读。 */
+const MAX_PDF_TEXT_PAGES = 10;
+
+/** 按页范围读取 PDF 文本层；页码是物理页号，与 `pdf:<页>` 定位串一致。 */
+const readPdfPageTextTool = defineSessionTool({
+  name: 'read_pdf_page_text',
+  description:
+    `按物理页码读取 PDF 文本层（从 1 开始，页码与检索结果里的 pdf:<页> 一致）。` +
+    `单次最多读 ${MAX_PDF_TEXT_PAGES} 页，超出部分用新的 startPage 再读。` +
+    '文本层为空的页会回退到已完成的 OCR 结果。',
+  promptSnippet: '按页码读取 PDF 的正文文字',
+  promptGuidelines: [
+    'PDF 用 read_pdf_page_text / read_pdf_page_image；EPUB 用 get_book_tocs / read_book_toc_text。',
+  ],
+  parameters: Type.Object({
+    bookId: Type.String({ minLength: 1, description: '书的 id' }),
+    startPage: Type.Integer({ minimum: 1, description: '起始物理页号，从 1 开始' }),
+    endPage: Type.Optional(
+      Type.Integer({ minimum: 1, description: '结束物理页号（含），省略时只读 startPage 这一页' })
+    ),
+  }),
+  async execute(_toolCallId, params, signal) {
+    if (signal?.aborted) {
+      throw new Error('操作已取消');
+    }
+
+    const endPage = Math.min(
+      params.endPage ?? params.startPage,
+      params.startPage + MAX_PDF_TEXT_PAGES - 1
+    );
+    const result = await readPdfPageText(params.bookId, params.startPage, endPage);
+    return {
+      content: [{ type: 'text' as const, text: JSON.stringify(result) }],
+      details: undefined,
+    };
+  },
+});
+
+/** 把 PDF 的一页渲染成图片交给模型；单页限制避免一次拉高请求体积与上下文占用。 */
+const readPdfPageImageTool = defineSessionTool({
+  name: 'read_pdf_page_image',
+  description:
+    '按物理页码把 PDF 的一页渲染成图片并给大模型查看（从 1 开始，单次只能读一页）。' +
+    '只有文字工具读不到内容，或需要确认版面、图表、公式时，才用 read_pdf_page_image。',
+  promptSnippet: '按页码查看 PDF 某一页的页面图',
+  parameters: Type.Object({
+    bookId: Type.String({ minLength: 1, description: '书的 id' }),
+    page: Type.Integer({ minimum: 1, description: '物理页号，从 1 开始' }),
+  }),
+  async execute(_toolCallId, params, signal) {
+    if (signal?.aborted) {
+      throw new Error('操作已取消');
+    }
+
+    const result = await readPdfPageImage(params.bookId, params.page);
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: `PDF 第 ${result.page} 页页面图（共 ${result.pageCount} 页）`,
+        },
+        result.image,
+      ],
+      details: undefined,
+    };
+  },
+});
+
 /** 阅读智能体可用的全部工具。 */
 export const readingTools = [
   getBookTocsTool,
@@ -235,4 +290,6 @@ export const readingTools = [
   searchBookVectorTool,
   getUserReadingStateTool,
   readBookImageTool,
+  readPdfPageTextTool,
+  readPdfPageImageTool,
 ];

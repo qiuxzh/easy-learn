@@ -1,4 +1,4 @@
-import { PDF_PAGE_TEXT_MIN_CHARS, countTextChars, type PdfTextReport } from '../pdf/text-layer';
+import { PDF_PAGE_TEXT_MIN_CHARS, countTextChars, type PdfTextReport } from '../pdf/pdf-pages';
 import { LocatorScheme } from './locator';
 import type { AnchorPoint, DocumentSource, SegmentInfo, TextUnit } from './types';
 

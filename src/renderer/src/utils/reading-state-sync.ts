@@ -18,27 +18,57 @@ function buildReadingStatePayload(): ReadingStatePayload | null {
   if (!readerTab?.book || !readerTab.currentChapter || !readerTab.currentPosition) {
     return null;
   }
-  const normalizedProgressPercent = Math.round(readerTab.currentPosition.percentage);
 
-  return {
+  const common = {
     bookId: readerTab.bookId,
     bookTitle: readerTab.book.metadata.title,
+    progressPercent: Math.round(readerTab.currentPosition.percentage),
+    updatedAt: new Date().toISOString(),
+  };
+
+  if (readerTab.book.type === 'pdf') {
+    const { page } = readerTab.currentPosition;
+    // 没有页码的 PDF 状态没有可用的位置信息，等 pageList 映射出来再推
+    if (page === undefined) return null;
+    return {
+      ...common,
+      bookType: 'pdf',
+      page,
+      pageCount: readerTab.book.rawBook.sections.length,
+    };
+  }
+
+  return {
+    ...common,
+    bookType: 'epub',
     tocId: resolveTocIdByHref(readerTab.book.tocs, readerTab.currentChapter.href),
     chapterTitle: readerTab.currentChapter.title,
     chapterHref: readerTab.currentChapter.href,
-    progressPercent: normalizedProgressPercent,
-    updatedAt: new Date().toISOString(),
+    page: readerTab.currentPosition.page,
   };
 }
 
 function getReadingStateSignature(payload: ReadingStatePayload): string {
+  if (payload.bookType === 'pdf') {
+    return [
+      payload.bookId,
+      payload.bookTitle,
+      payload.bookType,
+      String(payload.progressPercent),
+      String(payload.page),
+      String(payload.pageCount),
+    ].join('||');
+  }
+
   return [
     payload.bookId,
     payload.bookTitle,
+    payload.bookType,
     payload.tocId ?? '',
     payload.chapterTitle,
     payload.chapterHref,
     String(payload.progressPercent),
+    String(payload.page ?? ''),
   ].join('||');
 }
 

@@ -21,17 +21,36 @@ export interface ReadingPosition {
   page?: number;
 }
 
-/** renderer → main 的当前阅读状态同步载荷 */
-export interface ReadingStatePayload {
+/** 阅读状态的公共字段。 */
+interface ReadingStateBase {
   bookId: string;
   bookTitle: string;
-  tocId: string | null;
-  chapterTitle: string;
-  chapterHref: string;
+  /** 0~100 */
   progressPercent: number;
   /** ISO 8601 格式（new Date().toISOString()） */
   updatedAt: string;
 }
+
+/** EPUB 的阅读状态：章节信息，外加可选的物理页码。 */
+export interface EpubReadingState extends ReadingStateBase {
+  bookType: 'epub';
+  tocId: string | null;
+  chapterTitle: string;
+  chapterHref: string;
+  /** 物理页码（来自 pageList，解析失败时不写） */
+  page?: number;
+}
+
+/** PDF 的阅读状态：没有章节，只有物理页码与总页数。 */
+export interface PdfReadingState extends ReadingStateBase {
+  bookType: 'pdf';
+  /** 物理页码，从 1 开始 */
+  page: number;
+  pageCount: number;
+}
+
+/** renderer → main 的当前阅读状态同步载荷；字段随书籍格式不同。 */
+export type ReadingStatePayload = EpubReadingState | PdfReadingState;
 
 /** 用户选中的文本及对应位置。仅在 selectionchange 触发且选区非空时存在 */
 export interface ReaderSelection {

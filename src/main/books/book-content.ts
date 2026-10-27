@@ -29,7 +29,7 @@ import {
   readPdfText,
   type PdfTextKind,
   type PdfTextReport,
-} from './etl/pdf/text-layer';
+} from './etl/pdf/pdf-pages';
 import { invalidateBookRetrieval } from './book-retrieval';
 
 /** PDF 导入前的文本层探测结果。 */
