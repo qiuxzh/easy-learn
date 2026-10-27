@@ -114,7 +114,8 @@ export interface DeleteCardRequest {
 
 /** 复习队列查询请求参数。 */
 export interface ReviewQueueRequest {
-  groupId: string;
+  /** 牌组 ID；省略时返回全部牌组的今日队列。 */
+  groupId?: string;
 }
 
 /** 提交复习评分的请求参数。 */

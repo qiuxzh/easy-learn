@@ -73,7 +73,10 @@ const SINGLETON_TAB_IDS: Partial<Record<TabType, string>> = {
 
 /** 生成新 Tab 的唯一 ID。 */
 function genId(type: TabType, params?: AddTabParams): string {
-  if (type === 'card-review' && params?.groupId) return `review-${params.groupId}`;
+  // 单牌组复习按牌组复用标签；不带牌组的今日复习共用一个标签。
+  if (type === 'card-review') {
+    return params?.groupId ? `review-${params.groupId}` : 'review-today';
+  }
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   return `${type}-${suffix}`;
 }

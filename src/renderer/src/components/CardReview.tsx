@@ -11,10 +11,11 @@ import type { CardGroupSummary, CardRecord, CardReviewRating } from '@shared/typ
 
 /** 复习组件属性。 */
 interface CardReviewProps {
+  /** 牌组 ID；省略时复习全部牌组的今日队列。 */
   groupId?: string;
 }
 
-/** 按牌组执行 FSRS 复习的 Tab。 */
+/** 按牌组或全部牌组执行 FSRS 复习的 Tab。 */
 export function CardReview({ groupId }: CardReviewProps) {
   const [group, setGroup] = useState<CardGroupSummary | undefined>();
   const [queue, setQueue] = useState<CardRecord[]>([]);
@@ -22,13 +23,17 @@ export function CardReview({ groupId }: CardReviewProps) {
   const [loading, setLoading] = useState(true);
   const [reviewing, setReviewing] = useState(false);
 
-  /** 加载牌组信息和复习队列。 */
+  /** 加载复习队列；带 groupId 时同时取牌组信息。 */
   const load = useCallback(async () => {
+    setLoading(true);
     if (!groupId) {
+      const queueResult = await window.api.getReviewQueue({});
+      if (!queueResult.success) toast.error(queueResult.error ?? '加载复习队列失败');
+      else setQueue(queueResult.cards ?? []);
       setLoading(false);
       return;
     }
-    setLoading(true);
+
     const [groupsResult, queueResult] = await Promise.all([
       window.api.listCardGroups(),
       window.api.getReviewQueue({ groupId }),
@@ -47,10 +52,9 @@ export function CardReview({ groupId }: CardReviewProps) {
   }, [load]);
 
   useEffect(() => {
-    if (!groupId) return;
     const timer = window.setInterval(() => {
       void (async () => {
-        const result = await window.api.getReviewQueue({ groupId });
+        const result = await window.api.getReviewQueue(groupId ? { groupId } : {});
         if (!result.success || !result.cards) return;
         setQueue(current => mergeReviewQueue(current, result.cards ?? []));
       })();
@@ -88,7 +92,7 @@ export function CardReview({ groupId }: CardReviewProps) {
         准备复习队列…
       </div>
     );
-  if (!group)
+  if (groupId && !group)
     return (
       <div className="flex h-full items-center justify-center bg-surface-1 text-sm text-muted-foreground">
         牌组不存在。
@@ -99,7 +103,7 @@ export function CardReview({ groupId }: CardReviewProps) {
   return (
     <div className="flex h-full flex-col overflow-hidden bg-surface-1 [&_button:not(:disabled)]:cursor-pointer [&_button:disabled]:cursor-not-allowed">
       <div className="flex items-center justify-between gap-4 border-b bg-background px-6 py-3">
-        <h1 className="text-lg font-semibold">复习</h1>
+        <h1 className="text-lg font-semibold">{groupId ? '复习' : '今日复习'}</h1>
         <div className="flex items-center gap-2">
           <Badge variant="secondary">剩余 {queue.length} 张</Badge>
           <Button

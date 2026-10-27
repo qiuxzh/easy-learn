@@ -302,10 +302,12 @@ export class FlashcardRepo {
     getDatabase().delete(cardTable).where(eq(cardTable.id, id)).run();
   }
 
-  /** 查询复习队列中的卡片：到期卡片优先，新卡片随后。 */
-  findReviewQueue(groupId: string, now = Date.now()): CardRow[] {
-    const cards = this.findCardsByGroupId(groupId)
-      .map(toCardRecord)
+  /**
+   * 过滤可学卡并按队列顺序取回原始行。
+   * `inArray` 不保证返回顺序，所以用 ids 回排，保证复习队列的到期优先顺序。
+   */
+  private orderReviewQueue(cards: ReturnType<typeof toCardRecord>[], now: number): CardRow[] {
+    const ordered = cards
       .filter(card => card.state === 0 || card.due <= now)
       .sort((left, right) => {
         const leftNew = left.state === 0 ? 1 : 0;
@@ -313,7 +315,7 @@ export class FlashcardRepo {
         if (leftNew !== rightNew) return leftNew - rightNew;
         return left.due - right.due;
       });
-    const ids = cards.map(card => card.id);
+    const ids = ordered.map(card => card.id);
     if (ids.length === 0) return [];
     return getDatabase()
       .select()
@@ -321,6 +323,16 @@ export class FlashcardRepo {
       .where(inArray(cardTable.id, ids))
       .all()
       .sort((left, right) => ids.indexOf(left.id) - ids.indexOf(right.id));
+  }
+
+  /** 查询指定牌组的复习队列：到期卡片优先，新卡片随后。 */
+  findReviewQueue(groupId: string, now = Date.now()): CardRow[] {
+    return this.orderReviewQueue(this.findCardsByGroupId(groupId).map(toCardRecord), now);
+  }
+
+  /** 查询全部牌组的复习队列；混排后同样到期优先、新卡片随后。 */
+  findAllReviewQueue(now = Date.now()): CardRow[] {
+    return this.orderReviewQueue(this.findAllCards().map(toCardRecord), now);
   }
 }
 

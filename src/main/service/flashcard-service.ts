@@ -218,9 +218,13 @@ export class FlashcardService extends BaseService {
     }
   }
 
-  /** 获取指定牌组的复习队列。 */
+  /** 获取复习队列；带 groupId 时只取该牌组，省略时取全部牌组。 */
   getReviewQueue(request: ReviewQueueRequest): CardListResult {
     try {
+      if (!request.groupId) {
+        const cards = flashcardRepo.findAllReviewQueue().map(toCardRecord);
+        return { success: true, cards };
+      }
       if (!flashcardRepo.findGroupById(request.groupId))
         return { success: false, error: '牌组不存在' };
       const cards = flashcardRepo.findReviewQueue(request.groupId).map(toCardRecord);
