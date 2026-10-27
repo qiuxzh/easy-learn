@@ -44,10 +44,12 @@ import { BaseService } from '@main/service';
 import { attachmentService } from '@main/service/attachment-service';
 import { Constants } from '../constants';
 import { runInTransaction } from '../db';
-import { bookChunkRepo, bookEmbeddingRepo, bookRepo } from '../db/repo';
+import { bookChunkRepo, bookEmbeddingRepo, bookPageRepo, bookRepo, bookStageRepo } from '../db/repo';
 import type { BookRow, InsertBookChunkRow, InsertBookRow } from '../db/schema';
 import { getMainWindow } from '../window';
 import { BookEmbeddingQueue } from './etl/embedding';
+import { BookOcrRunner } from './etl/ocr/runner';
+import type { OcrCommandResult, OcrEvent } from '@shared/types/ocr';
 import type { EmbedStartRequest } from '@shared/types/embedding';
 import { initFoliatePolyfill } from './foliate-polyfill';
 import { parseEpubFile } from './book-parser';
@@ -56,8 +58,11 @@ import {
   buildPictureUnit,
   chunkDocument,
   createEpubSource,
-  type ChunkDraft,
+  createPdfSource,
 } from './etl/chunking';
+import { toChunkRows } from './chunk-rows';
+import { classifyPdfText, type PdfTextKind } from './etl/pdf/classify';
+import type { PdfTextReport } from './etl/pdf/text-layer';
 import { invalidateBookRetrieval } from './book-retrieval';
 
 /** 章节正文分段读取的默认起始下标。 */
@@ -69,6 +74,18 @@ export const MAX_READ_LENGTH = 30000;
 
 /** 封面图片体积上限 */
 const MAX_COVER_BYTES = 10 * 1024 * 1024;
+
+/** PDF 导入前的文本层探测结果。 */
+interface PdfProbe {
+  /** 判定结论：有文本层 / 扫描版 / 无法判定 */
+  kind: PdfTextKind;
+  /** 读到的逐页文本；判定失败或空文档时为 null */
+  report: PdfTextReport | null;
+  /** 缺文本层的页数，也就是将来需要识别的页数 */
+  missingPages: number;
+  /** 判定失败的原因；成功时为 null */
+  error: string | null;
+}
 
 /**
  * 解析后 EPUB 的内存缓存项。
@@ -124,10 +141,11 @@ export interface ReadBookTocTextResult {
  * 文件布局（相对 Constants.dataDir）：
  * - books/{booksStoreName}   拷贝后的源文件（epub / pdf）
  * - attachment/image/{id}    封面与按需读取的书籍插图附件，统一由 AttachmentService 落盘，book 表只存封面附件 id
- * - DB 中存 book + book_chunk 两张表，book_chunk 没有级联删除，必须显式清理
+ * - ocr-work/{bookId}/       OCR 分块上传时的临时切片，任务结束即删
+ * - DB 中存 book + book_chunk + book_page 三张表，book_chunk 没有级联删除，必须显式清理
  *
- * 格式支持：EPUB 会解析出分片供检索；PDF 目前只导入文件 + 页数 + 首页封面，
- * 分片 / 向量化 / 正文提取都未接入（相关入口对 PDF 会给出明确错误）。
+ * 格式支持：EPUB 解析出分片供检索；PDF 导入时读文本层，有文本层直接分片，
+ * 扫描版等 `book_page` 里的文字提取结果再分片；正文提取只对 EPUB 提供。
  */
 export class BookService extends BaseService {
   /** 用户书籍根目录，书籍源文件都落在它下面 */
@@ -140,6 +158,9 @@ export class BookService extends BaseService {
   /** 向量化任务队列。运行态只活在它里面，不落库 */
   private readonly embeddingQueue: BookEmbeddingQueue;
 
+  /** 文字提取（OCR）的编排。同一时刻只跑一本书 */
+  private readonly ocrRunner: BookOcrRunner;
+
   constructor() {
     super();
     this.bookDir = path.resolve(Constants.dataDir, 'books');
@@ -148,16 +169,9 @@ export class BookService extends BaseService {
         getMainWindow()?.webContents.send(IpcChannel.Book_EmbeddingRuntime, runtime);
       },
     });
-  }
-
-  /**
-   * 启动时按向量表对账进度行。
-   *
-   * 进度行是派生的，向量表才是事实源。换过表结构、或者手工改过库之后两者可能对不上，
-   * 这里按书补齐，幂等。
-   */
-  onInit(): void {
-    bookEmbeddingRepo.reconcile();
+    this.ocrRunner = new BookOcrRunner((event: OcrEvent) => {
+      getMainWindow()?.webContents.send(IpcChannel.Book_OcrEvent, event);
+    });
   }
 
   /**
@@ -170,6 +184,7 @@ export class BookService extends BaseService {
    * - Book_UpdateBook        渲染层更新书名 / 作者 / 封面
    * - Book_RechunkBook       渲染层重新切分正文（重解析 + 替换分片 + 清向量）
    * - Book_Embedding*        渲染层驱动这本书的向量化任务（启动 / 暂停 / 继续 / 取消 / 取运行态）
+   * - Book_Ocr*              渲染层驱动文字提取（开始 / 重新提取 / 取消 / 取运行态）
    */
   setupIpcHandlers(): void {
     // 书籍embedding操作
@@ -180,6 +195,15 @@ export class BookService extends BaseService {
     ipcMain.handle(IpcChannel.Book_EmbeddingResume, () => this.embeddingQueue.resume());
     ipcMain.handle(IpcChannel.Book_EmbeddingCancel, () => this.embeddingQueue.cancel());
     ipcMain.handle(IpcChannel.Book_EmbeddingDescribe, () => this.embeddingQueue.describe());
+
+    // 文字提取：开始 / 取消 / 取运行态。重新提取要先清掉旧结果
+    ipcMain.handle(
+      IpcChannel.Book_OcrStart,
+      (_event, req: { bookId: string; restart?: boolean }) =>
+        this.startOcr(req.bookId, req.restart === true)
+    );
+    ipcMain.handle(IpcChannel.Book_OcrCancel, () => this.ocrRunner.cancel());
+    ipcMain.handle(IpcChannel.Book_OcrDescribe, () => this.ocrRunner.describe());
 
     ipcMain.handle(IpcChannel.Book_PickAndImport, async (): Promise<BookImportResult> => {
       try {
@@ -197,11 +221,11 @@ export class BookService extends BaseService {
     ipcMain.handle(IpcChannel.Book_GetAllBooks, async (): Promise<BookListResult> => {
       try {
         const rows = bookRepo.findAll();
-        // 一次查完全部向量化信息，避免按书逐个查询
-        const embeddings = bookEmbeddingRepo.loadAll(rows.map(row => row.id));
+        // 一次查完全部阶段进度，避免按书逐个查询
+        const stages = bookStageRepo.loadMany(rows.map(row => row.id));
         return {
           success: true,
-          books: rows.map(row => toBook(row, this.readBookFileSize(row), embeddings[row.id])),
+          books: rows.map(row => toBook(row, this.readBookFileSize(row), stages[row.id] ?? {})),
         };
       } catch (e) {
         log.error('[BookService] getAllBooks failed:', e);
@@ -287,11 +311,11 @@ export class BookService extends BaseService {
   }
 
   /**
-   * 把一行书籍记录转成渲染端实体，顺带查它的向量化信息。
-   * 批量路径不要用它——那里先用 `loadAll` 一次查完，避免按书逐个查询。
+   * 把一行书籍记录转成渲染端实体，顺带查它的阶段进度。
+   * 批量路径不要用它——那里先用 `loadMany` 一次查完，避免按书逐个查询。
    */
   private toBookDoc(row: BookRow): BookDoc {
-    return toBook(row, this.readBookFileSize(row), bookEmbeddingRepo.load(row.id));
+    return toBook(row, this.readBookFileSize(row), bookStageRepo.load(row.id));
   }
 
   /** 弹出文件选择框，返回用户选择的书籍路径（EPUB / PDF），取消选择则返回 null */
@@ -330,9 +354,11 @@ export class BookService extends BaseService {
     const info = await parseEpubFile(srcFilePath);
     // Chunk 化失败不影响导入，chunks 留空表示该书没有可检索分片
     let chunks: InsertBookChunkRow[] = [];
+    let chunked = false;
     try {
       const drafts = await chunkDocument(createEpubSource(info.rawBook), DEFAULT_CHUNK_OPTIONS);
       chunks = toChunkRows(id, drafts);
+      chunked = true;
     } catch (e) {
       log.error(`[BookService] chunkDocument failed, book imported without chunks: ${id}`, e);
     }
@@ -353,11 +379,16 @@ export class BookService extends BaseService {
       author: info.author ?? null,
     });
 
-    // 4. 写入正文分片
+    // 4. 写入正文分片与阶段状态
     try {
-      // books 和 book_chunks 都在本函数同步写入，DB 端靠 bookId 关联。
-      // chunks 写入失败需要回滚 books 记录，避免出现"有书无文"的孤儿状态。
-      bookChunkRepo.createMany(chunks);
+      // books、book_chunks 与阶段行都在本函数同步写入，DB 端靠 bookId 关联。
+      // 任一步失败都要回滚 books 记录，避免出现"有书无文"的孤儿状态。
+      runInTransaction(() => {
+        bookChunkRepo.createMany(chunks);
+        // 切分成功才算这个阶段走完了；失败时留空行，表示还不知道要处理多少
+        if (chunked) bookStageRepo.writeChunks(id, chunks.length);
+        else bookStageRepo.createRows(id, ['chunk', 'embed']);
+      });
       // 同一 ID 的 Chunk 重新生成时，确保后续检索不会继续使用旧索引。
       invalidateBookRetrieval(id);
     } catch (e) {
@@ -379,15 +410,21 @@ export class BookService extends BaseService {
     return row;
   }
   /**
-   * 导入一本 PDF：只落库 + 拷贝源文件，不做任何内容解析。
+   * 导入一本 PDF：读文本层 → 分片 → 按判定补识别阶段。
    *
-   * 阅读由渲染进程的 pdf.js 适配层负责；页数与封面也都在渲染进程首次打开该书时补：
-   * 页数来自 pdf.js，封面渲染首页后经 Book_UpdateBook 回写。
-   * 这里不引入 PDFium / canvas 之类的原生依赖。
+   * 1. 读文本层并判定：有文本层 / 扫描版 / 无法判定
+   * 2. **一律走分片**：扫描版切出来是 0 片，这是一个事实，不是什么「未知」
+   * 3. 判定为扫描版或无法判定时，额外建识别阶段行，等 OCR
+   * 4. 拷贝源文件
+   *
+   * 分片失败与判定失败都不阻断导入：书仍然能读，只是暂时不能检索。
+   * PDFium 走动态 import，避免主进程启动时就加载 WASM。
    */
   private async importPdfBook(srcFilePath: string): Promise<BookRow> {
     const id = crypto.randomUUID();
     fs.mkdirSync(this.bookDir, { recursive: true });
+
+    const probe = await this.probePdfText(srcFilePath);
 
     const booksStoreName = `${id}.pdf`;
     const row = bookRepo.create({
@@ -397,14 +434,70 @@ export class BookService extends BaseService {
       booksStoreName,
       booksType: 'pdf',
       coverAttachment: null,
-      totalPages: null,
+      // 页数在判定时就能拿到，不再等渲染层首次打开时回写
+      totalPages: probe.report?.pageCount ?? null,
       totalChapters: null,
       description: null,
       author: null,
     });
 
+    let chunks: InsertBookChunkRow[] = [];
+    let chunked = false;
+    if (probe.report) {
+      try {
+        const drafts = await chunkDocument(createPdfSource(probe.report), DEFAULT_CHUNK_OPTIONS);
+        chunks = toChunkRows(id, drafts);
+        chunked = true;
+      } catch (e) {
+        log.error(`[BookService] PDF chunkDocument failed, book imported without chunks: ${id}`, e);
+      }
+    }
+
+    runInTransaction(() => {
+      // PDF 的三个阶段永远都适用：有文本层时识别阶段的 total 为 0，表示无需处理，
+      // 而不是「这个阶段不存在」。这样状态弹窗对任何 PDF 都能显示同一条链。
+      bookStageRepo.createRows(id, ['ocr', 'chunk', 'embed']);
+      if (probe.kind === 'scanned') {
+        // 分母是「缺文本层的页数」：识别只处理这些页，不是整本重来
+        bookStageRepo.setStageTotal(id, 'ocr', probe.missingPages);
+      } else if (probe.kind === 'text') {
+        bookStageRepo.setStageTotal(id, 'ocr', 0);
+      } else if (probe.error) {
+        bookStageRepo.setStageError(id, 'ocr', probe.error);
+      }
+
+      // 读到文本就写分片：0 片也要落库，它表示「这本书现在没有可检索的正文」
+      if (chunked) {
+        bookChunkRepo.createMany(chunks);
+        bookStageRepo.writeChunks(id, chunks.length);
+      }
+    });
+
+    if (probe.kind === 'text' && probe.missingPages > 0) {
+      // 这些页切不出分片，也就进不了检索——状态弹窗目前没有地方承载它，先记日志
+      log.info(`[BookService] PDF 有 ${probe.missingPages} 页没有文本层，未进入检索：${id}`);
+    }
+
     fs.copyFileSync(srcFilePath, path.join(this.bookDir, booksStoreName));
     return row;
+  }
+
+  /** 读 PDF 文本层并判定。任何失败都降级成「无法判定」，不抛给导入流程。 */
+  private async probePdfText(filePath: string): Promise<PdfProbe> {
+    try {
+      const { readPdfText } = await import('./etl/pdf/text-layer');
+      const report = await readPdfText(filePath);
+      const classification = classifyPdfText(report);
+      return {
+        kind: classification.kind,
+        report,
+        missingPages: classification.missingPages,
+        error: null,
+      };
+    } catch (e) {
+      log.warn(`[BookService] PDF 文本层判定失败，按无法判定处理：${filePath}`, e);
+      return { kind: 'unknown', report: null, missingPages: 0, error: String(e) };
+    }
   }
 
   /**
@@ -422,7 +515,11 @@ export class BookService extends BaseService {
     }
     this.parsedBookCache.delete(id);
 
-    await attachmentService.deleteAttachments(row.coverAttachment ? [row.coverAttachment] : []);
+    // 封面与识别插图的附件都要删：附件表没有归属，书删了文件不会自己消失
+    const pageAttachments = this.collectPageAttachments(id);
+    const coverAttachments = row.coverAttachment ? [row.coverAttachment] : [];
+    bookPageRepo.deleteByBook(id);
+    await attachmentService.deleteAttachments([...coverAttachments, ...pageAttachments]);
 
     try {
       fs.unlinkSync(path.join(this.bookDir, row.booksStoreName));
@@ -464,12 +561,75 @@ export class BookService extends BaseService {
     runInTransaction(() => {
       bookChunkRepo.deleteByBookId(id);
       bookChunkRepo.createMany(chunks);
+      // 分片换了，这本书的向量就不再对应同一段正文：阶段行归零与删向量都要在同一个提交里
+      bookStageRepo.writeChunks(id, chunks.length);
+      bookEmbeddingRepo.drop(id, null);
     });
-    bookEmbeddingRepo.drop(id, null);
 
     this.parsedBookCache.delete(id);
     invalidateBookRetrieval(id);
     return chunks.length;
+  }
+
+  /**
+   * 开始文字提取。
+   *
+   * `restart` 为真时先清掉旧结果（页块、插图附件、分片、向量），
+   * 这正是「重新提取」与「继续未完成的提取」的区别。
+   */
+  private async startOcr(bookId: string, restart: boolean): Promise<OcrCommandResult> {
+    if (this.ocrRunner.describe()) {
+      return { success: false, error: '另一本书正在提取，等它跑完再开始' };
+    }
+
+    if (restart) {
+      await this.clearOcr(bookId);
+    }
+    return this.ocrRunner.start(bookId);
+  }
+
+  /**
+   * 清掉一本书的识别结果及其下游产物。
+   *
+   * 顺序：先收集插图附件 id（块里的 JSON），再删页块与阶段计数，
+   * 最后删附件文件。分片与向量都是由识别文字派生的，必须一起清，
+   * 否则检索会命中一段已经不存在的正文。
+   */
+  private async clearOcr(bookId: string): Promise<void> {
+    const attachmentIds = this.collectPageAttachments(bookId);
+
+    bookPageRepo.deleteByBook(bookId);
+    bookStageRepo.resetOcr(bookId);
+
+    await attachmentService.deleteAttachments(attachmentIds);
+
+    runInTransaction(() => {
+      bookChunkRepo.deleteByBookId(bookId);
+      bookStageRepo.writeChunks(bookId, 0);
+      bookEmbeddingRepo.drop(bookId, null);
+    });
+    invalidateBookRetrieval(bookId);
+  }
+
+  /** 从页块 JSON 里收集全部插图附件 id。 */
+  private collectPageAttachments(bookId: string): string[] {
+    const ids: string[] = [];
+
+    for (const row of bookPageRepo.listPages(bookId)) {
+      let blocks: unknown;
+      try {
+        blocks = JSON.parse(row.blocks);
+      } catch {
+        continue;
+      }
+      if (!Array.isArray(blocks)) continue;
+
+      for (const block of blocks) {
+        if (isImageBlock(block)) ids.push(block.attachmentId);
+      }
+    }
+
+    return ids;
   }
 
   /**
@@ -890,17 +1050,11 @@ function detectBookFormat(filePath: string): BookType {
  * segment 与 locator 都是格式中立命名：EPUB 的 segment 是 spine section，
  * locator 是 CFI 或节级兜底定位串；后续 HTML / PDF 源复用同一张表。
  */
-function toChunkRows(bookId: string, drafts: ChunkDraft[]): InsertBookChunkRow[] {
-  return drafts.map(draft => ({
-    id: `${bookId}:${draft.segmentIndex}:${draft.chunkIndex}`,
-    bookId,
-    segmentIndex: draft.segmentIndex,
-    segmentId: draft.segmentId,
-    chunkIndex: draft.chunkIndex,
-    content: draft.content,
-    locatorStart: draft.locatorStart,
-    locatorEnd: draft.locatorEnd,
-  }));
-}
-
 export const bookService = new BookService();
+
+/** 块数组里的图片块。 */
+function isImageBlock(value: unknown): value is { type: 'image'; attachmentId: string } {
+  if (typeof value !== 'object' || value === null) return false;
+  const block = value as { type?: unknown; attachmentId?: unknown };
+  return block.type === 'image' && typeof block.attachmentId === 'string';
+}

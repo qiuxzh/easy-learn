@@ -45,106 +45,105 @@ const plugins: PluginConfig = {
   ],
 };
 
+/** 表放在模块作用域：streamdown 的 Block 按组件身份做 memo，渲染中重建这张表会让所有块重新解析。 */
+const components: Components = {
+  h1: ({ children, ...props }) => (
+    <h1 className="text-base font-semibold mt-3 mb-1.5" {...props}>
+      {children}
+    </h1>
+  ),
+  h2: ({ children, ...props }) => (
+    <h2 className="text-base font-semibold mt-3 mb-1.5" {...props}>
+      {children}
+    </h2>
+  ),
+  h3: ({ children, ...props }) => (
+    <h3 className="text-sm font-semibold mt-2 mb-1" {...props}>
+      {children}
+    </h3>
+  ),
+  h4: ({ children, ...props }) => (
+    <h4 className="text-sm font-medium mt-2 mb-1" {...props}>
+      {children}
+    </h4>
+  ),
+  p: ({ children, ...props }) => (
+    <p className="text-body-lg leading-relaxed text-foreground" {...props}>
+      {children}
+    </p>
+  ),
+  ul: ({ children, ...props }) => (
+    <ul
+      className="list-disc list-outside space-y-0.5 text-body-lg mb-2 pl-4 text-foreground"
+      {...props}
+    >
+      {children}
+    </ul>
+  ),
+  ol: ({ children, ...props }) => (
+    <ol
+      className="list-decimal list-outside space-y-0.5 text-body-lg mb-2 pl-7 text-foreground"
+      {...props}
+    >
+      {children}
+    </ol>
+  ),
+  li: ({ children, ...props }) => (
+    <li className="text-body-lg pl-0.5 text-foreground" {...props}>
+      {children}
+    </li>
+  ),
+  strong: ({ children, ...props }) => (
+    <strong className="font-semibold text-foreground" {...props}>
+      {children}
+    </strong>
+  ),
+  a: ({ href, children, ...props }) => {
+    if (!href) return <span>{children}</span>;
+    const isExternal = href.startsWith('http') || href.startsWith('mailto:');
+    return (
+      <a
+        {...props}
+        href={href}
+        target={isExternal ? '_blank' : undefined}
+        rel={isExternal ? 'noopener noreferrer' : undefined}
+        className="hover:underline underline-offset-2 text-primary"
+      >
+        {children}
+      </a>
+    );
+  },
+  blockquote: ({ children, ...props }) => (
+    <blockquote
+      className="pl-3 italic mb-2 text-body-lg border-l-2 border-stroke-3 text-ink-tertiary"
+      {...props}
+    >
+      {children}
+    </blockquote>
+  ),
+  hr: ({ ...props }) => <hr className="my-4 border-stroke-3" {...props} />,
+
+  table: ({ children, ...props }) => (
+    <div className="overflow-x-auto my-3 border border-stroke-3 rounded-md">
+      <table className="w-full text-body-lg [&>thead]:bg-muted [&>thead>tr>th]:bg-muted" {...props}>
+        {children}
+      </table>
+    </div>
+  ),
+  th: ({ children, ...props }) => (
+    <th className="text-left font-medium px-3 py-2 bg-muted" {...props}>
+      {children}
+    </th>
+  ),
+  td: ({ children, ...props }) => (
+    <td className="px-3 py-2 border-t border-stroke-3 text-foreground" {...props}>
+      {children}
+    </td>
+  ),
+};
+
 export function Markdown({ content, className, isStreaming }: MarkdownProps) {
   const safeContent = normalizeCodeFenceLanguages(fixNumberedListBreaks(content));
-  const components: Components = {
-    h1: ({ children, ...props }) => (
-      <h1 className="text-base font-semibold mt-3 mb-1.5" {...props}>
-        {children}
-      </h1>
-    ),
-    h2: ({ children, ...props }) => (
-      <h2 className="text-base font-semibold mt-3 mb-1.5" {...props}>
-        {children}
-      </h2>
-    ),
-    h3: ({ children, ...props }) => (
-      <h3 className="text-sm font-semibold mt-2 mb-1" {...props}>
-        {children}
-      </h3>
-    ),
-    h4: ({ children, ...props }) => (
-      <h4 className="text-sm font-medium mt-2 mb-1" {...props}>
-        {children}
-      </h4>
-    ),
-    p: ({ children, ...props }) => (
-      <p className="text-body-lg leading-relaxed text-foreground" {...props}>
-        {children}
-      </p>
-    ),
-    ul: ({ children, ...props }) => (
-      <ul
-        className="list-disc list-outside space-y-0.5 text-body-lg mb-2 pl-4 text-foreground"
-        {...props}
-      >
-        {children}
-      </ul>
-    ),
-    ol: ({ children, ...props }) => (
-      <ol
-        className="list-decimal list-outside space-y-0.5 text-body-lg mb-2 pl-7 text-foreground"
-        {...props}
-      >
-        {children}
-      </ol>
-    ),
-    li: ({ children, ...props }) => (
-      <li className="text-body-lg pl-0.5 text-foreground" {...props}>
-        {children}
-      </li>
-    ),
-    strong: ({ children, ...props }) => (
-      <strong className="font-semibold text-foreground" {...props}>
-        {children}
-      </strong>
-    ),
-    a: ({ href, children, ...props }) => {
-      if (!href) return <span>{children}</span>;
-      const isExternal = href.startsWith('http') || href.startsWith('mailto:');
-      return (
-        <a
-          {...props}
-          href={href}
-          target={isExternal ? '_blank' : undefined}
-          rel={isExternal ? 'noopener noreferrer' : undefined}
-          className="hover:underline underline-offset-2 text-primary"
-        >
-          {children}
-        </a>
-      );
-    },
-    blockquote: ({ children, ...props }) => (
-      <blockquote
-        className="pl-3 italic mb-2 text-body-lg border-l-2 border-stroke-3 text-ink-tertiary"
-        {...props}
-      >
-        {children}
-      </blockquote>
-    ),
-    hr: ({ ...props }) => <hr className="my-4 border-stroke-3" {...props} />,
-
-    table: ({ children, ...props }) => (
-      <div className="overflow-x-auto my-3 border border-stroke-3 rounded-md">
-        <table
-          className="w-full text-body-lg [&>thead]:bg-muted [&>thead>tr>th]:bg-muted"
-          {...props}
-        >
-          {children}
-        </table>
-      </div>
-    ),
-    th: ({ children, ...props }) => (
-      <th className="text-left font-medium px-3 py-2 bg-muted" {...props}>
-        {children}
-      </th>
-    ),
-    td: ({ children, ...props }) => (
-      <td className="px-3 py-2 border-t border-stroke-3 text-foreground" {...props}>
-        {children}
-      </td>
-    ),
-  };
 
   return (
     <div
