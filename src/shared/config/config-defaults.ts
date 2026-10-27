@@ -26,6 +26,10 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
     'paddle-ocr': {
       token: '',
     },
+    // 20 页一块：单次上传体积小，失败只重来一块
+    pageSize: 20,
+    // 同时提交三块，兼顾速度与服务端的提交队列
+    concurrency: 3,
   },
   models: DEFAULT_MODELS_CONFIG,
   embedding: DEFAULT_EMBEDDING_CONFIG,

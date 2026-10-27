@@ -18,8 +18,8 @@ vi.mock('@main/db', () => ({
 vi.mock('@main/db/repo', () => ({
   bookChunkRepo: {},
   bookRepo: {},
+  bookStageRepo: {},
   embedIndexRepo: {},
-  embedTaskRepo: {},
   embedVectorRepo: {},
 }));
 
@@ -35,7 +35,7 @@ describe('estimateProgress', () => {
   });
 
   it('按样本算出速率与剩余时间', () => {
-    // 一批 20 个用了 2 秒 → 10 个/秒；还剩 100 个 → 10 秒
+    // 一批 20 个用了 2 秒，约 10 个/秒；还剩 100 个时预计 10 秒
     const result = estimateProgress([{ count: 20, elapsedMs: 2000 }], 100);
     expect(result.rate).toBeCloseTo(10);
     expect(result.etaMs).toBe(10000);

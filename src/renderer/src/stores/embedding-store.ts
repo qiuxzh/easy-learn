@@ -6,13 +6,13 @@ import { useBooksStore } from './books-store';
 import { useConfigStore } from './config-store';
 
 /** 空运行态，用作初始值。 */
-const EMPTY_RUNTIME: EmbeddingRuntime = { current: null, queue: [] };
+const EMPTY_RUNTIME: EmbeddingRuntime = { tasks: [] };
 
-interface EmbeddingState {
+interface EmbeddingStoreState {
   /**
    * 向量化任务的内存态。
    *
-   * 书籍的向量化信息**不在这里**——它跟着书走（`BookDoc.embedding`），
+   * 书籍的向量化信息不在这里——它跟着书走（`BookDoc.stages`），
    * 由 `book-service` 的书籍列表一起带回来。
    */
   runtime: EmbeddingRuntime;
@@ -20,7 +20,7 @@ interface EmbeddingState {
   /**
    * 当前配置对应的模型身份；没选中、或字段不全时为 null。
    *
-   * 它由配置算出来，**不是后端给的**：「现有向量算不算数」是相对的判断，
+   * 它由配置算出来，不是后端给的：「现有向量算不算数」是相对的判断，
    * 比这一步必须在前端做，否则换模型就得回写每本书的状态。
    */
   current: EmbeddingIdentity | null;
@@ -52,19 +52,24 @@ function identityKey(identity: EmbeddingIdentity | null): string {
   return identity ? `${identity.endpoint}\u0000${identity.modelId}` : '';
 }
 
-export const useEmbeddingStore = create<EmbeddingState>()(
+export const useEmbeddingStore = create<EmbeddingStoreState>()(
   immer((set, get) => ({
     runtime: EMPTY_RUNTIME,
     current: null,
 
     applyRuntime: runtime => {
-      const previous = get().runtime.current?.bookId ?? null;
+      const before = new Set(get().runtime.tasks.map(task => task.bookId));
+      const after = new Set(runtime.tasks.map(task => task.bookId));
+      // 只有任务集合变化（开始或结束）时才需要重取书库：那一刻入库进度才作数。
+      // 每批进度都重取会把书库打满——getAllBooks 会给每本书做一次文件 stat。
+      const taskSetChanged =
+        before.size !== after.size || [...before].some(bookId => !after.has(bookId));
+
       set(state => {
         state.runtime = runtime;
       });
-      // 只有任务结束、或者换了一本书时，入库的进度才作数，必须重取书库。
-      // 每批进度都重取会把书库打满——getAllBooks 会给每本书做一次文件 stat。
-      if ((runtime.current?.bookId ?? null) !== previous) {
+
+      if (taskSetChanged) {
         void useBooksStore.getState().loadBooks();
       }
     },

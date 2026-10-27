@@ -43,9 +43,9 @@ export interface EmbedCommandResult {
 }
 
 /**
- * 当前任务的阶段。
+ * 任务的阶段。
  *
- * 排队**不在这里**——排队是「还没轮到我」，不是任务的阶段，它由 `EmbeddingRuntime.queue` 表达。
+ * 没有「排队」——开始即执行，不存在「还没轮到我」这个中间态。
  */
 export type EmbedTaskPhase =
   /** 正在请求接口 */
@@ -53,7 +53,7 @@ export type EmbedTaskPhase =
   /** 停在批次边界，等 resume */
   | 'paused';
 
-/** 正在处理的那本书的进度。 */
+/** 一本正在处理（或已暂停）的书的进度。 */
 export interface EmbedTaskInfo {
   bookId: string;
   phase: EmbedTaskPhase;
@@ -68,17 +68,34 @@ export interface EmbedTaskInfo {
 }
 
 /**
+ * 界面上的向量化状态，由 `embedding-state.ts` 的推导得出。每个值对应一句文案。
+ *
+ * 没有「未分片」：分片是导入时就做好的，没切出分片的书不是一个需要用户处理的状态。
+ * 也没有「失败」和「索引失效」：它们的动作和「未向量化」完全一样，只是原因不同，
+ * 由附注承担。
+ */
+export type EmbeddingState =
+  /** 向量化中 */
+  | 'running'
+  /** 已暂停 */
+  | 'paused'
+  /** 未向量化。含从没做过、做了一半、换了模型、上次失败 */
+  | 'none'
+  /** 已向量化 */
+  | 'done';
+
+/**
  * 向量化的运行态。
  *
- * **它是内存态，重启后为空，没有任何需要补偿的东西**——待处理集合是从数据库推导出来的，
- * 下次点「继续」自然接着跑。所以它和 `BookEmbedding` 严格分开：
- * 那边是落库的事实（这本书的向量数据长什么样），这边是此刻谁在动。
+ * 没有队列：点一本书就立刻跑一本，并发数就是用户点了几下，不由调度器决定。
+ * 每本书各自独立，一本书失败或暂停不影响其它书。
  *
- * 命令（启动 / 暂停 / 继续 / 取消）也属于这一层：它们改的是运行态，不是书籍数据。
+ * 它是内存态，重启后为空；待处理集合从数据库推导，下次点「继续」自然接着跑。
+ * 所以它和 `BookEmbedding` 严格分开：那边是落库的事实，这边是此刻谁在动。
+ *
+ * 命令（启动、暂停、继续、取消）也属于这一层：它们改的是运行态，不是书籍数据。
  */
 export interface EmbeddingRuntime {
-  /** 正在处理或已暂停的任务；空闲时为 null */
-  current: EmbedTaskInfo | null;
-  /** 排队等待的书 id，按先后顺序 */
-  queue: string[];
+  /** 正在处理或已暂停的任务，按开始顺序排列；空闲时为空数组 */
+  tasks: EmbedTaskInfo[];
 }

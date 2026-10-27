@@ -1,14 +1,13 @@
 /**
- * 数据库入口。模块内持有两个句柄，对应两种用法：
+ * 数据库入口。模块内持有两个句柄。
  *
- * - `db`（drizzle）—— **固定表**的读写。表结构在 `schema/` 里静态声明过，
- *   能拿到类型推导与查询构造器，repo 层的绝大多数操作走它。
- * - `sqlite`（better-sqlite3 原始实例）—— drizzle 表达不了的两件事：
- *   ① 加载 SQLite 扩展（sqlite-vector）；
- *   ② 读写按模型在运行时创建、**表名不固定**的向量表。
+ * `db` 是 drizzle 实例，负责固定表的读写：表结构在 `schema/` 里静态声明，能拿到类型推导
+ * 与查询构造器，repo 层绝大多数操作走它。`sqlite` 是 better-sqlite3 原始实例，只用于
+ * drizzle 表达不了的两件事：加载 sqlite-vector 扩展，以及读写运行时创建、表名不固定的
+ * 向量表。
  *
- * 选择原则：能在 `schema/` 里静态声明列的表用 `getDatabase()`，其余一律用 `getRawDatabase()`。
- * 两者共用同一条连接，所以语句互相可见，也能在同一个事务里混用（见 `runInTransaction`）。
+ * 能在 `schema/` 里静态声明列的表用 `getDatabase()`，其余一律用 `getRawDatabase()`。
+ * 两者共用同一条连接，语句互相可见，也能在同一个事务里混用（见 `runInTransaction`）。
  */
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import Database from 'better-sqlite3';
@@ -24,10 +23,10 @@ let db: ReturnType<typeof drizzle> | null = null;
 let sqlite: SqliteDatabase | null = null;
 
 /**
- * 取 drizzle 实例：**固定表**的读写入口。
+ * 取 drizzle 实例，用于固定表的读写。
  *
- * `schema/` 里声明过列的表都用这个——能拿到字段类型推导、where / join / 聚合，
- * 也不必自己拼表名。向量表不在此列，它见 `getRawDatabase()`。
+ * `schema/` 里声明过列的表都用这个，能拿到字段类型推导、where、join 与聚合，
+ * 也不必自己拼表名。向量表不在此列，见 `getRawDatabase()`。
  */
 export function getDatabase() {
   if (!db) {
@@ -37,13 +36,11 @@ export function getDatabase() {
 }
 
 /**
- * 取 better-sqlite3 原始实例：**只有两件事**需要绕过 drizzle。
+ * 取 better-sqlite3 原始实例，只用于加载 sqlite-vector 扩展与读写运行时创建的向量表。
  *
- * 1. 加载 SQLite 扩展（sqlite-vector 的 `loadExtension`）；
- * 2. 读写向量表——它按模型在运行时创建、表名不固定（`embed_vec_<维度>_<指纹前16位>`），
- *    drizzle 的静态 schema 表达不了这种表。
- *
- * 它能执行任意 SQL，代价是没有类型检查，所以只应出现在 repo 层，不要从业务代码直接调。
+ * 向量表按模型在运行时创建，表名不固定（`embed_vec_<维度>_<指纹前16位>`），drizzle 的
+ * 静态 schema 表达不了。它能执行任意 SQL，代价是没有类型检查，所以只应出现在 repo 层，
+ * 不要从业务代码直接调。
  */
 export function getRawDatabase(): SqliteDatabase {
   if (!sqlite) {
@@ -62,39 +59,11 @@ export function getRawDatabase(): SqliteDatabase {
  * // 写向量走原始 SQL，累加进度走 drizzle，两者必须同事务
  * runInTransaction(() => {
  *   embedVectorRepo.insertBatch(ref, batch);
- *   embedTaskRepo.addDone({ bookId, embedIndexId, total, delta: batch.length });
+ *   bookStageRepo.addEmbedDone({ bookId, total, identity, delta: batch.length });
  * });
  */
 export function runInTransaction<T>(fn: () => T): T {
   return getRawDatabase().transaction(fn)();
-}
-
-/**
- * 丢掉主键不是 `book_id` 的 `embed_task`。
- *
- * 这张表必须满足「一本书一行」（见 `schema/embed-task.ts`），主键对不上就说明库文件
- * 里的结构与本文件声明的不同。它是**派生数据**——向量表才是事实源——所以直接丢掉
- * 比写 ALTER 搬那些行安全：主键对不上意味着行数与书不再是「一本一行」的关系，
- * 搬过来也没有意义。丢掉之后启动时的 `reconcileEmbeddingProgress()` 会按向量表重建。
- */
-function dropLegacyEmbedTask(instance: SqliteDatabase): void {
-  const exists = instance
-    .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'embed_task'`)
-    .get();
-  if (!exists) return;
-
-  const columns = instance.prepare(`PRAGMA table_info(embed_task)`).all() as Array<{
-    name: string;
-    pk: number;
-  }>;
-  const primaryKey = columns
-    .filter(column => column.pk > 0)
-    .sort((left, right) => left.pk - right.pk)
-    .map(column => column.name);
-  if (primaryKey.length === 1 && primaryKey[0] === 'book_id') return;
-
-  log.info('[DB] embed_task 的主键不是 book_id，丢弃后按向量表重建');
-  instance.exec('DROP TABLE embed_task');
 }
 
 /**
@@ -111,8 +80,6 @@ export function initDatabase(): void {
   const instance = new Database(dbPath);
   instance.pragma('journal_mode = WAL');
   instance.pragma('foreign_keys = ON');
-
-  dropLegacyEmbedTask(instance);
 
   for (const sql of tableSQLs) {
     instance.exec(sql);

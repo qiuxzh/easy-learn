@@ -52,6 +52,7 @@ import type {
 } from '@shared/types/flashcards';
 import { ipcRenderer, type IpcRendererEvent } from 'electron';
 import { IpcChannel } from '@shared/ipc-channels';
+import type { OcrCommandResult, OcrEvent, OcrRuntime } from '@shared/types/ocr';
 import type {
   ConfigRemoveRequest,
   ConfigSetRequest,
@@ -154,12 +155,12 @@ export const api = {
   // 开始 / 继续 / 重新向量化共用同一个入口，只有 mode 不同
   startEmbedding: (request: EmbedStartRequest) =>
     ipcRenderer.invoke(IpcChannel.Book_EmbeddingStart, request) as Promise<EmbedCommandResult>,
-  pauseEmbedding: () =>
-    ipcRenderer.invoke(IpcChannel.Book_EmbeddingPause) as Promise<EmbedCommandResult>,
-  resumeEmbedding: () =>
-    ipcRenderer.invoke(IpcChannel.Book_EmbeddingResume) as Promise<EmbedCommandResult>,
-  cancelEmbedding: () =>
-    ipcRenderer.invoke(IpcChannel.Book_EmbeddingCancel) as Promise<EmbedCommandResult>,
+  pauseEmbedding: (bookId: string) =>
+    ipcRenderer.invoke(IpcChannel.Book_EmbeddingPause, { bookId }) as Promise<EmbedCommandResult>,
+  resumeEmbedding: (bookId: string) =>
+    ipcRenderer.invoke(IpcChannel.Book_EmbeddingResume, { bookId }) as Promise<EmbedCommandResult>,
+  cancelEmbedding: (bookId: string) =>
+    ipcRenderer.invoke(IpcChannel.Book_EmbeddingCancel, { bookId }) as Promise<EmbedCommandResult>,
   /** 取一次运行态快照，供渲染层刷新后对齐 */
   describeEmbedding: () =>
     ipcRenderer.invoke(IpcChannel.Book_EmbeddingDescribe) as Promise<EmbeddingRuntime>,
@@ -168,6 +169,17 @@ export const api = {
     const listener = (_event: IpcRendererEvent, payload: EmbeddingRuntime) => callback(payload);
     ipcRenderer.on(IpcChannel.Book_EmbeddingRuntime, listener);
     return () => ipcRenderer.removeListener(IpcChannel.Book_EmbeddingRuntime, listener);
+  },
+
+  // 书籍的文字提取（OCR）。运行态同样只活在主进程内存里，结束事件用来触发列表刷新
+  startOcr: (bookId: string, restart = false) =>
+    ipcRenderer.invoke(IpcChannel.Book_OcrStart, { bookId, restart }) as Promise<OcrCommandResult>,
+  cancelOcr: () => ipcRenderer.invoke(IpcChannel.Book_OcrCancel) as Promise<OcrCommandResult>,
+  describeOcr: () => ipcRenderer.invoke(IpcChannel.Book_OcrDescribe) as Promise<OcrRuntime | null>,
+  onOcrEvent: (callback: (event: OcrEvent) => void) => {
+    const listener = (_event: IpcRendererEvent, payload: OcrEvent) => callback(payload);
+    ipcRenderer.on(IpcChannel.Book_OcrEvent, listener);
+    return () => ipcRenderer.removeListener(IpcChannel.Book_OcrEvent, listener);
   },
   pushReadingState: (payload: ReadingStatePayload | null) =>
     ipcRenderer.invoke(IpcChannel.Reading_PushState, payload) as Promise<void>,

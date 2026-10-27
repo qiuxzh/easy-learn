@@ -57,6 +57,15 @@ export enum IpcChannel {
   /** 后端向前端推送运行态：进度推进、阶段变化、队列变化都走它 */
   Book_EmbeddingRuntime = '#book:embeddingRuntime',
 
+  // 书籍的文字提取（OCR）。同样只在主进程内存里跑，重启后已完成的页仍在 book_page，
+  // 未完成的重新提交即可，所以不需要任务表
+  Book_OcrStart = 'book:ocrStart',
+  Book_OcrCancel = 'book:ocrCancel',
+  /** 取一次运行态快照，供渲染层刷新后对齐 */
+  Book_OcrDescribe = 'book:ocrDescribe',
+  /** 后端向前端推送运行态与结束事件 */
+  Book_OcrEvent = '#book:ocrEvent',
+
   // 闪卡
   Card_ListGroups = 'card:listGroups',
   Card_CreateGroup = 'card:createGroup',

@@ -1,7 +1,7 @@
 /**
  * 书籍向量化状态的推导。
  *
- * 这段逻辑**只在渲染层跑**，主进程不参与——数据轴还要看用户当前选了哪个模型。
+ * 这段逻辑只在渲染层跑，主进程不参与——数据轴还要看用户当前选了哪个模型。
  * 所以它放在 shared 里当纯函数测。
  *
  * 推错了不会报错：一本需要重新向量化的书显示成「已向量化」，用户就找不到该点哪个按钮。
@@ -24,7 +24,7 @@ const OTHER: EmbeddingIdentity = { endpoint: 'https://b/v1/embeddings', modelId:
 const CURRENT_FINGERPRINT = modelFingerprint(CURRENT);
 const OTHER_FINGERPRINT = modelFingerprint(OTHER);
 
-const IDLE: EmbeddingRuntime = { current: null, queue: [] };
+const IDLE: EmbeddingRuntime = { tasks: [] };
 
 /** 造一份书籍的向量化信息。 */
 function embedding(overrides: Partial<BookEmbedding> = {}): BookEmbedding {
@@ -142,8 +142,7 @@ describe('resolveEmbeddingState', () => {
 
   it('当前任务的书用运行轴的阶段', () => {
     const running: EmbeddingRuntime = {
-      current: { bookId: 'book-1', phase: 'running', total: 100, done: 5, rate: 0, etaMs: null },
-      queue: [],
+      tasks: [{ bookId: 'book-1', phase: 'running', total: 100, done: 5, rate: 0, etaMs: null }],
     };
     expect(resolveEmbeddingState(book, 'book-1', CURRENT, running)).toBe('running');
   });
@@ -152,21 +151,25 @@ describe('resolveEmbeddingState', () => {
     // 暂停请求是在批次中途发出的，那一批跑完后还会再推一次进度。
     // 状态取自 phase 而不是进度事件，所以它不会退回 running
     const paused: EmbeddingRuntime = {
-      current: { bookId: 'book-1', phase: 'paused', total: 100, done: 5, rate: 0, etaMs: null },
-      queue: [],
+      tasks: [{ bookId: 'book-1', phase: 'paused', total: 100, done: 5, rate: 0, etaMs: null }],
     };
     expect(resolveEmbeddingState(book, 'book-1', CURRENT, paused)).toBe('paused');
   });
 
-  it('在队列里算排队中，即使它已经做完过', () => {
-    const queued: EmbeddingRuntime = { current: null, queue: ['book-1'] };
-    expect(resolveEmbeddingState(book, 'book-1', CURRENT, queued)).toBe('queued');
+  it('多本书同时跑时各看各的任务', () => {
+    // 没有全局队列：book-2 跑着，book-1 仍按自己的任务状态显示
+    const parallel: EmbeddingRuntime = {
+      tasks: [
+        { bookId: 'book-1', phase: 'running', total: 100, done: 5, rate: 0, etaMs: null },
+        { bookId: 'book-2', phase: 'running', total: 10, done: 1, rate: 0, etaMs: null },
+      ],
+    };
+    expect(resolveEmbeddingState(book, 'book-1', CURRENT, parallel)).toBe('running');
   });
 
   it('别的书在跑时不影响这本书', () => {
     const other: EmbeddingRuntime = {
-      current: { bookId: 'book-2', phase: 'running', total: 10, done: 1, rate: 0, etaMs: null },
-      queue: [],
+      tasks: [{ bookId: 'book-2', phase: 'running', total: 10, done: 1, rate: 0, etaMs: null }],
     };
     expect(resolveEmbeddingState(book, 'book-1', CURRENT, other)).toBe('done');
   });
@@ -175,8 +178,7 @@ describe('resolveEmbeddingState', () => {
 describe('resolveDisplayCounts', () => {
   it('运行中用实时数字', () => {
     const runtime: EmbeddingRuntime = {
-      current: { bookId: 'book-1', phase: 'running', total: 100, done: 7, rate: 0, etaMs: null },
-      queue: [],
+      tasks: [{ bookId: 'book-1', phase: 'running', total: 100, done: 7, rate: 0, etaMs: null }],
     };
     expect(resolveDisplayCounts(embedding(), 'book-1', CURRENT, runtime)).toEqual({
       total: 100,

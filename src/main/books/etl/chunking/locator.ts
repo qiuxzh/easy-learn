@@ -11,6 +11,8 @@ export const LocatorScheme = {
   epubCfi: 'epubcfi(',
   /** EPUB 节级兜底定位：冒号后是 foliate-js 的 section 下标，渲染层应转换为 goTo(index) */
   epubSection: 'epubsec:',
+  /** PDF 页级定位：冒号后是页号（从 1 开始），渲染层应跳到该页 */
+  pdf: 'pdf:',
 } as const;
 
 /**

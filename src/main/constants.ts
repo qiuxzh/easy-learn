@@ -8,4 +8,6 @@ export const Constants = {
   dataDir,
   /** 附件的存放目录；落盘与读取都基于它拼相对路径 */
   attachmentDir: path.join(dataDir, 'attachment'),
+  /** 书籍源文件目录：导入、删除、阅读都基于它拼路径 */
+  booksDir: path.join(dataDir, 'books'),
 };

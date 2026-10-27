@@ -1,20 +1,10 @@
-/**
- * 书籍向量化的编排层。
- *
- * 两个层次：
- *
- * - `runBookEmbedding`：跑完**一本书**。取批次 → 调接口 → 落库 → 推进度；
- *   失败就记一条原因然后停。
- * - `BookEmbeddingQueue`：把「跑一本书」串成队列，并持有暂停、取消这些运行态。
- *   它不认识 IPC——对外只有命令、`describe()` 和一个 `onRuntime` 回调。
- */
 import log from 'electron-log';
 import { runInTransaction } from '@main/db';
 import {
   bookChunkRepo,
   bookEmbeddingRepo,
+  bookStageRepo,
   embedIndexRepo,
-  embedTaskRepo,
   embedVectorRepo,
 } from '@main/db/repo';
 import type { PendingChunk } from '@main/db/repo';
@@ -30,35 +20,30 @@ import { embedTexts } from './embedding-client';
 import { resolveActiveModel } from './embedding-model';
 import type { EmbedIndexRef, ResolvedModel } from './embedding-model';
 
-/** 每批处理的单元数。同时决定中断延迟，以及崩溃时最多丢掉多少已发出的请求。 */
+/** 每批处理的分片数。同时决定暂停的响应延迟，以及崩溃时最多丢掉多少已请求的向量。 */
 const BATCH_SIZE = 32;
 
-/** 估速率时回看的批次数。 */
 const RATE_WINDOW = 5;
 
-/** 一批的耗时样本。 */
+/** 一批的耗时与分片数。 */
 export interface RateSample {
-  /** 这一批处理了多少单元 */
   count: number;
-  /** 这一批花了多少毫秒 */
   elapsedMs: number;
 }
 
-/** 速率与剩余时间估计。 */
 export interface ProgressEstimate {
-  /** 单元 / 秒 */
+  /** 分片 / 秒 */
   rate: number;
   /** 预计剩余毫秒；无法估计时为 null */
   etaMs: number | null;
 }
 
-/** 运行过程中的累计进度。 */
 export interface RunProgress {
-  /** 这本书的分片总数，进度的分母 */
+  /** 这本书的分片总数 */
   total: number;
-  /** 已经有向量的分片数 */
+  /** 已经有向量行的分片数，不是本次运行写入的数量 */
   done: number;
-  /** 单元 / 秒，取最近几批的滑动窗口。样本不足时为 0 */
+  /** 分片 / 秒，取最近几批的滑动窗口；样本不足时为 0 */
   rate: number;
   /** 预计剩余毫秒；无法估计时为 null */
   etaMs: number | null;
@@ -67,7 +52,7 @@ export interface RunProgress {
 /** 一次运行的结果。 */
 export interface RunOutcome {
   status: 'done' | 'paused' | 'cancelled' | 'failed';
-  /** 本次实际写入向量的单元数 */
+  /** 本次运行实际写入的分片数 */
   processed: number;
   /** status 为 failed 时的原因 */
   error?: string;
@@ -78,17 +63,17 @@ export interface RunContext {
   bookId: string;
   mode: EmbedStartMode;
   model: ResolvedModel;
-  /** 批次边界检查。返回非 null 表示立刻停下并给出原因 */
+  /** 只在批次边界调用；返回非 null 表示立刻停下并给出原因 */
   checkStop: () => 'paused' | 'cancelled' | null;
-  /** 每批处理完后回调一次，拿到的是这本书的累计进度 */
+  /** 开始前、每批结束后各调用一次，参数是这本书的累计进度 */
   onProgress: (progress: RunProgress) => void;
 }
 
 /**
- * 用滑动窗口估速率与剩余时间。
+ * 用最近几批的滑动窗口估速率与剩余时间。
  *
- * 不用全程平均：中途被限流之后，全程平均会严重偏乐观，剩余时间一路往后跳。
- * 样本不足或耗时为零时返回 null，让界面显示「计算中」而不是一个乱跳的数字。
+ * 不用全程平均：被限流之后，全程平均会严重偏乐观，剩余时间一路往后跳。
+ * 样本不足或总耗时为 0 时返回 `etaMs: null`，避免给出乱跳的数字。
  */
 export function estimateProgress(samples: RateSample[], remaining: number): ProgressEstimate {
   const window = samples.slice(-RATE_WINDOW);
@@ -106,13 +91,13 @@ export function estimateProgress(samples: RateSample[], remaining: number): Prog
 }
 
 /**
- * 取下一批待处理单元。
+ * 取下一批待处理的分片。
  *
- * 判据只有一条：**还没有向量行**。它同时覆盖了「从没做过」和「上次失败停在那里」两种情况，
- * 所以不需要任何失败明细表，也不需要游标——判据本身就是幂等的。
+ * 判据只有一条：没有向量行。它同时覆盖「从没做过」和「上次失败停在这里」两种情况，
+ * 所以不需要失败明细表，也不需要游标：判据本身就是幂等的。
  *
- * 首次使用这套模型参数时向量表还不存在，没法用「排除已有向量」的查询，
- * 于是这一批直接取开头若干分片——这批做完表就建好了，之后自然走正常路径。
+ * 首次使用一套模型参数时向量表还不存在，没法用「排除已有向量」的查询，
+ * 于是先取开头若干分片；这批做完表就建好了，之后走正常路径。
  */
 function takeBatch(bookId: string, index: EmbedIndexRef | null): PendingChunk[] {
   if (!index) {
@@ -124,11 +109,12 @@ function takeBatch(bookId: string, index: EmbedIndexRef | null): PendingChunk[] 
 }
 
 /**
- * 落库一批向量，返回更新后的索引信息。
+ * 落库一批向量。首次调用时顺带建表并注册索引。
  *
- * 首次调用时顺带建表与注册索引，四件事在同一个事务里完成：建表、注册、写向量、累加进度。
- * 拆开写的话，崩溃会留下有记录却没有表的孤儿，或者有表却没有记录的悬空状态。
- * 表名由指纹派生，所以维度一确定就能算出来，插入 `embed_index` 时可以直接把表名填上。
+ * 建表、注册、写向量、累加阶段进度必须在同一个事务里：拆开写时崩溃，会留下有记录
+ * 却没有表的孤儿，或者有表却没有记录的悬空状态。
+ *
+ * 表名由维度与指纹派生，两者在建表前就确定，注册记录可以直接填表名。
  */
 function persistBatch(
   bookId: string,
@@ -142,17 +128,28 @@ function persistBatch(
   return runInTransaction(() => {
     let resolved = index;
     if (!resolved) {
-      const ref = embedVectorRepo.ensureTable(dimension, model.fingerprint);
-      const row = embedIndexRepo.create({
-        fingerprint: model.fingerprint,
-        tableName: ref.tableName,
-        modelId: model.modelId,
-        dimension,
-        lastLabel: model.label,
-        createdAt: Date.now(),
-        lastUsedAt: Date.now(),
-      });
-      resolved = { id: row.id, tableName: row.tableName, dimension: row.dimension };
+      // 两本书可能同时首次使用同一个模型：各自看到的 index 都是 null，
+      // 先到的已经注册，后到的必须复用，否则会撞指纹唯一约束
+      const existing = embedIndexRepo.findByFingerprint(model.fingerprint);
+      if (existing) {
+        resolved = {
+          id: existing.id,
+          tableName: existing.tableName,
+          dimension: existing.dimension,
+        };
+      } else {
+        const ref = embedVectorRepo.ensureTable(dimension, model.fingerprint);
+        const row = embedIndexRepo.create({
+          fingerprint: model.fingerprint,
+          tableName: ref.tableName,
+          modelId: model.modelId,
+          dimension,
+          lastLabel: model.label,
+          createdAt: Date.now(),
+          lastUsedAt: Date.now(),
+        });
+        resolved = { id: row.id, tableName: row.tableName, dimension: row.dimension };
+      }
     }
     const target = resolved;
 
@@ -163,13 +160,12 @@ function persistBatch(
       vector: encodeVector(vectors[position], target.dimension),
     }));
 
-    // 写向量与累加进度同事务。这是全项目唯一一处「两处记同一件事」，
-    // 靠原子性保证 done 不会滞后于向量行。
+    // 写向量与累加阶段进度同事务，保证 done 不会滞后于向量行。
     embedVectorRepo.insertBatch(target, rows);
-    embedTaskRepo.addDone({
+    bookStageRepo.addEmbedDone({
       bookId,
-      embedIndexId: target.id,
       total,
+      identity: model.fingerprint,
       delta: rows.length,
     });
     embedIndexRepo.touch(target.id, Date.now(), model.label);
@@ -180,9 +176,9 @@ function persistBatch(
 /**
  * 跑完一本书的向量化。
  *
- * 失败的处理只有一句话：**记下原因，然后停**。不记录是哪几个分片失败的——
- * 失败的那一批本来就没有向量行，下次「继续」自然会从那里重来。
- * 这样既不需要失败明细表，也不会出现「一批 32 个里 31 个是正常的却被记成失败」。
+ * 失败只记下原因然后停，不记录是哪几个分片失败：失败的那一批本来就没有向量行，
+ * 下次运行自然从那里重来。这样既不需要失败明细表，也不会出现「一批里少数分片
+ * 失败却把整批记成失败」。
  *
  * 两种模式共用这一个循环，差别只在开头那一次清理：`rebuild` 连当前模型的一起清，
  * `resume` 只清别的模型，当前模型下没做完的部分接着做。
@@ -191,10 +187,10 @@ export async function runBookEmbedding(ctx: RunContext): Promise<RunOutcome> {
   const { bookId, mode, model, checkStop, onProgress } = ctx;
 
   // 一本书只允许有一份向量数据，否则同一本书会同时是「当前模型下没做」和
-  // 「旧模型下做完了」，状态就说不清。每次开始之前先把别的模型留下的产物清掉。
+  // 「旧模型下做完了」，状态就说不清。每次开始先清掉别的模型留下的产物。
   //
-  // 重新向量化传 null（连当前模型的一起清），但**索引注册记录要留着**——清掉的只是
-  // 向量行与进度行，那张表和它的注册记录本来就该复用。置空会让下面重新建一次，
+  // 重新向量化传 null（连当前模型的一起清），但索引注册记录要留着：清掉的只是
+  // 向量行与阶段计数，表和注册记录本来就该复用。把 index 置空会让下面重新建一次，
   // 撞上指纹的唯一约束。
   let index = model.index;
   bookEmbeddingRepo.drop(bookId, mode === 'rebuild' ? null : (index?.id ?? null));
@@ -206,16 +202,21 @@ export async function runBookEmbedding(ctx: RunContext): Promise<RunOutcome> {
 
   let done = 0;
   if (index) {
-    // 以向量表为准对账一次：进度行可能刚被清掉、或者与向量表对不上，这里把它拉回来。
-    // 只在任务开始时做一次，不进批次循环。运行期以向量表为准，进度行只服务于总览。
+    // 以向量表为准校正阶段计数：阶段行可能因崩溃或模型来回切换而与向量表对不上。
+    // 只在任务开始时做一次；运行期以向量表为准，阶段行只服务于总览。
     const actual = embedVectorRepo.countBySource(index.tableName, bookId);
-    const row = embedTaskRepo.findByBook(bookId);
-    if (!row || row.embedIndexId !== index.id || row.done !== actual) {
-      embedTaskRepo.setDone({ bookId, embedIndexId: index.id, total, done: actual });
+    const row = bookStageRepo.find(bookId, 'embed');
+    if (!row || row.identity !== model.fingerprint || row.done !== actual) {
+      bookStageRepo.setEmbedDone({
+        bookId,
+        total,
+        identity: model.fingerprint,
+        done: actual,
+      });
     }
-    // 清掉上一次的失败原因：本次运行还没失败，界面不该继续挂着旧错误
+    // 清掉上一次的失败原因：本次运行还没失败，lastError 不该继续保留
     if (row?.lastError) {
-      embedTaskRepo.clearError(bookId);
+      bookStageRepo.clearError(bookId, 'embed');
     }
     done = actual;
   }
@@ -239,16 +240,14 @@ export async function runBookEmbedding(ctx: RunContext): Promise<RunOutcome> {
     }
 
     // 配置在运行期间被改了：这本书会一半写在旧模型下、一半写在新模型下，
-    // 而两种向量空间不能混用。停下来让用户决定是切回去接着做，还是对新模型重新向量化。
+    // 两种向量空间无法混用，只能停下并报错。
     const active = resolveActiveModel();
     if (active?.fingerprint !== model.fingerprint) {
-      return {
-        status: 'failed',
-        processed,
-        error: active
-          ? `向量模型已变更为「${active.label}」，任务已停止。切回「${model.label}」可以接着做，或对新模型重新向量化。`
-          : '向量模型配置已被移除，任务已停止。',
-      };
+      const error = active
+        ? `向量模型已变更为「${active.label}」，任务已停止。切回「${model.label}」可以接着做，或对新模型重新向量化。`
+        : '向量模型配置已被移除，任务已停止。';
+      bookStageRepo.setEmbedError({ bookId, total, error });
+      return { status: 'failed', processed, error };
     }
 
     const batch = takeBatch(bookId, index);
@@ -264,17 +263,10 @@ export async function runBookEmbedding(ctx: RunContext): Promise<RunOutcome> {
     samples.push({ count: batch.length, elapsedMs: Date.now() - startedAt });
 
     if (!result.ok) {
-      // 首次使用某个模型参数时还没有索引记录，失败无处可挂——原因只能靠返回值带出去。
-      // 这是可接受的：首次就失败基本都是配置问题，用户在界面上看得到，改完再点一次即可。
-      if (index) {
-        embedTaskRepo.setError({
-          bookId,
-          embedIndexId: index.id,
-          total,
-          error: result.message,
-        });
-      }
-      // 排查靠日志：库里只留一条给人看的原因，具体是哪一批分片写在日志里
+      // 失败原因也写进阶段行：即使一条向量都没写入，也会留下「试过、停在这里」的记录，
+      // 下次启动仍能读到，不必只靠返回值带出去。
+      bookStageRepo.setEmbedError({ bookId, total, error: result.message });
+      // 库里只留一条原因；具体是哪一批分片失败写日志
       log.error(
         `[Embedding] 批次失败 book=${bookId} chunks=${batch.map(c => c.chunkId).join(',')} ${result.message}`
       );
@@ -284,11 +276,9 @@ export async function runBookEmbedding(ctx: RunContext): Promise<RunOutcome> {
 
     // 指纹没变而维度变了，说明服务端换了模型：继续写会把两种向量空间混进同一张表
     if (index && index.dimension !== result.dimension) {
-      return {
-        status: 'failed',
-        processed,
-        error: `接口返回 ${result.dimension} 维，与已建索引的 ${index.dimension} 维不一致`,
-      };
+      const error = `接口返回 ${result.dimension} 维，与已建索引的 ${index.dimension} 维不一致`;
+      bookStageRepo.setEmbedError({ bookId, total, error });
+      return { status: 'failed', processed, error };
     }
 
     index = persistBatch(bookId, model, index, batch, result.vectors, result.dimension, total);
@@ -298,57 +288,49 @@ export async function runBookEmbedding(ctx: RunContext): Promise<RunOutcome> {
   }
 }
 
-/** 队列对外的事件。进度推进、阶段变化、队列变化都走这一个回调。 */
-export interface BookEmbeddingQueueEvents {
+/** 运行态变化都走这一个回调，包括任务开始、进度推进、暂停与结束。 */
+export interface BookEmbeddingRunnerEvents {
   onRuntime: (runtime: EmbeddingRuntime) => void;
 }
 
-/** 排队等待的任务。 */
-interface QueuedTask {
-  bookId: string;
-  mode: EmbedStartMode;
-}
-
-/** 正在处理、或已经暂停等待恢复的任务。 */
+/** tasks 里的每一项：正在处理、或已暂停等待恢复的任务。完成、失败、取消的任务会被移除。 */
 interface RunningTask {
   bookId: string;
   mode: EmbedStartMode;
-  /** 任务开始时锁定的模型身份，运行期间不再读配置 */
+  /** 任务开始时锁定的模型，运行期间不再读配置 */
   model: ResolvedModel;
   phase: EmbedTaskPhase;
   /** 最近一次的进度数字 */
   progress: RunProgress;
+  /** 置位后循环在下一个批次边界退出 */
+  cancelled: boolean;
+  /** 是否已有循环在跑。暂停期间 resume 不能开出第二条循环 */
+  loopActive: boolean;
 }
 
 /**
- * 向量化任务队列。全局串行，一次只跑一本书。
+ * 每本书一条独立的向量化循环，没有队列：`start` 即执行，多本并行。
+ * 并发数就是 `start` 的调用次数，不需要调度器；一本书暂停或失败不影响其它书。
  *
- * 运行态全部留在内存，不落库——进程被杀之后没有任何需要「补偿」的东西，
- * 待处理集合是从数据库推导出来的，下次点「继续」自然接着跑。
+ * 暂停、取消这些任务状态只留在内存，不落库：进程被杀后没有需要补偿的状态，
+ * 待处理集合从数据库推导得出，下次 `start` 自然接着跑。
  *
- * **它不认识 IPC。** 对外只有命令、`describe()` 和一个 `onRuntime` 回调，
- * 由调用方负责接上界面。
+ * 对外输出全部走构造注入的 `onRuntime` 回调。
  */
-export class BookEmbeddingQueue {
-  private readonly events: BookEmbeddingQueueEvents;
+export class BookEmbeddingRunner {
+  private readonly events: BookEmbeddingRunnerEvents;
 
-  /** 正在处理或已暂停的任务；空闲时为 null */
-  private running: RunningTask | null = null;
+  /** 正在处理或已暂停的任务，按书索引；空闲时为空 */
+  private readonly tasks = new Map<string, RunningTask>();
 
-  /** 排队等待的任务，先进先出 */
-  private queue: QueuedTask[] = [];
-
-  /** 取消标志。只对当前这一轮有效，任务开始前重置 */
-  private cancelled = false;
-
-  constructor(events: BookEmbeddingQueueEvents) {
+  constructor(events: BookEmbeddingRunnerEvents) {
     this.events = events;
   }
 
   /**
-   * 启动一本书的向量化。同一本书不会重复入队。
+   * 启动一本书的向量化。同一本书已有任务时返回失败。
    *
-   * `resume` 同时承担「开始」与「继续」：待处理集合是从数据库推导出来的，
+   * `resume` 同时承担「开始」与「继续」：待处理集合从数据库推导得出，
    * 做过什么、还差什么一目了然，两者不需要区分。
    */
   start(req: EmbedStartRequest): EmbedCommandResult {
@@ -356,30 +338,38 @@ export class BookEmbeddingQueue {
     if (!bookId) {
       return { success: false, error: '缺少书籍 id' };
     }
-    if (this.running?.bookId === bookId) {
+    if (this.tasks.has(bookId)) {
       return { success: false, error: '这本书正在处理中' };
     }
-    if (this.queue.some(task => task.bookId === bookId)) {
-      return { success: false, error: '这本书已在队列中等待' };
-    }
-    if (!resolveActiveModel()) {
+
+    const model = resolveActiveModel();
+    if (!model) {
       return { success: false, error: '尚未配置或选择向量模型' };
     }
 
-    this.queue.push({ bookId, mode: req.mode === 'rebuild' ? 'rebuild' : 'resume' });
+    const task: RunningTask = {
+      bookId,
+      mode: req.mode === 'rebuild' ? 'rebuild' : 'resume',
+      model,
+      phase: 'running',
+      progress: { total: 0, done: 0, rate: 0, etaMs: null },
+      cancelled: false,
+      loopActive: false,
+    };
+    this.tasks.set(bookId, task);
     this.publish();
-    void this.pump();
+    void this.execute(task);
     return { success: true };
   }
 
   /**
-   * 暂停。当前批次会先跑完——中途断开会让已经发出的请求既没落库也不算结，
-   * 重启后又会被重新取出来再花一次钱。
+   * 暂停某本书。当前批次会先跑完：中途断开会让已经发出的请求既没落库也不算数，
+   * 重启后还要重新取出来再花一次钱。
    */
-  pause(): EmbedCommandResult {
-    const task = this.running;
+  pause(bookId: string): EmbedCommandResult {
+    const task = this.tasks.get(bookId);
     if (!task) {
-      return { success: false, error: '当前没有正在处理的任务' };
+      return { success: false, error: '这本书没有正在进行的任务' };
     }
     if (task.phase === 'paused') {
       return { success: false, error: '任务已经处于暂停状态' };
@@ -389,117 +379,90 @@ export class BookEmbeddingQueue {
     return { success: true };
   }
 
-  /** 从暂停处继续。已经写好的向量不重做。 */
-  resume(): EmbedCommandResult {
-    const task = this.running;
+  /** 从暂停处继续某本书。已经写好的向量不重做。 */
+  resume(bookId: string): EmbedCommandResult {
+    const task = this.tasks.get(bookId);
     if (task?.phase !== 'paused') {
-      return { success: false, error: '当前没有暂停的任务' };
+      return { success: false, error: '这本书没有暂停的任务' };
     }
     task.phase = 'running';
-    this.publish();
-
     // rebuild 的清理在暂停之前就做完了，接着跑等同于「继续」
     task.mode = 'resume';
+    this.publish();
+    // 循环可能还停在批次里没退出，这时不能另起一条；execute 会自己识别
     void this.execute(task);
     return { success: true };
   }
 
-  /** 取消当前任务。已经写好的向量保留——不删已经花过钱的产物。 */
-  cancel(): EmbedCommandResult {
-    const task = this.running;
+  /** 取消某本书。已经写好的向量保留，不删已经花过钱的产物。 */
+  cancel(bookId: string): EmbedCommandResult {
+    const task = this.tasks.get(bookId);
     if (!task) {
-      return { success: false, error: '当前没有正在处理的任务' };
+      return { success: false, error: '这本书没有正在进行的任务' };
     }
     if (task.phase === 'paused') {
-      // 暂停时循环已经退出，没有任何人在检查取消标志，只能直接收尾
-      this.running = null;
+      // 循环已经退出，没有地方再检查取消标志，只能直接收尾
+      task.cancelled = true;
+      this.tasks.delete(bookId);
       this.publish();
-      void this.pump();
       return { success: true };
     }
-    this.cancelled = true;
+    task.cancelled = true;
     return { success: true };
   }
 
-  /** 当前的运行态，供渲染层刷新后恢复。 */
+  /** 当前所有任务的运行态快照。 */
   describe(): EmbeddingRuntime {
-    const task = this.running;
     return {
-      current: task
-        ? {
-            bookId: task.bookId,
-            phase: task.phase,
-            total: task.progress.total,
-            done: task.progress.done,
-            rate: task.progress.rate,
-            etaMs: task.progress.etaMs,
-          }
-        : null,
-      queue: this.queue.map(item => item.bookId),
+      tasks: [...this.tasks.values()].map(task => ({
+        bookId: task.bookId,
+        phase: task.phase,
+        total: task.progress.total,
+        done: task.progress.done,
+        rate: task.progress.rate,
+        etaMs: task.progress.etaMs,
+      })),
     };
   }
 
-  /** 队列推进：一次只跑一本书。暂停中的任务仍然占着 running，所以这里自然不前进。 */
-  private async pump(): Promise<void> {
-    if (this.running) return;
-
-    const next = this.queue.shift();
-    if (!next) return;
-
-    const model = resolveActiveModel();
-    if (!model) {
-      // 排队期间配置被删了：这个任务跑不了，直接丢掉并让界面看到队列变短
-      log.warn(`[Embedding] 排队中的任务被丢弃：没有可用的向量模型 book=${next.bookId}`);
-      this.publish();
-      void this.pump();
-      return;
-    }
-
-    const task: RunningTask = {
-      bookId: next.bookId,
-      mode: next.mode,
-      model,
-      phase: 'running',
-      progress: { total: 0, done: 0, rate: 0, etaMs: null },
-    };
-    this.running = task;
-    this.cancelled = false;
-    this.publish();
-    await this.execute(task);
-  }
-
-  /** 跑当前任务，并处理它的终结。 */
+  /** 跑一个任务；结束时移除它，暂停则保留等待 resume。 */
   private async execute(task: RunningTask): Promise<void> {
-    const outcome = await runBookEmbedding({
-      bookId: task.bookId,
-      mode: task.mode,
-      model: task.model,
-      checkStop: () => {
-        if (this.cancelled) return 'cancelled';
-        return task.phase === 'paused' ? 'paused' : null;
-      },
-      onProgress: progress => {
-        task.progress = progress;
-        // 阶段也在这里一起推：暂停请求是在批次中途发出的，那一批跑完后还会再推一次进度。
-        // 若这里只推进度、状态另算，后推的那条会把暂停覆盖掉，界面永远停在「向量化中」。
-        this.publish();
-      },
-    });
+    // 暂停在批次边界生效：暂停请求发出后循环可能还没退出，
+    // 这时 resume 只要把 phase 改回来，不能再开一条循环
+    if (task.loopActive) return;
 
-    if (outcome.status === 'paused') {
-      // 保留 running，等 resume() 接着跑
-      return;
-    }
-    if (outcome.status === 'failed') {
-      // 失败原因已经落进 embed_task.last_error，由书籍列表带给界面；
-      // 这里只留一条日志，方便排查是哪本书、停在哪一步
-      log.warn(`[Embedding] 任务失败 book=${task.bookId}：${outcome.error ?? '未知原因'}`);
-    }
+    task.loopActive = true;
+    try {
+      const outcome = await runBookEmbedding({
+        bookId: task.bookId,
+        mode: task.mode,
+        model: task.model,
+        checkStop: () => {
+          if (task.cancelled) return 'cancelled';
+          return task.phase === 'paused' ? 'paused' : null;
+        },
+        onProgress: progress => {
+          task.progress = progress;
+          // 进度与阶段必须一起推：暂停可能在一批中途生效，这一批结束时若只推进度，
+          // 会把已经发布的 paused 覆盖回 running。
+          this.publish();
+        },
+      });
 
-    this.running = null;
-    this.cancelled = false;
-    this.publish();
-    void this.pump();
+      if (outcome.status === 'paused') {
+        // 任务保留在 tasks 里，等 resume 接着跑
+        return;
+      }
+      if (outcome.status === 'failed') {
+        // 原因已写进 book_stage.last_error；这里补一条日志，记录哪本书、什么原因
+        log.warn(`[Embedding] 任务失败 book=${task.bookId}：${outcome.error ?? '未知原因'}`);
+      }
+
+      this.tasks.delete(task.bookId);
+      this.publish();
+    } finally {
+      task.loopActive = false;
+    }
   }
 
   /** 推一次运行态。 */

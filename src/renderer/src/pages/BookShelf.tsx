@@ -1,16 +1,8 @@
 import { BookDetailDialog } from '@/components/BookDetailDialog';
 import { memo, useCallback, useEffect, useState } from 'react';
-import {
-  BookOpen,
-  FileInput,
-  Info,
-  Loader2,
-  MoreVertical,
-  Play,
-  RotateCcw,
-  Trash2,
-} from 'lucide-react';
+import { BookOpen, FileInput, Info, ListChecks, Loader2, MoreVertical, Trash2 } from 'lucide-react';
 import { BookIndexBadge } from '@/components/BookIndexBadge';
+import { BookStatusDialog } from '@/components/BookStatusDialog';
 import { Button } from '@/components/ui/button';
 import { useBooksStore } from '@/stores/books-store';
 import { useEmbeddingStore } from '@/stores/embedding-store';
@@ -18,8 +10,9 @@ import {
   isStale,
   resolveDisplayCounts,
   resolveEmbeddingState,
+  toEmbedding,
 } from '@shared/utils/embedding-state';
-import type { EmbeddingState } from '@shared/utils/embedding-state';
+import type { EmbeddingState } from '@shared/types/embedding';
 import { useTabsStore } from '@/stores/tabs-store';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -50,12 +43,9 @@ function BookCard({
   indexState,
   indexCounts,
   stale,
-  embedDisabled,
-  canRebuild,
   onDelete,
   onOpenDetail,
-  onEmbed,
-  onRebuild,
+  onOpenStatus,
   onClick,
 }: {
   book: BookDoc;
@@ -65,14 +55,9 @@ function BookCard({
   indexCounts: { total: number; done: number };
   /** 现有向量不是当前模型生成的 */
   stale: boolean;
-  /** 没有配置模型、或这本书正在处理时，向量化入口不可用 */
-  embedDisabled: boolean;
-  /** 这本书有向量，才谈得上「重新向量化」 */
-  canRebuild: boolean;
   onDelete: (book: BookDoc) => void;
   onOpenDetail: (book: BookDoc) => void;
-  onEmbed: (book: BookDoc) => void;
-  onRebuild: (book: BookDoc) => void;
+  onOpenStatus: (book: BookDoc) => void;
   onClick: () => void;
 }) {
   const hasCover = !!book.coverUrl;
@@ -157,27 +142,15 @@ function BookCard({
             <Info />
             详情
           </DropdownMenuItem>
-          <DropdownMenuSeparator />
           <DropdownMenuItem
-            disabled={embedDisabled}
             onSelect={() => {
-              // 同上：等 DropdownMenu 关闭动画完成再执行。
-              setTimeout(() => onEmbed(book), 200);
+              // 同上：等 DropdownMenu 关闭动画完成再开 Dialog。
+              setTimeout(() => onOpenStatus(book), 200);
             }}
             className="cursor-pointer"
           >
-            <Play />
-            {indexCounts.done > 0 ? '继续向量化' : '开始向量化'}
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            disabled={!canRebuild}
-            onSelect={() => {
-              setTimeout(() => onRebuild(book), 200);
-            }}
-            className="cursor-pointer"
-          >
-            <RotateCcw />
-            重新向量化
+            <ListChecks />
+            书籍状态
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
@@ -233,10 +206,10 @@ export const BookShelf = memo(function BookShelf() {
   const currentModel = useEmbeddingStore(s => s.current);
   const addTab = useTabsStore(s => s.addTab);
   const [pendingDelete, setPendingDelete] = useState<BookDoc | null>(null);
-  // 重新向量化会清掉已有的向量，从卡片菜单直接触发时必须先确认
-  const [pendingRebuild, setPendingRebuild] = useState<BookDoc | null>(null);
   // 详情弹窗以打开时的书籍快照为准：store 更新后不会打断弹窗里的输入
   const [detailBook, setDetailBook] = useState<BookDoc | null>(null);
+  // 书籍状态弹窗只按书打开，不做批量；与详情弹窗互斥
+  const [statusBook, setStatusBook] = useState<BookDoc | null>(null);
 
   useEffect(() => {
     if (loaded) return;
@@ -255,6 +228,11 @@ export const BookShelf = memo(function BookShelf() {
   /** 打开书籍详情弹窗 */
   const handleOpenDetail = (book: BookDoc) => {
     setDetailBook(book);
+  };
+
+  /** 打开书籍状态弹窗 */
+  const handleOpenStatus = (book: BookDoc) => {
+    setStatusBook(book);
   };
 
   /** 打开删除确认弹窗 */
@@ -286,28 +264,6 @@ export const BookShelf = memo(function BookShelf() {
     if (err) toast.error(err);
   }, [importBook]);
 
-  /** 从卡片菜单直接开始 / 继续向量化，不必先打开详情页 */
-  const handleEmbed = useCallback(async (book: BookDoc) => {
-    const res = await window.api.startEmbedding({ bookId: book.id, mode: 'resume' });
-    if (!res.success) {
-      toast.error(res.error ?? '启动失败');
-      return;
-    }
-    toast.success(`《${book.booksName}》已加入向量化队列`);
-  }, []);
-
-  /** 确认后重新向量化：会先清空这本书在当前模型下的向量 */
-  const handleConfirmRebuild = useCallback(async () => {
-    const book = pendingRebuild;
-    if (!book) return;
-    const res = await window.api.startEmbedding({ bookId: book.id, mode: 'rebuild' });
-    if (!res.success) {
-      toast.error(res.error ?? '启动失败');
-      return;
-    }
-    toast.success(`《${book.booksName}》开始重新向量化`);
-  }, [pendingRebuild]);
-
   return (
     <div className="flex flex-col h-full">
       {/* 顶部标题栏 */}
@@ -331,23 +287,20 @@ export const BookShelf = memo(function BookShelf() {
         >
           <ImportCard importing={importing} onClick={handleImport} />
           {books.map(book => {
+            const embedding = toEmbedding(book.stages.embed);
             const indexState = resolveEmbeddingState(
-              book.embedding,
+              embedding,
               book.id,
               currentModel,
               embeddingRuntime
             );
             const indexCounts = resolveDisplayCounts(
-              book.embedding,
+              embedding,
               book.id,
               currentModel,
               embeddingRuntime
             );
-            // 不管属于哪个模型，只要有向量就谈得上「重新向量化」
-            const hasVectors = book.embedding.done > 0;
-            const stale = isStale(book.embedding, currentModel);
-            const busy =
-              indexState === 'running' || indexState === 'queued' || indexState === 'paused';
+            const stale = isStale(embedding, currentModel);
             return (
               <BookCard
                 key={book.id}
@@ -356,12 +309,9 @@ export const BookShelf = memo(function BookShelf() {
                 indexState={indexState}
                 indexCounts={indexCounts}
                 stale={stale}
-                embedDisabled={currentModel === null || busy || indexCounts.total === 0}
-                canRebuild={hasVectors && !busy}
                 onDelete={handleOpenDelete}
                 onOpenDetail={handleOpenDetail}
-                onEmbed={book => void handleEmbed(book)}
-                onRebuild={setPendingRebuild}
+                onOpenStatus={handleOpenStatus}
                 onClick={() => handleClickBook(book.id)}
               />
             );
@@ -396,30 +346,6 @@ export const BookShelf = memo(function BookShelf() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* 重新向量化确认弹窗：从卡片菜单直接触发时会清空已有向量，必须先确认 */}
-      <AlertDialog
-        open={!!pendingRebuild}
-        onOpenChange={open => {
-          if (!open) setPendingRebuild(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>重新向量化</AlertDialogTitle>
-            <AlertDialogDescription>
-              会清空《{pendingRebuild?.booksName ?? ''}》在当前模型下已有的向量，再重新生成一遍。
-              已经花掉的额度不会退回，确定要继续吗？
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>稍后</AlertDialogCancel>
-            <AlertDialogAction onClick={() => void handleConfirmRebuild()}>
-              开始重建
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
       {/* 书籍详情弹窗 */}
       {detailBook && (
         <BookDetailDialog
@@ -427,6 +353,23 @@ export const BookShelf = memo(function BookShelf() {
           book={detailBook}
           onOpenChange={open => {
             if (!open) setDetailBook(null);
+          }}
+          onOpenStatus={() => {
+            // 两个弹窗不并存：先关详情，同一次渲染里挂上状态弹窗
+            const book = detailBook;
+            setDetailBook(null);
+            setStatusBook(book);
+          }}
+        />
+      )}
+
+      {/* 书籍状态弹窗 */}
+      {statusBook && (
+        <BookStatusDialog
+          key={statusBook.id}
+          book={statusBook}
+          onOpenChange={open => {
+            if (!open) setStatusBook(null);
           }}
         />
       )}

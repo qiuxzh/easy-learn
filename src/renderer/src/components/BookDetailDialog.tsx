@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ImageUp, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { BookIndexSection } from '@/components/BookIndexSection';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -14,8 +13,11 @@ import {
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useBooksStore } from '@/stores/books-store';
+import { useEmbeddingStore } from '@/stores/embedding-store';
 import { coverMimeType, fallbackCoverText } from '@/utils/book-cover';
 import { formatDateTime } from '@shared/utils/time-util';
+import { resolveEmbeddingState, toEmbedding } from '@shared/utils/embedding-state';
+import type { EmbeddingState } from '@shared/types/embedding';
 import type { BookDoc, BookUpdateRequest, CoverImage } from '@shared/types/books';
 
 /** 换封面时的本地预览：Blob URL 用于显示，cover 是等待随保存一起落盘的图片内容 */
@@ -30,6 +32,8 @@ interface BookDetailDialogProps {
   book: BookDoc;
   /** 关闭弹窗回调 */
   onOpenChange: (open: boolean) => void;
+  /** 打开书籍状态弹窗。两个弹窗不并存，由调用方先关详情再开状态 */
+  onOpenStatus: () => void;
 }
 
 /** 把字节数格式化为便于阅读的大小，未知大小显示为"—" */
@@ -52,12 +56,31 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+/** 详情页只回答一个问题：这本书现在能不能用于检索。 */
+function describeStatus(state: EmbeddingState): string {
+  switch (state) {
+    case 'done':
+      return '可用于检索';
+    case 'running':
+      return '正在生成向量';
+    case 'paused':
+      return '向量生成已暂停';
+    default:
+      return '尚未就绪';
+  }
+}
+
 /**
  * 书籍详情弹窗：展示书名、封面、作者、大小等信息，并支持修改书名、作者与封面。
  * 书名和作者改完点"保存"一起写入；封面选好后先本地预览，同样在保存时才落盘。
+ *
+ * 书籍状态不在这里：它由派生数据构成，会随配置与任务变化，所以单独一个弹窗。
+ * 这里只留一句结论和入口。
  */
-export function BookDetailDialog({ book, onOpenChange }: BookDetailDialogProps) {
+export function BookDetailDialog({ book, onOpenChange, onOpenStatus }: BookDetailDialogProps) {
   const updateBook = useBooksStore(state => state.updateBook);
+  const current = useEmbeddingStore(state => state.current);
+  const runtime = useEmbeddingStore(state => state.runtime);
   const [booksName, setBooksName] = useState(book.booksName);
   const [author, setAuthor] = useState(book.author ?? '');
   const [preview, setPreview] = useState<CoverPreview | null>(null);
@@ -127,6 +150,10 @@ export function BookDetailDialog({ book, onOpenChange }: BookDetailDialogProps) 
 
   // 待保存的封面优先于数据库里的封面，其次是用户刚移除封面的状态
   const coverSrc = preview ? preview.url : coverRemoved ? null : book.coverUrl;
+
+  const statusText = describeStatus(
+    resolveEmbeddingState(toEmbedding(book.stages.embed), book.id, current, runtime)
+  );
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
@@ -220,7 +247,15 @@ export function BookDetailDialog({ book, onOpenChange }: BookDetailDialogProps) 
               </div>
             </div>
 
-            <BookIndexSection bookId={book.id} />
+            <div className="space-y-1.5">
+              <p className="text-sm font-medium">书籍状态</p>
+              <div className="flex items-center justify-between gap-3 rounded-md border border-stroke-3 bg-surface-2 p-3">
+                <span className="text-xs text-muted-foreground">{statusText}</span>
+                <Button type="button" variant="outline" size="sm" onClick={onOpenStatus}>
+                  查看书籍状态
+                </Button>
+              </div>
+            </div>
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

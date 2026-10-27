@@ -177,8 +177,21 @@ export class AttachmentService extends BaseService {
     return attachmentRepo.findById(attachmentId);
   }
 
+  /**
+   * 原样登记一张图片：不缩放、不转码，只校验格式与体积。
+   *
+   * 用于需要保留原始画质的素材。
+   */
+  async storeImageOriginal(bytes: Buffer, mimeType: string): Promise<ImageContent> {
+    return this.storeImage(bytes, mimeType, { compress: false });
+  }
+
   /** 处理并落盘一张图片，登记附件行，返回图片引用 */
-  private async storeImage(originalBytes: Buffer, declaredMimeType: string): Promise<ImageContent> {
+  private async storeImage(
+    originalBytes: Buffer,
+    declaredMimeType: string,
+    options: { compress?: boolean } = {}
+  ): Promise<ImageContent> {
     const mimeType = resolveImageMimeType(originalBytes, declaredMimeType);
     if (!mimeType) {
       throw new Error('不支持的图片格式，仅支持 PNG / JPEG / WebP / GIF / BMP');
@@ -187,7 +200,11 @@ export class AttachmentService extends BaseService {
       throw new Error('图片文件过大，单张不能超过 20MB');
     }
 
-    const prepared = compressImage(originalBytes, mimeType);
+    // 传 compress: false 时保留原始字节：需要原图的场景不该被聊天侧的尺寸上限影响
+    const prepared =
+      options.compress === false
+        ? { bytes: originalBytes, mimeType }
+        : compressImage(originalBytes, mimeType);
     const extension = imageExtensionFromMimeType(prepared.mimeType) ?? 'png';
 
     // 先写文件后插行，插行失败时删掉已写的文件；这步再失败，文件就留在磁盘上不再回收

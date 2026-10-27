@@ -1,46 +1,40 @@
 /**
  * 书籍向量化状态的推导。
  *
- * **数据轴两端共用，运行轴只给渲染层。**
+ * 数据轴两端共用，运行轴只给渲染层。数据轴判断这本书的向量数据是否算数，来源是
+ * `BookEmbedding` 落库事实与用户当前选中的模型；比较必须只有一份实现，保证界面显示
+ * 「已向量化」与检索工具可用永远等价。运行轴只看这本书此刻有没有在被处理，只活在
+ * 主进程内存里，由 `EmbeddingRuntime` 提供。
  *
- * - **数据轴**：这本书的向量数据处于什么状况。来源是 `BookEmbedding`（落库事实）加上用户
- *   当前选中的模型——「现有向量算不算数」是相对的，所以比较必须只有一份实现：界面显示
- *   「已向量化」与检索工具能用必须永远等价（见 `books/book-retrieval.ts`）。
- * - **运行轴**：这本书此刻有没有在被处理。只活在主进程内存里，由 `EmbeddingRuntime` 提供。
- *
- * 把两者合成一个枚举，就必然要编一个优先级顺序，而那个顺序是任意的
- * （一本书换了模型、又失败过，该显示哪个？没有客观答案）。所以这里分开算：
- * **状态只回答「用户要做什么」，原因降级成附注**。
+ * 两者不合成一个枚举：合成必然要编一个优先级顺序，而那个顺序是任意的。所以状态只
+ * 回答用户要做什么，原因降级成附注。
  */
-import type { BookEmbedding } from '../types/books';
-import type { EmbeddingRuntime } from '../types/embedding';
+import type { BookEmbedding, BookStageInfo } from '../types/books';
+import type { EmbeddingRuntime, EmbeddingState } from '../types/embedding';
 import { isSameModel, type EmbeddingIdentity } from './embedding-identity';
 
 /**
- * 界面上的向量化状态。每个值对应一句文案。
+ * 把「向量阶段」的进度投影成向量化信息。
  *
- * 没有「未分片」：分片是导入时就做好的，没切出分片的书不是一个需要用户处理的状态。
- * 也没有「失败」和「索引失效」：它们的动作和「未向量化」完全一样，只是原因不同，
- * 由附注承担。
+ * 界面拿到的是 `BookDoc.stages`（阶段形状），而这里的推导、以及主进程的检索判断
+ * 都建立在 `BookEmbedding` 上。两者字段一一对应，所以转换只有这一处。
+ *
+ * 阶段不存在、或 `total` / `done` 为空时按 0 处理：此时这本书本来就不具备向量，
+ * 显示成「未向量化」与事实一致。
  */
-export type EmbeddingState =
-  /** 排队中 */
-  | 'queued'
-  /** 向量化中 */
-  | 'running'
-  /** 已暂停 */
-  | 'paused'
-  /** 未向量化。含从没做过、做了一半、换了模型、上次失败 */
-  | 'none'
-  /** 已向量化 */
-  | 'done';
+export function toEmbedding(stage: BookStageInfo | undefined): BookEmbedding {
+  return {
+    total: stage?.total ?? 0,
+    done: stage?.done ?? 0,
+    modelFingerprint: stage?.identity ?? null,
+    lastError: stage?.lastError ?? null,
+  };
+}
 
 /**
  * 现有向量不是当前模型生成的。
  *
- * 它**不是一个状态**——动作和「未向量化」完全一样（点向量化），区别只是那句
- * 「会先删掉旧数据」。所以它降级成附注，只在文案上体现：角标用它把「未向量化」
- * 换成更准确的「待重建」。
+ * 它不是一个状态：动作和「未向量化」一样（点向量化），区别只是文案要说明会先删旧数据。
  */
 export function isStale(embedding: BookEmbedding, current: EmbeddingIdentity | null): boolean {
   if (embedding.modelFingerprint === null) return false;
@@ -86,10 +80,12 @@ export function describeEmbedding(
 }
 
 /**
- * 展示状态：**运行轴优先**。
+ * 展示状态：运行轴优先。
  *
  * 优先不是因为运行态更重要，而是它更具体——一本书正在跑的时候它的 `done` 是旧的，
  * 说「未向量化」会让人以为卡住了。
+ *
+ * 运行态按书查，不看别的书：多本书可以同时在跑，一本书自己的状态与其它任务无关。
  */
 export function resolveEmbeddingState(
   embedding: BookEmbedding,
@@ -97,9 +93,8 @@ export function resolveEmbeddingState(
   current: EmbeddingIdentity | null,
   runtime: EmbeddingRuntime
 ): EmbeddingState {
-  const task = runtime.current;
-  if (task?.bookId === bookId) return task.phase;
-  if (runtime.queue.includes(bookId)) return 'queued';
+  const task = runtime.tasks.find(item => item.bookId === bookId);
+  if (task) return task.phase;
   return deriveDataState(embedding, current);
 }
 
@@ -110,8 +105,8 @@ export function resolveDisplayCounts(
   current: EmbeddingIdentity | null,
   runtime: EmbeddingRuntime
 ): { total: number; done: number } {
-  const task = runtime.current;
-  if (task?.bookId === bookId) {
+  const task = runtime.tasks.find(item => item.bookId === bookId);
+  if (task) {
     return { total: task.total, done: task.done };
   }
   const usable = current !== null && isSameModel(embedding.modelFingerprint, current);

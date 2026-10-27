@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils';
-import type { EmbeddingState } from '@shared/utils/embedding-state';
+import type { EmbeddingState } from '@shared/types/embedding';
 
 /** 环形进度的半径，和 14×14 的图形尺寸配套。 */
 const RING_RADIUS = 5.5;
@@ -14,7 +14,6 @@ const WARN_STATES: EmbeddingState[] = ['none'];
 const STATE_LABELS: Record<EmbeddingState, string> = {
   none: '未向量化：这本书还不能用于检索',
   done: '已向量化',
-  queued: '排队等待中',
   running: '正在生成向量',
   paused: '已暂停',
 };
@@ -29,15 +28,15 @@ interface BookIndexBadgeProps {
 }
 
 /**
- * 书籍卡片右上角的向量化状态：**文字在左、环形图标在右**，合成一个胶囊。
+ * 书籍卡片右上角的向量化状态：文字在左、环形图标在右，合成一个胶囊。
  *
  * 文字放这里而不是标题下面，是为了让卡片只占两行——书名一行、作者一行。
  * 状态本来就不是每本书都需要细看的信息，挤进正文区会让整屏书看起来太长。
  *
- * **环形图标只在向量化过程中出现。** 只有那时才有「进度」可言；其余状态挂一个
+ * 环形图标只在向量化过程中出现。只有那时才有「进度」可言；其余状态挂一个
  * 静止的圆环会让人以为它还在动，所以那些状态只给一个词，颜色承担区分度。
  *
- * **底色一律不透明。** 这个胶囊压在书封上是任意一张图片，半透明的底会让封面透上来，
+ * 底色一律不透明。这个胶囊压在书封上是任意一张图片，半透明的底会让封面透上来，
  * 文字在花哨的封面上根本读不出来。
  */
 export function BookIndexBadge({ state, counts, stale, className }: BookIndexBadgeProps) {
@@ -82,8 +81,6 @@ function describeState(
   switch (state) {
     case 'running':
       return `向量化中 ${percent}%`;
-    case 'queued':
-      return '排队中';
     case 'paused':
       return `已暂停 ${done}/${total}`;
     case 'done':

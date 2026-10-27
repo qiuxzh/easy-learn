@@ -30,3 +30,4 @@ export {
   resolvePictureKey,
   type EpubSegment,
 } from './epub-source';
+export { createPdfSource, type PdfSegment } from './pdf-source';

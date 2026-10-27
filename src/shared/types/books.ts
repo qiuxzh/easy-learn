@@ -56,8 +56,8 @@ export interface BookMetadata {
 /**
  * 一本书的向量化信息。
  *
- * 只描述**持久事实**：切成几片、几片有向量、这些向量是谁生成的、上次为什么停下。
- * 运行态（排队 / 向量化中 / 已暂停）不在这里——它只活在主进程内存里，见 EmbeddingRuntime。
+ * 只描述持久事实：切成几片、几片有向量、这些向量是谁生成的、上次为什么停下。
+ * 运行态（向量化中 / 已暂停）不在这里——它只活在主进程内存里，见 EmbeddingRuntime。
  *
  * 「这本书该显示成未向量化还是已向量化」还要看用户当前选中了哪个模型，那是渲染层的判断：
  * 拿 modelFingerprint 和当前配置算出来的指纹比一次。后端不参与那个判断，
@@ -74,6 +74,32 @@ export interface BookEmbedding {
   lastError: string | null;
 }
 
+/** 书籍的处理阶段，与 `book_stage.stage` 一一对应 */
+export type BookStageName = 'ocr' | 'chunk' | 'embed';
+
+/**
+ * 一个阶段的进度。
+ *
+ * `total` / `done` 是三态：空表示还不知道要处理多少，0 表示已判定无需处理。
+ * 合成一个数字会让「还没开始」和「不需要做」显示成同一种样子。
+ *
+ * `identity` 是产出这批数据的参数指纹，各阶段含义不同：识别是服务与配置，
+ * 分片是切分规则，向量是模型。只有向量的指纹参与可用性判断。
+ */
+export interface BookStageInfo {
+  total: number | null;
+  done: number | null;
+  identity: string | null;
+  lastError: string | null;
+}
+
+/**
+ * 一本书各阶段的进度。
+ *
+ * 键不存在表示该阶段不适用（EPUB 没有识别），界面不必再按书籍格式推一遍。
+ */
+export type BookStages = Partial<Record<BookStageName, BookStageInfo>>;
+
 /** 渲染端展示用的书籍实体 */
 export interface BookDoc {
   id: string;
@@ -87,8 +113,8 @@ export interface BookDoc {
   createdAt: number;
   /** 书籍源文件大小（字节）。文件缺失时为 null */
   fileSize: number | null;
-  /** 向量化信息。永远是对象、不判空：没做过也是一种信息 */
-  embedding: BookEmbedding;
+  /** 各阶段的处理进度。永远是对象：键不存在即该阶段不适用 */
+  stages: BookStages;
 }
 
 /** 导入书籍响应（main 端完成 dialog + 解析 + 写库后返回） */

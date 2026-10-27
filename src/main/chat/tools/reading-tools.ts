@@ -2,11 +2,13 @@ import { Type } from 'typebox';
 import { defineSessionTool } from '@main/agent/common-agent/agent-definition';
 import { searchBookBm25, searchBookVector } from '@main/books/book-retrieval';
 import {
-  bookService,
+  getBookTocs,
+  readBookImage,
+  readBookTocText,
   DEFAULT_READ_LENGTH,
   DEFAULT_READ_OFFSET,
   MAX_READ_LENGTH,
-} from '@main/books/book-service';
+} from '@main/books/book-reader';
 import { readingService } from '@main/service/reading-service';
 
 /** 书的目录：按 bookId 返回嵌套的 TOCItem 树。 */
@@ -22,7 +24,7 @@ const getBookTocsTool = defineSessionTool({
     bookId: Type.String({ minLength: 1, description: '书的 id' }),
   }),
   async execute(_toolCallId, params) {
-    const tocs = await bookService.getBookTocs(params.bookId);
+    const tocs = await getBookTocs(params.bookId);
 
     return {
       content: [{ type: 'text' as const, text: JSON.stringify(tocs) }],
@@ -61,12 +63,7 @@ const readBookTocTextTool = defineSessionTool({
     ),
   }),
   async execute(_toolCallId, params) {
-    const result = await bookService.readBookTocText(
-      params.bookId,
-      params.tocId,
-      params.offset,
-      params.length
-    );
+    const result = await readBookTocText(params.bookId, params.tocId, params.offset, params.length);
 
     if (!result.success) {
       return {
@@ -219,7 +216,7 @@ const readBookImageTool = defineSessionTool({
       throw new Error('操作已取消');
     }
 
-    const stored = await bookService.readBookImage(params.bookId, params.resourceKey);
+    const stored = await readBookImage(params.bookId, params.resourceKey);
     return {
       content: [
         { type: 'text' as const, text: `读取书籍图片：${params.resourceKey}` },

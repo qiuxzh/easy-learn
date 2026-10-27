@@ -19,8 +19,10 @@ export type { AgentEntryRow, InsertAgentEntryRow } from '../schema';
 export type { AttachmentRow, InsertAttachmentRow } from '../schema';
 export type { BookChunkCount } from './book-chunk-repo';
 export { embedIndexRepo, EmbedIndexRepo } from './embed-index-repo';
-export { embedTaskRepo, EmbedTaskRepo } from './embed-task-repo';
-export type { EmbedTaskScope } from './embed-task-repo';
+export { bookStageRepo, BookStageRepo } from './book-stage-repo';
+export type { EmbedStageWrite } from './book-stage-repo';
+export { bookPageRepo, BookPageRepo } from './book-page-repo';
+export type { BookPageRow, InsertBookPageRow } from '../schema';
 export { embedVectorRepo, EmbedVectorRepo } from './embed-vector-repo';
 export type {
   EmbedSourceType,
@@ -31,4 +33,4 @@ export type {
   VectorSearchHit,
 } from './embed-vector-repo';
 export type { EmbedIndexRow, InsertEmbedIndexRow } from '../schema';
-export type { EmbedTaskRow, InsertEmbedTaskRow } from '../schema';
+export type { BookStage, BookStageRow, InsertBookStageRow } from '../schema';

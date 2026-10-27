@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { EmbeddingModelSettings } from '@/components/settings/EmbeddingModelSettings';
+import { OcrSettings } from '@/components/settings/OcrSettings';
 import { ReaderSettings } from '@/components/settings/ReaderSettings';
 
 /** 配置页左侧的分组类型。 */
-type SettingsSection = 'general' | 'appearance' | 'reader' | 'models';
+type SettingsSection = 'general' | 'appearance' | 'reader' | 'models' | 'ocr';
 
 /** 左侧配置分组。 */
 const SETTINGS_SECTIONS: Array<{ value: SettingsSection; label: string }> = [
@@ -13,6 +14,7 @@ const SETTINGS_SECTIONS: Array<{ value: SettingsSection; label: string }> = [
   { value: 'appearance', label: '外观' },
   { value: 'reader', label: '阅读' },
   { value: 'models', label: '模型' },
+  { value: 'ocr', label: '文字提取' },
 ];
 
 interface SettingsDialogProps {
@@ -65,6 +67,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
         >
           {activeSection === 'reader' && <ReaderSettings />}
           {activeSection === 'models' && <EmbeddingModelSettings />}
+          {activeSection === 'ocr' && <OcrSettings />}
         </section>
       </DialogContent>
     </Dialog>

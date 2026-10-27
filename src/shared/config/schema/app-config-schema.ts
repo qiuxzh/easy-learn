@@ -12,6 +12,10 @@ export const PaddleOcrConfigSchema = Type.Object({
 /** 应用级 OCR 配置。 */
 export const OcrConfigSchema = Type.Object({
   'paddle-ocr': Type.Optional(PaddleOcrConfigSchema),
+  /** 每个识别分块包含的页数 */
+  pageSize: Type.Optional(Type.Integer()),
+  /** 同时提交的分块数 */
+  concurrency: Type.Optional(Type.Integer()),
 });
 
 /** config.json 的根配置结构。 */
