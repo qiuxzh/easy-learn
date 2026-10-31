@@ -48,7 +48,11 @@
   padding-right: calc(var(--spacing) * 2);
 }
 
+/* streamdown 用 pointer-events-none 包住操作条，靠子元素上的 pointer-events-auto 类解禁；
+   该类只存在于 node_modules，Tailwind 不会为其生成样式，因此这里显式恢复命中，
+   否则复制与下载按钮收不到点击。 */
 .chat-markdown [data-streamdown='code-block-actions'] {
+  pointer-events: auto;
   background: transparent;
   border: none;
   backdrop-filter: none;

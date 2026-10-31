@@ -21,3 +21,4 @@ Thumbs.db
 
 # 临时脚本、调试日志与截图
 temp_script/
+.archify/
