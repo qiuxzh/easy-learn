@@ -1,5 +1,7 @@
 // 引入 KaTeX 公式渲染所需的样式表
 import 'katex/dist/katex.min.css';
+// 复制含公式的选区时把 KaTeX 还原成 $...$ / $$...$$ 文本
+import 'katex/dist/contrib/copy-tex';
 
 import { Streamdown, type Components, type PluginConfig } from 'streamdown';
 import { MermaidBlock } from '@/components/chat/markdown/MermaidBlock';
@@ -30,6 +32,8 @@ export type MarkdownProps = {
   className?: string;
   textContrast?: 'normal' | 'high';
   isStreaming?: boolean;
+  /** 为 true 时按纯文本展示模型原始输出，不解析 Markdown、不渲染公式 */
+  raw?: boolean;
 };
 
 const code = createCodePlugin({ themes: ['github-light', 'github-dark'] });
@@ -142,7 +146,20 @@ const components: Components = {
   ),
 };
 
-export function Markdown({ content, className, isStreaming }: MarkdownProps) {
+export function Markdown({ content, className, isStreaming, raw }: MarkdownProps) {
+  if (raw) {
+    return (
+      <pre
+        className={cn(
+          'chat-markdown whitespace-pre-wrap wrap-break-word rounded-md border border-stroke-3 bg-surface-2 px-3 py-2 font-mono text-sm leading-6 text-foreground',
+          className
+        )}
+      >
+        {content}
+      </pre>
+    );
+  }
+
   const safeContent = normalizeCodeFenceLanguages(fixNumberedListBreaks(content));
 
   return (

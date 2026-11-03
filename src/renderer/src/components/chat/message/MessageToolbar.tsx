@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils';
 import { useRef, useState } from 'react';
-import { Check, Copy, GitBranch } from 'lucide-react';
+import { Check, Code, Copy, GitBranch } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';
 
 type CopyButtonProps = {
@@ -63,14 +63,38 @@ export type MessageToolbarProps = {
   isVisible: boolean;
   alignClass: string;
   onCopied?: () => void;
+  /** 当前回复是否按原始 Markdown 展示 */
+  rawMode?: boolean;
+  /** 提供时渲染原文/渲染切换按钮 */
+  onToggleRaw?: () => void;
   /** 提供时渲染分支按钮：把会话从这条回复之后切成一个新会话 */
   onFork?: () => void;
 };
 
-/**
- * 分支按钮：从这条回复分出新会话。
- * 与复制按钮同一行、同一套交互（阻止冒泡，避免触发行本身的点击）。
- */
+function RawToggleButton({ rawMode, onToggle }: { rawMode: boolean; onToggle: () => void }) {
+  return (
+    <IconButton
+      type="button"
+      label={rawMode ? '查看渲染结果' : '查看原文'}
+      aria-pressed={rawMode}
+      pressed={rawMode}
+      tabIndex={-1}
+      onClick={onToggle}
+      onPointerDown={event => {
+        event.stopPropagation();
+      }}
+      onMouseDown={event => event.stopPropagation()}
+      className={cn(
+        'transition-opacity active:scale-[0.97]',
+        rawMode ? 'opacity-100' : 'opacity-50 hover:opacity-100'
+      )}
+    >
+      <Code className="text-muted-foreground" />
+    </IconButton>
+  );
+}
+
+/** 从这条回复分出新会话。 */
 function ForkButton({ onFork }: { onFork: () => void }) {
   return (
     <IconButton
@@ -90,7 +114,7 @@ function ForkButton({ onFork }: { onFork: () => void }) {
 }
 
 /**
- * 单条消息下方的操作栏：复制按钮 + 时间戳（+ 可选的分支按钮）。
+ * 单条消息下方的操作栏。
  * 复制按钮默认可见，isVisible 用于复制成功后的高亮状态。
  */
 export function MessageToolbar({
@@ -101,6 +125,8 @@ export function MessageToolbar({
   isVisible,
   alignClass,
   onCopied,
+  rawMode,
+  onToggleRaw,
   onFork,
 }: MessageToolbarProps) {
   return (
@@ -118,6 +144,7 @@ export function MessageToolbar({
     >
       {timestamp && <span>{timestamp}</span>}
       {text && <CopyButton text={text} onCopied={onCopied} />}
+      {text && onToggleRaw && <RawToggleButton rawMode={rawMode ?? false} onToggle={onToggleRaw} />}
       {onFork && <ForkButton onFork={onFork} />}
     </div>
   );

@@ -171,7 +171,14 @@ function renderToolRow(key: string, toolCall: AppToolCallPart, toolResult?: AppT
 }
 
 /** 渲染一条 assistant 消息中的所有 parts */
-export const AssistantParts = memo(function AssistantParts({ msg }: { msg: AppUIMessage }) {
+export const AssistantParts = memo(function AssistantParts({
+  msg,
+  raw = false,
+}: {
+  msg: AppUIMessage;
+  /** 为 true 时 text part 按原始 Markdown 文本展示，工具调用与推理块不受影响 */
+  raw?: boolean;
+}) {
   const elements = useMemo(() => {
     // 预构建 callId → tool-result 映射，避免重复匹配
     const resultByCallId = new Map<string, AppToolResultPart>();
@@ -196,6 +203,7 @@ export const AssistantParts = memo(function AssistantParts({ msg }: { msg: AppUI
               content={part.text}
               className="leading-relaxed [&_p]:leading-relaxed"
               isStreaming={part.state === 'streaming'}
+              raw={raw}
             />
           </div>
         );
@@ -245,7 +253,7 @@ export const AssistantParts = memo(function AssistantParts({ msg }: { msg: AppUI
     });
 
     return elems;
-  }, [msg]);
+  }, [msg, raw]);
 
   if (elements.length === 0) return null;
 

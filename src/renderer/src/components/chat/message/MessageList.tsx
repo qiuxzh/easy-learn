@@ -26,6 +26,14 @@ import {
 /** 距离底部多少像素以内仍视为"在底部"（用于流式输出自动跟随） */
 const SCROLL_THRESHOLD = 80;
 
+/** 本轮最后一条有正文的 assistant 消息 id；原文模式只作用于它，前置步骤不跟着变。 */
+function lastAssistantTextId(messages: AppUIMessage[]): string | undefined {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    if (getAssistantText([messages[i]]).trim()) return messages[i].id;
+  }
+  return undefined;
+}
+
 export type MessageListProps = {
   /** 完整消息数组（按时间顺序） */
   messages: AppUIMessage[];
@@ -66,7 +74,9 @@ function TraceItem({
   showPlanning,
   isStreaming,
   activeCopyId,
+  isRaw,
   onCopy,
+  onToggleRaw,
   onFork,
   UserMessageComponent,
   enableImagePreview,
@@ -78,7 +88,11 @@ function TraceItem({
   showPlanning: boolean;
   isStreaming: boolean;
   activeCopyId: string | null;
+  /** 当前 trace 是否按原始 Markdown 展示正文 */
+  isRaw: boolean;
   onCopy: (id: string) => void;
+  /** 切换当前 trace 的原文模式 */
+  onToggleRaw: (traceId: string) => void;
   /** 未提供时不渲染分支按钮 */
   onFork: ((entryId: string) => void) | undefined;
   UserMessageComponent: ComponentType<{
@@ -107,6 +121,8 @@ function TraceItem({
   const hasAssistantBlock = nodes.length > 0 && (hasNotice || !(isLastTrace && showPlanning));
   const assistantText = getAssistantText(assistantMsgs);
   const showAssistantToolbar = Boolean(assistantText.trim()) && !isTraceStreaming;
+  // 原文模式只作用于本轮最后一条有正文的 assistant 消息，前面的步骤通常是过程说明
+  const rawTargetId = lastAssistantTextId(assistantMsgs);
   const assistantCopyKey = `assistant-${userMsg.id}-all`;
   const assistantCopyVisible = activeCopyId === assistantCopyKey;
   // 这一轮能否分支：能的话工具栏会多一个分支按钮（此时可能只有它、没有正文）
@@ -140,7 +156,7 @@ function TraceItem({
           <div className="flex flex-col gap-3">
             {nodes.map(msg =>
               msg.role === 'assistant' ? (
-                <AssistantParts key={msg.id} msg={msg} />
+                <AssistantParts key={msg.id} msg={msg} raw={isRaw && msg.id === rawTargetId} />
               ) : (
                 <CompactionNotice key={msg.id} msg={msg} />
               )
@@ -152,7 +168,6 @@ function TraceItem({
               <FlashcardChangesBlock messages={assistantMsgs} />
             </div>
           )}
-          {/* 复制按钮靠左，统计靠右；两者都不渲染时该行高度为 0 */}
           <div className="mt-2 flex items-center gap-1.5">
             {/* 默认只在有正文且非流式时显示；刚复制过时即使处于流式也保留，便于连续复制；
                 这一轮已落定且可分支时也要显示，此时可能只有分支按钮 */}
@@ -164,6 +179,8 @@ function TraceItem({
                 isVisible={showAssistantToolbar ? assistantCopyVisible : true}
                 alignClass="justify-start"
                 onCopied={() => onCopy(assistantCopyKey)}
+                rawMode={isRaw}
+                onToggleRaw={assistantText.trim() ? () => onToggleRaw(userMsg.id) : undefined}
                 onFork={
                   onFork !== undefined && forkEntryId !== undefined
                     ? () => onFork(forkEntryId)
@@ -217,6 +234,17 @@ export const MessageList = memo(function MessageList({
   const shouldAutoScrollRef = useRef(true);
 
   const [activeCopyId, setActiveCopyId] = useState<string | null>(null);
+  // markdown原文渲染模式信息不按 trace 记录：TraceItem 会随虚拟列表卸载。状态放在这里才能在滚出视口后保持
+  const [rawTraceIds, setRawTraceIds] = useState<Set<string>>(() => new Set());
+
+  const toggleRaw = useCallback((traceId: string) => {
+    setRawTraceIds(prev => {
+      const next = new Set(prev);
+      if (next.has(traceId)) next.delete(traceId);
+      else next.add(traceId);
+      return next;
+    });
+  }, []);
 
   const CustomUserMessage = slots?.UserMessage ?? UserMessage;
 
@@ -342,7 +370,9 @@ export const MessageList = memo(function MessageList({
                   showPlanning={showPlanning}
                   isStreaming={isStreaming}
                   activeCopyId={activeCopyId}
+                  isRaw={rawTraceIds.has(trace.userMsg.id)}
                   onCopy={markCopied}
+                  onToggleRaw={toggleRaw}
                   onFork={sessionId === undefined ? undefined : requestFork}
                   UserMessageComponent={CustomUserMessage}
                   enableImagePreview={enableImagePreview}
