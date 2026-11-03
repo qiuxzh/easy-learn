@@ -44,10 +44,11 @@
   --color-stroke-3: color-mix(in srgb, var(--foreground) 12%, transparent);
   --color-stroke-4: color-mix(in srgb, var(--foreground) 16%, transparent);
 
-  /* 遮罩三档：浮层压暗背景的强度，由浅到深 */
+  /* 遮罩四档：浮层压暗背景的强度，由浅到深；第四档给全屏媒体查看器用 */
   --color-mask-1: rgb(0 0 0 / 0.12);
   --color-mask-2: rgb(0 0 0 / 0.24);
   --color-mask-3: rgb(0 0 0 / 0.48);
+  --color-mask-4: rgb(0 0 0 / 0.8);
 
   /* 叠色填充两档：hover 与 active 各一档，同类状态共用一个强度。半透明是刻意的：它叠在谁身上就跟随谁，用于自身没有底色的元素 */
   --color-hover-fill: color-mix(in srgb, var(--foreground) 6%, transparent);

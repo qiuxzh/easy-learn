@@ -59,7 +59,7 @@ src/
     └── ipc-channels.ts # IPC 通道常量
 ```
 
-- temp_script，里面可以放置临时的脚本，用于临时测试
+- temp_script，里面可以放置临时的脚本，用于临时测试。具体位置 temp_script/YYYY-MM-DD/
 
 ## 文档
 

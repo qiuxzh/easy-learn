@@ -51,6 +51,8 @@ const buttonVariants = cva(
         outline: 'hairline border-stroke-3 bg-background hover:bg-accent',
         ghost: 'hover:bg-hover-fill',
         quiet: 'text-muted-foreground hover:bg-hover-fill hover:text-foreground',
+        /* 悬浮效果控件 */
+        floating: 'bg-card shadow-panel hover:bg-accent',
       },
       /** 语义色：与填充方式正交 */
       tone: {

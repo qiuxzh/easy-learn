@@ -4,10 +4,8 @@ import { toast } from 'sonner';
 import type { CustomRendererProps } from 'streamdown';
 import { IconButton } from '@/components/ui/icon-button';
 import { SegmentedToggle } from '@/components/ui/segmented-toggle';
-import {
-  DEFAULT_PREVIEW_HEIGHT,
-  ZoomablePreview,
-} from '@/components/chat/markdown/ZoomablePreview';
+import { DiagramPreview } from '@/components/chat/markdown/DiagramPreview';
+import { DEFAULT_PREVIEW_HEIGHT } from '@/components/chat/markdown/ZoomablePreviewArea';
 import {
   copySvgImageToClipboard,
   getSvgDimensions,
@@ -25,9 +23,6 @@ type SvgPreviewState = {
   height?: number;
   error?: string;
 };
-
-const FALLBACK_CONTENT_WIDTH = 640;
-const FALLBACK_CONTENT_HEIGHT = 320;
 
 /**
  * 为当前 SVG 代码创建 Blob URL。
@@ -53,7 +48,7 @@ function useSvgPreviewUrl(code: string, enabled: boolean): string | undefined {
 }
 
 /**
- * 支持源码、预览、缩放、拖动和复制的 SVG 代码块。
+ * 支持源码、预览、缩放、拖动、全屏查看和复制的 SVG 代码块。
  */
 export function SvgBlock({ code, isIncomplete, language }: CustomRendererProps) {
   const [viewMode, setViewMode] = useState<SvgViewMode>('preview');
@@ -68,8 +63,8 @@ export function SvgBlock({ code, isIncomplete, language }: CustomRendererProps) 
   const previewStatus = isPreviewCurrent ? previewState.status : 'loading';
   const previewError =
     isPreviewCurrent && previewState.status === 'error' ? previewState.error : undefined;
-  const contentWidth = previewState.width ?? sourceDimensions?.width ?? FALLBACK_CONTENT_WIDTH;
-  const contentHeight = previewState.height ?? sourceDimensions?.height ?? FALLBACK_CONTENT_HEIGHT;
+  const contentWidth = previewState.width ?? sourceDimensions?.width;
+  const contentHeight = previewState.height ?? sourceDimensions?.height;
 
   /**
    * 记录 SVG 图片实际尺寸。
@@ -181,10 +176,10 @@ export function SvgBlock({ code, isIncomplete, language }: CustomRendererProps) 
       ) : (
         <div className="relative">
           {previewUrl && (
-            <ZoomablePreview
+            <DiagramPreview
+              label="SVG 预览"
               contentWidth={contentWidth}
               contentHeight={contentHeight}
-              className="bg-background"
             >
               <img
                 src={previewUrl}
@@ -194,7 +189,7 @@ export function SvgBlock({ code, isIncomplete, language }: CustomRendererProps) 
                 onLoad={handlePreviewLoad}
                 onError={handlePreviewError}
               />
-            </ZoomablePreview>
+            </DiagramPreview>
           )}
           {!previewUrl && (
             <div

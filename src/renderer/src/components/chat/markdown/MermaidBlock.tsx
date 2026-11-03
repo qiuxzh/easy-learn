@@ -5,10 +5,8 @@ import { toast } from 'sonner';
 import type { CustomRendererProps } from 'streamdown';
 import { IconButton } from '@/components/ui/icon-button';
 import { SegmentedToggle } from '@/components/ui/segmented-toggle';
-import {
-  DEFAULT_PREVIEW_HEIGHT,
-  ZoomablePreview,
-} from '@/components/chat/markdown/ZoomablePreview';
+import { DiagramPreview } from '@/components/chat/markdown/DiagramPreview';
+import { DEFAULT_PREVIEW_HEIGHT } from '@/components/chat/markdown/ZoomablePreviewArea';
 import { copySvgImageToClipboard, getSvgDimensions } from '@/components/chat/markdown/svg-utils';
 
 /** Mermaid 代码块的显示模式。 */
@@ -128,9 +126,6 @@ function buildMermaidConfig(): MermaidConfig {
   };
 }
 
-const FALLBACK_CONTENT_WIDTH = 640;
-const FALLBACK_CONTENT_HEIGHT = 320;
-
 let mermaidPluginPromise: Promise<DiagramPlugin> | null = null;
 let mermaidRenderQueue: Promise<void> = Promise.resolve();
 
@@ -188,7 +183,7 @@ function createRenderId(baseId: string): string {
 }
 
 /**
- * 支持源码、预览、缩放、拖动和复制的 Mermaid 代码块。
+ * 支持源码、预览、缩放、拖动、全屏查看和复制的 Mermaid 代码块。
  */
 export function MermaidBlock({ code, isIncomplete, language }: CustomRendererProps) {
   const [viewMode, setViewMode] = useState<MermaidViewMode>('preview');
@@ -319,10 +314,10 @@ export function MermaidBlock({ code, isIncomplete, language }: CustomRendererPro
           </div>
         </div>
       ) : currentResult?.svg ? (
-        <ZoomablePreview
-          contentWidth={svgDimensions?.width ?? FALLBACK_CONTENT_WIDTH}
-          contentHeight={svgDimensions?.height ?? FALLBACK_CONTENT_HEIGHT}
-          className="bg-background"
+        <DiagramPreview
+          label="Mermaid 图表"
+          contentWidth={svgDimensions?.width}
+          contentHeight={svgDimensions?.height}
         >
           <div
             data-mermaid-svg
@@ -332,7 +327,7 @@ export function MermaidBlock({ code, isIncomplete, language }: CustomRendererPro
             aria-label="Mermaid 图表"
             dangerouslySetInnerHTML={{ __html: currentResult.svg }}
           />
-        </ZoomablePreview>
+        </DiagramPreview>
       ) : (
         <div
           className="flex items-center justify-center gap-2 p-4 text-sm text-muted-foreground"

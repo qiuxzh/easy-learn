@@ -1,7 +1,10 @@
 'use client';
 
-import { useState } from 'react';
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { useState, type SyntheticEvent } from 'react';
+import { Loader2, TriangleAlert } from 'lucide-react';
+import { PreviewDialog } from '@/components/chat/PreviewDialog';
+import { ZoomablePreviewArea } from '@/components/chat/markdown/ZoomablePreviewArea';
+import { cn } from '@/lib/utils';
 
 export type ImagePreviewDialogProps = {
   /** 待预览图片的 app:// 地址；为 null 表示关闭 */
@@ -10,9 +13,87 @@ export type ImagePreviewDialogProps = {
   onOpenChange: (open: boolean) => void;
 };
 
+/** 图片加载状态。 */
+type ImageLoadState = {
+  status: 'loading' | 'ready' | 'error';
+  width?: number;
+  height?: number;
+};
+
+/**
+ * 图片查看器：深色全屏浮层 + 缩放画布。
+ *
+ * 图片尺寸在 onLoad 之后才能拿到，加载完成前按兜底比例占位，完成后由画布重新适配。
+ */
+function ImageViewer({ src, onClose }: { src: string; onClose: () => void }) {
+  const [loadState, setLoadState] = useState<ImageLoadState>({ status: 'loading' });
+
+  /**
+   * 记录图片真实尺寸，供画布计算适应比例。
+   */
+  function handleLoad(event: SyntheticEvent<HTMLImageElement>) {
+    const image = event.currentTarget;
+
+    setLoadState({
+      status: 'ready',
+      width: image.naturalWidth || undefined,
+      height: image.naturalHeight || undefined,
+    });
+  }
+
+  return (
+    <>
+      <ZoomablePreviewArea
+        fill
+        transparent
+        wheelZoom="always"
+        maxFit={1}
+        inset={48}
+        contentWidth={loadState.width}
+        contentHeight={loadState.height}
+        onClose={onClose}
+        dismissOnBackdrop
+      >
+        <img
+          src={src}
+          alt="图片预览"
+          draggable={false}
+          className={cn(
+            'h-full w-full object-contain',
+            // 加载失败时浏览器会在原地画一个破图图标，盖住它，只留错误提示
+            loadState.status === 'error' && 'invisible'
+          )}
+          onLoad={handleLoad}
+          onError={() => setLoadState({ status: 'error' })}
+        />
+      </ZoomablePreviewArea>
+
+      {loadState.status === 'loading' && (
+        <div className="pointer-events-none absolute inset-0 grid place-items-center">
+          <span className="pointer-events-auto inline-flex items-center gap-2 rounded-full bg-card px-3 py-1.5 text-xs text-ink-secondary shadow-panel">
+            <Loader2 className="size-3.5 animate-spin" />
+            加载中
+          </span>
+        </div>
+      )}
+
+      {loadState.status === 'error' && (
+        <div className="pointer-events-none absolute inset-0 grid place-items-center">
+          <span className="pointer-events-auto inline-flex items-center gap-2 rounded-full bg-card px-3 py-1.5 text-xs text-destructive shadow-panel">
+            <TriangleAlert className="size-3.5" />
+            图片加载失败
+          </span>
+        </div>
+      )}
+    </>
+  );
+}
+
 /**
  * 图片预览弹窗：受控组件，输入框草稿与已发送的气泡共用。
- * 内容区去掉默认留白与背景，让图片按视口大小自适应并保持原始比例。
+ *
+ * 打开后是可缩放的查看器，图片不自动放大；滚轮以光标为锚点，拖动钳制在留白内，
+ * 关闭键与缩放控件同在底部工具条，避开窗口右上角的窗口控件。
  */
 export function ImagePreviewDialog({ src, onOpenChange }: ImagePreviewDialogProps) {
   /** 关闭瞬间记下的图片地址：调用方会立刻把 src 置空，退场动画期间仍要显示这张图 */
@@ -28,19 +109,8 @@ export function ImagePreviewDialog({ src, onOpenChange }: ImagePreviewDialogProp
   const shownSrc = src ?? closingSrc;
 
   return (
-    <Dialog open={Boolean(src)} onOpenChange={handleOpenChange}>
-      {/* eslint-disable-next-line better-tailwindcss/no-restricted-classes -- TODO(on-mask-ink): 整层压在图片上，缺一档不随主题翻转的墨色 token，补齐后删掉本行 */}
-      <DialogContent className="max-w-[90vw] border-0 bg-transparent p-0 text-white shadow-none">
-        {/* Radix 要求内容区必须有无障碍标题，这里只供读屏使用 */}
-        <DialogTitle className="sr-only">图片预览</DialogTitle>
-        {shownSrc && (
-          <img
-            src={shownSrc}
-            alt="图片预览"
-            className="max-h-[85vh] max-w-full rounded-lg object-contain"
-          />
-        )}
-      </DialogContent>
-    </Dialog>
+    <PreviewDialog open={Boolean(src)} onOpenChange={handleOpenChange} title="图片预览">
+      {shownSrc && <ImageViewer src={shownSrc} onClose={() => handleOpenChange(false)} />}
+    </PreviewDialog>
   );
 }
