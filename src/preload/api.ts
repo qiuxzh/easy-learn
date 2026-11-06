@@ -129,7 +129,7 @@ export const api = {
     ipcRenderer.invoke(IpcChannel.Attachment_Store, req) as Promise<ImageContent[]>,
 
   // 书籍（书库）
-  /** 让 main 端弹文件框 + 解析 + 写库，返回 BookDoc */
+  /** 让 main 端弹文件框 + 解析 + 写库，返回 BookDto */
   pickAndImportBook: () =>
     ipcRenderer.invoke(IpcChannel.Book_PickAndImport) as Promise<BookImportResult>,
   getAllBooks: () => ipcRenderer.invoke(IpcChannel.Book_GetAllBooks) as Promise<BookListResult>,
@@ -142,7 +142,7 @@ export const api = {
   /** 弹框选取封面图片，返回字节供渲染层预览（此时还未落盘） */
   pickBookCover: () =>
     ipcRenderer.invoke(IpcChannel.Book_PickCover) as Promise<BookPickCoverResult>,
-  /** 更新书名 / 作者 / 封面，返回更新后的 BookDoc */
+  /** 更新书名 / 作者 / 封面，返回更新后的 BookDto */
   updateBook: (request: BookUpdateRequest) =>
     ipcRenderer.invoke(IpcChannel.Book_UpdateBook, request) as Promise<BookUpdateResult>,
   /** 重新切分正文：重解析原文件、替换分片、清空该书全部向量 */

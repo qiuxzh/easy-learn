@@ -1,6 +1,6 @@
 import type { FoliateBook, FoliateDestination } from '@/components/reader/foliate-types';
-import type { BookRow } from '../db/schema';
-import type { BookDoc, BookStages, TOCItem } from '@shared/types/books';
+import type { BookEntity } from '@main/contracts/book';
+import type { BookDto, BookStages, TOCItem } from '@shared/types/books';
 import { collectPlainText, type PictureUnitLookup } from './etl/chunking/html-text';
 
 interface TextNodeLike {
@@ -15,8 +15,8 @@ interface TextNodeLike {
   removeChild?: (child: TextNodeLike) => TextNodeLike;
 }
 
-/** 将 DB 行转换为渲染端 Book 实体；fileSize 与 stages 由调用方查好传进来 */
-export function toBook(row: BookRow, fileSize: number | null, stages: BookStages): BookDoc {
+/** 将 DB 行转换为渲染端 BookEntity 实体；fileSize 与 stages 由调用方查好传进来 */
+export function toBook(row: BookEntity, fileSize: number | null, stages: BookStages): BookDto {
   return {
     id: row.id,
     booksName: row.booksName,

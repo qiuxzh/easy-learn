@@ -14,7 +14,7 @@ export interface CardFields {
 }
 
 /** 牌组记录。 */
-export interface CardGroup {
+export interface CardGroupDto {
   id: string;
   name: string;
   createdAt: number;
@@ -22,7 +22,7 @@ export interface CardGroup {
 }
 
 /** 牌组统计信息。 */
-export interface CardGroupSummary extends CardGroup {
+export interface CardGroupSummaryDto extends CardGroupDto {
   /** 未学习的新卡数量。 */
   unlearned: number;
   /** 当前到期的学习中卡片数量。 */
@@ -34,7 +34,7 @@ export interface CardGroupSummary extends CardGroup {
 }
 
 /** 闪卡记录及 FSRS 复习状态。 */
-export interface CardRecord {
+export interface CardDto {
   /** 卡片唯一标识。 */
   id: string;
   /** 所属牌组 ID。 */
@@ -127,21 +127,21 @@ export interface ReviewCardRequest {
 /** 牌组列表响应。 */
 export interface CardGroupListResult {
   success: boolean;
-  groups?: CardGroupSummary[];
+  groups?: CardGroupSummaryDto[];
   error?: string;
 }
 
 /** 单个牌组操作响应。 */
 export interface CardGroupResult {
   success: boolean;
-  group?: CardGroupSummary;
+  group?: CardGroupSummaryDto;
   error?: string;
 }
 
 /** 卡片列表响应。 */
 export interface CardListResult {
   success: boolean;
-  cards?: CardRecord[];
+  cards?: CardDto[];
   tags?: string[];
   error?: string;
 }
@@ -149,7 +149,7 @@ export interface CardListResult {
 /** 单张卡片响应。 */
 export interface CardResult {
   success: boolean;
-  card?: CardRecord;
+  card?: CardDto;
   error?: string;
 }
 

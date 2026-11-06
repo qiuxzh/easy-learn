@@ -1,4 +1,4 @@
-﻿import fs from 'node:fs';
+import fs from 'node:fs';
 import JSZip from 'jszip';
 import { initFoliatePolyfill } from './foliate-polyfill';
 import { parseEpubFromBuffer, extractCoverFromZip } from '@shared/utils/book-parser';

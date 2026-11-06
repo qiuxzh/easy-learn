@@ -3,13 +3,23 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import log from 'electron-log';
 import mime from 'mime-types';
-import { Constants } from './constants';
-import { attachmentRepo } from './db/repo';
+import { isInsideDir } from '@main/utils/attachment-util';
+import type { AttachmentService } from '@main/service/attachment-service';
+
+/** 注册 app:// 协议所需的路径与附件能力。 */
+export interface AppProtocolDeps {
+  /** 数据根目录，普通路径寻址以它为界。 */
+  dataDir: string;
+  /** 附件目录，附件寻址的越权校验以它为界。 */
+  attachmentDir: string;
+  /** 按 id 查附件记录。 */
+  attachmentService: AttachmentService;
+}
 
 /**
  * app:// 自定义协议
  *
- * URL 格式：app:///{relativePath}，relativePath 是相对于 Constants.dataDir 的路径
+ * URL 格式：app:///{relativePath}，relativePath 是相对于注入的 dataDir 的路径
  * 仅 dataDir 内部的文件可被访问，使用 path.relative 校验防越权
  *
  * 附件寻址：app://attachment-resource/<attachmentId>，按 id 查附件表定位文件。
@@ -37,15 +47,17 @@ export function registerAppProtocolPrivileges(): void {
 const ATTACHMENT_HOSTNAME = 'attachment-resource';
 
 /** 处理附件寻址：按 id 查附件表拿路径与 MIME，再读文件返回 */
-async function handleAttachmentRequest(attachmentId: string): Promise<Response> {
-  const row = attachmentRepo.findById(attachmentId);
+async function handleAttachmentRequest(
+  attachmentId: string,
+  deps: AppProtocolDeps
+): Promise<Response> {
+  const row = deps.attachmentService.getAttachment(attachmentId);
   if (!row) {
     return new Response('Not Found', { status: 404 });
   }
 
-  const target = path.resolve(Constants.dataDir, row.path);
-  const relative = path.relative(Constants.attachmentDir, target);
-  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+  const target = path.resolve(deps.dataDir, row.path);
+  if (!isInsideDir(deps.attachmentDir, target)) {
     log.warn('[app://] blocked (invalid attachment path):', attachmentId, '->', target);
     return new Response('Forbidden', { status: 403 });
   }
@@ -66,7 +78,7 @@ async function handleAttachmentRequest(attachmentId: string): Promise<Response> 
   }
 }
 
-async function handleAppRequest(req: Request): Promise<Response> {
+async function handleAppRequest(req: Request, deps: AppProtocolDeps): Promise<Response> {
   try {
     const url = new URL(req.url);
 
@@ -76,7 +88,7 @@ async function handleAppRequest(req: Request): Promise<Response> {
       if (!attachmentId) {
         return new Response('Bad Request', { status: 400 });
       }
-      return handleAttachmentRequest(attachmentId);
+      return handleAttachmentRequest(attachmentId, deps);
     }
 
     // 浏览器把 app:///path 解析为 hostname="path的第一段" + pathname="/剩余段"
@@ -92,7 +104,7 @@ async function handleAppRequest(req: Request): Promise<Response> {
       return new Response('Bad Request', { status: 400 });
     }
 
-    const normalizedRoot = path.resolve(Constants.dataDir);
+    const normalizedRoot = path.resolve(deps.dataDir);
     // 去掉 pathname 前导 / 防止 Windows 下被当作绝对路径
     const cleanedPath = url.hostname ? pathname.replace(/^\/+/, '') : pathname.replace(/^\/+/, '');
     const target = path.resolve(normalizedRoot, url.hostname, cleanedPath);
@@ -123,7 +135,7 @@ async function handleAppRequest(req: Request): Promise<Response> {
   }
 }
 
-export function registerAppProtocol(): void {
-  protocol.handle('app', handleAppRequest);
+export function registerAppProtocol(deps: AppProtocolDeps): void {
+  protocol.handle('app', req => handleAppRequest(req, deps));
   log.info('[app://] custom protocol registered');
 }

@@ -7,9 +7,9 @@
  * 单独成模块而不是留在编排层里，是因为它被三处用到——编排（每个批次边界检测配置变更）、
  * 服务层（启动前检查有没有模型）。留在编排层里会让查询层反向依赖它。
  */
-import { configService } from '@main/config';
-import { embedIndexRepo } from '@main/db/repo';
-import { modelFingerprint, type EmbeddingIdentity } from '@shared/utils/embedding-identity';
+import type { EmbeddingConfig } from '@main/contracts/config';
+import type { EmbedIndexRepo } from '@main/contracts/book-repo';
+import { modelFingerprint } from '@shared/utils/embedding-identity';
 
 /** 配置里选中的那一套模型参数。 */
 export interface ActiveEntry {
@@ -46,8 +46,8 @@ export interface ResolvedModel {
 }
 
 /** 读配置里选中的那一项；没有选中、或字段不全时返回 null。不查库。 */
-export function readActiveEntry(): ActiveEntry | null {
-  const embedding = configService.get('embedding');
+export function readActiveEntry(config: EmbeddingConfig): ActiveEntry | null {
+  const embedding = config.get();
   const selected = embedding?.selected?.trim();
   if (!selected) return null;
 
@@ -65,8 +65,11 @@ export function readActiveEntry(): ActiveEntry | null {
  * 配置 ＋ 注册表 → 当前该用哪套模型参数。
  * 没有配置、或选中的键不存在时返回 null——调用方据此提示用户先去设置页。
  */
-export function resolveActiveModel(): ResolvedModel | null {
-  const entry = readActiveEntry();
+export function resolveActiveModel(
+  config: EmbeddingConfig,
+  embedIndexRepo: EmbedIndexRepo
+): ResolvedModel | null {
+  const entry = readActiveEntry(config);
   if (!entry) return null;
 
   const fingerprint = modelFingerprint({ endpoint: entry.endpoint, modelId: entry.modelId });

@@ -19,6 +19,9 @@ const PDFJS_SOURCE_ROOT = resolve(__dirname, 'node_modules/pdfjs-dist');
 
 export default defineConfig({
   main: {
+    define: {
+      __dirname: '"."',
+    },
     build: {
       sourcemap: true,
       rollupOptions: {

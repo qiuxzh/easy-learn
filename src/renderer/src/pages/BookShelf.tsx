@@ -17,7 +17,7 @@ import { useTabsStore } from '@/stores/tabs-store';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { fallbackCoverText } from '@/utils/book-cover';
-import type { BookDoc } from '@shared/types/books';
+import type { BookDto } from '@shared/types/books';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -48,16 +48,16 @@ function BookCard({
   onOpenStatus,
   onClick,
 }: {
-  book: BookDoc;
+  book: BookDto;
   deleting: boolean;
   /** 展示状态：入库状态叠加运行态。只有「生成中」会在卡片上挂角标 */
   indexState: EmbeddingState;
   indexCounts: { total: number; done: number };
   /** 现有向量不是当前模型生成的 */
   stale: boolean;
-  onDelete: (book: BookDoc) => void;
-  onOpenDetail: (book: BookDoc) => void;
-  onOpenStatus: (book: BookDoc) => void;
+  onDelete: (book: BookDto) => void;
+  onOpenDetail: (book: BookDto) => void;
+  onOpenStatus: (book: BookDto) => void;
   onClick: () => void;
 }) {
   const hasCover = !!book.coverUrl;
@@ -205,11 +205,11 @@ export const BookShelf = memo(function BookShelf() {
   const embeddingRuntime = useEmbeddingStore(s => s.runtime);
   const currentModel = useEmbeddingStore(s => s.current);
   const addTab = useTabsStore(s => s.addTab);
-  const [pendingDelete, setPendingDelete] = useState<BookDoc | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<BookDto | null>(null);
   // 详情弹窗以打开时的书籍快照为准：store 更新后不会打断弹窗里的输入
-  const [detailBook, setDetailBook] = useState<BookDoc | null>(null);
+  const [detailBook, setDetailBook] = useState<BookDto | null>(null);
   // 书籍状态弹窗只按书打开，不做批量；与详情弹窗互斥
-  const [statusBook, setStatusBook] = useState<BookDoc | null>(null);
+  const [statusBook, setStatusBook] = useState<BookDto | null>(null);
 
   useEffect(() => {
     if (loaded) return;
@@ -226,17 +226,17 @@ export const BookShelf = memo(function BookShelf() {
   };
 
   /** 打开书籍详情弹窗 */
-  const handleOpenDetail = (book: BookDoc) => {
+  const handleOpenDetail = (book: BookDto) => {
     setDetailBook(book);
   };
 
   /** 打开书籍状态弹窗 */
-  const handleOpenStatus = (book: BookDoc) => {
+  const handleOpenStatus = (book: BookDto) => {
     setStatusBook(book);
   };
 
   /** 打开删除确认弹窗 */
-  const handleOpenDelete = (book: BookDoc) => {
+  const handleOpenDelete = (book: BookDto) => {
     setPendingDelete(book);
   };
 

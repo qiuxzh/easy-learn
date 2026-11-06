@@ -10,7 +10,6 @@ export { readActiveEntry, resolveActiveModel } from './embedding-model';
 export type { ActiveEntry, EmbedIndexRef, ResolvedModel } from './embedding-model';
 export { BookEmbeddingRunner, estimateProgress, runBookEmbedding } from './embedding-runner';
 export type {
-  BookEmbeddingRunnerEvents,
   ProgressEstimate,
   RateSample,
   RunContext,

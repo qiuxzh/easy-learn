@@ -2,7 +2,6 @@ import { constants } from 'node:fs';
 import { access as fsAccess, readFile as fsReadFile } from 'node:fs/promises';
 import path from 'node:path';
 import { Type } from 'typebox';
-import { Constants } from '@main/constants';
 import { isSupportedImageExtension } from '@shared/utils/file-util';
 import { defineSessionTool, SessionTool } from '../agent-definition';
 import {
@@ -42,11 +41,11 @@ const defaultReadOperations: ReadOperations = {
  * 工作目录既是相对路径的基准，也是可读范围的边界。
  * 用 .. 绕出工作目录、或指向工作目录本身的路径都会被拒绝。
  */
-function resolveReadPath(input: string, cwd: string): string {
+function resolveReadPath(input: string, cwd: string, dataDir: string): string {
   const absolutePath = path.resolve(cwd, input);
   const relative = path.relative(cwd, absolutePath);
   if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
-    const scope = cwd === Constants.dataDir ? 'data 目录' : cwd;
+    const scope = cwd === dataDir ? 'data 目录' : cwd;
     throw new Error(`路径超出可读范围（可读范围：${scope}）：${input}`);
   }
   return absolutePath;
@@ -87,9 +86,13 @@ function formatTruncatedBody(
 }
 
 /** 读取文本文件：支持 offset/limit 指定行范围，超长时保留头尾并给出续读用的 offset。 */
-export function createReadTool(
-  cwd: string = Constants.dataDir // 基础目录，不传时以 data 目录为范围
-): SessionTool<typeof readSchema, undefined> {
+export function createReadTool(options: {
+  /** 数据根目录，既是相对路径基准，也是默认可读范围 */
+  dataDir: string;
+  /** 覆盖可读范围；省略时与 dataDir 相同 */
+  cwd?: string;
+}): SessionTool<typeof readSchema, undefined> {
+  const cwd = options.cwd ?? options.dataDir;
   return defineSessionTool({
     name: 'read',
     description:
@@ -103,7 +106,7 @@ export function createReadTool(
         throw new Error('操作已取消');
       }
 
-      const absolutePath = resolveReadPath(params.path, cwd);
+      const absolutePath = resolveReadPath(params.path, cwd, options.dataDir);
       if (isSupportedImageExtension(path.extname(absolutePath))) {
         throw new Error(`${params.path} 是图片文件，read 不读图片`);
       }

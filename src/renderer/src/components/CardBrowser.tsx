@@ -41,7 +41,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import type { CardGroupSummary, CardRecord } from '@shared/types/flashcards';
+import type { CardGroupSummaryDto, CardDto } from '@shared/types/flashcards';
 
 /** 卡片列表每页显示数量。 */
 const CARD_PAGE_SIZE = 50;
@@ -69,8 +69,8 @@ export function CardBrowser({ tabId, groupId }: CardBrowserProps) {
   const browserRootRef = useRef<HTMLDivElement>(null);
   /** 本页是否为当前激活的 Tab；TabContent 用 hidden 保留其他页，这里据此收起浮层。 */
   const isActiveTab = useTabsStore(s => s.activeTabId === tabId);
-  const [groups, setGroups] = useState<CardGroupSummary[]>([]);
-  const [cards, setCards] = useState<CardRecord[]>([]);
+  const [groups, setGroups] = useState<CardGroupSummaryDto[]>([]);
+  const [cards, setCards] = useState<CardDto[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState(groupId ?? '');
   const [selectedTag, setSelectedTag] = useState('');
@@ -213,7 +213,7 @@ export function CardBrowser({ tabId, groupId }: CardBrowserProps) {
   }
 
   /** 保存后立即更新列表中的卡片内容。 */
-  function handleEditorSaved(savedCard: CardRecord) {
+  function handleEditorSaved(savedCard: CardDto) {
     setCards(current => current.map(card => (card.id === savedCard.id ? savedCard : card)));
   }
 
@@ -348,7 +348,7 @@ function FilterPanel({
   onSelectGroup,
   onSelectTag,
 }: {
-  groups: CardGroupSummary[];
+  groups: CardGroupSummaryDto[];
   tags: string[];
   selectedGroupId: string;
   selectedTag: string;
@@ -453,9 +453,9 @@ function CardListPanel({
   onPageChange,
   onSelectCard,
 }: {
-  cards: CardRecord[];
+  cards: CardDto[];
   totalCards: number;
-  groups: CardGroupSummary[];
+  groups: CardGroupSummaryDto[];
   selectedCardId: string | null;
   page: number;
   pageCount: number;
@@ -613,7 +613,7 @@ function CardListRow({
   active,
   onClick,
 }: {
-  card: CardRecord;
+  card: CardDto;
   groupName: string;
   active: boolean;
   onClick: () => void;
@@ -711,7 +711,7 @@ function CardPagination({
 }
 
 /** 格式化卡片的下一次出现时间。 */
-function formatReviewDue(card: CardRecord): string {
+function formatReviewDue(card: CardDto): string {
   if (card.state === 0) return '现在';
   const remainingMs = card.due - Date.now();
   if (remainingMs <= 0) return '现在';
@@ -730,7 +730,7 @@ function formatInterval(days: number): string {
   return `${days}天`;
 }
 /** 根据 FSRS 状态显示卡片状态。 */
-function StatusBadge({ state }: { state: CardRecord['state'] }) {
+function StatusBadge({ state }: { state: CardDto['state'] }) {
   if (state === 0)
     return (
       <Badge variant="outline" tone="info" className="shrink-0">

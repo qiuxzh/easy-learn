@@ -7,19 +7,19 @@ import type { Model } from '../model/types';
 import type { AgentDefinition } from './agent-definition';
 import { AgentSession } from './agent-session';
 import { createImageHydrator } from './util/hydrate-images';
-import { SessionManager } from './session-manager';
+import type { SessionManager } from './session-manager';
 
 /** Agent 初始状态中由会话决定的字段。 */
 type AgentInitialState = Partial<
   Omit<AgentState, 'pendingToolCalls' | 'isStreaming' | 'streamingMessage' | 'errorMessage'>
 >;
 
-/** 组装一次会话所需的输入。除 sessionId 与品类外都有默认行为。 */
+/** 组装一次会话所需的输入。除品类与会话日志外都有默认行为。 */
 export interface CreateAgentSessionOptions {
-  /** 所属会话的 id。 */
-  sessionId: string;
   /** 品类定义，决定系统提示与工具集。 */
   definition: AgentDefinition;
+  /** 已建好的会话日志视图，由调用方按自己的仓储装配。 */
+  sessionManager: SessionManager;
   /** 模型配置运行时，提供模型查询与流式实现。 */
   modelRuntime: ModelRuntime;
   /** 指定模型；省略时按"日志记录 → 配置默认"取。 */
@@ -28,6 +28,8 @@ export interface CreateAgentSessionOptions {
   thinkingLevel?: ThinkingLevel;
   /** 覆盖流式实现，仅供测试使用。 */
   streamFn?: StreamFn;
+  /** 按附件 id 读图片字节；省略时图片降级为占位文本。 */
+  readAttachment?: (attachmentId: string) => { data: string; mimeType: string } | undefined;
 }
 
 /**
@@ -35,8 +37,7 @@ export interface CreateAgentSessionOptions {
  * 新建与重建是同一条路径——日志为空即新建，有日志则按日志回放上下文与运行期设置。
  */
 export function createAgentSession(options: CreateAgentSessionOptions): AgentSession {
-  const { sessionId, definition, modelRuntime } = options;
-  const sessionManager = new SessionManager(sessionId);
+  const { definition, modelRuntime, sessionManager } = options;
   // NewSession = 会话还没有指向任何 entry（tip 为空）。比直接对比获取entry的方式轻量
   const isNewSession = sessionManager.tipEntryId === null;
   const context = sessionManager.buildContext();
@@ -69,6 +70,7 @@ export function createAgentSession(options: CreateAgentSessionOptions): AgentSes
     // 图片以落盘路径入上下文，发往模型前在这里读成 base64；模型不支持图片时降级为占位文本
     convertToLlm: createImageHydrator({
       supportsImage: model?.input.includes('image') ?? false,
+      readAttachment: options.readAttachment,
     }),
   });
 

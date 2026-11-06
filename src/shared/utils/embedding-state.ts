@@ -16,7 +16,7 @@ import { isSameModel, type EmbeddingIdentity } from './embedding-identity';
 /**
  * 把「向量阶段」的进度投影成向量化信息。
  *
- * 界面拿到的是 `BookDoc.stages`（阶段形状），而这里的推导、以及主进程的检索判断
+ * 界面拿到的是 `BookDto.stages`（阶段形状），而这里的推导、以及主进程的检索判断
  * 都建立在 `BookEmbedding` 上。两者字段一一对应，所以转换只有这一处。
  *
  * 阶段不存在、或 `total` / `done` 为空时按 0 处理：此时这本书本来就不具备向量，

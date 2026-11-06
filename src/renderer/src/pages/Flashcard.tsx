@@ -42,7 +42,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import type { CardGroupSummary } from '@shared/types/flashcards';
+import type { CardGroupSummaryDto } from '@shared/types/flashcards';
 
 /** 每张卡的预估学习时长（秒）。只用于今日带的「约 N 分钟」，不参与调度。 */
 const SECONDS_PER_CARD = 20;
@@ -61,12 +61,12 @@ interface DeckTotals {
 }
 
 /** 一个牌组当前可学习的卡片数。 */
-function availableCount(group: CardGroupSummary): number {
+function availableCount(group: CardGroupSummaryDto): number {
   return group.unlearned + group.learning + group.due;
 }
 
 /** 一个牌组已排期、尚未到期的卡片数。 */
-function scheduledCount(group: CardGroupSummary): number {
+function scheduledCount(group: CardGroupSummaryDto): number {
   return group.total - availableCount(group);
 }
 
@@ -86,13 +86,13 @@ function deferMenuAction(action: () => void) {
 /** 闪卡主页：今日带 + 双列牌组卡。 */
 export function Flashcard() {
   const addTab = useTabsStore(s => s.addTab);
-  const [groups, setGroups] = useState<CardGroupSummary[]>([]);
+  const [groups, setGroups] = useState<CardGroupSummaryDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [createName, setCreateName] = useState('');
-  const [renameTarget, setRenameTarget] = useState<CardGroupSummary | null>(null);
+  const [renameTarget, setRenameTarget] = useState<CardGroupSummaryDto | null>(null);
   const [renameName, setRenameName] = useState('');
-  const [deleteTarget, setDeleteTarget] = useState<CardGroupSummary | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<CardGroupSummaryDto | null>(null);
   const { openCreateCard, cardEditDialog } = useCardEditDialog();
 
   const totals = useMemo<DeckTotals>(
@@ -164,7 +164,7 @@ export function Flashcard() {
   }
 
   /** 打开选中牌组的复习页。 */
-  function openReview(group: CardGroupSummary) {
+  function openReview(group: CardGroupSummaryDto) {
     addTab('card-review', {
       groupId: group.id,
       title: `复习 · ${group.name}`,
@@ -195,7 +195,7 @@ export function Flashcard() {
   }
 
   /** 打开重命名对话框。 */
-  function openRename(group: CardGroupSummary) {
+  function openRename(group: CardGroupSummaryDto) {
     setRenameTarget(group);
     setRenameName(group.name);
   }
@@ -576,7 +576,7 @@ function CompositionBar({
   group,
   maxAvailable,
 }: {
-  group: CardGroupSummary;
+  group: CardGroupSummaryDto;
   maxAvailable: number;
 }) {
   const available = availableCount(group);
@@ -621,7 +621,7 @@ function DeckCard({
   onRename,
   onDelete,
 }: {
-  group: CardGroupSummary;
+  group: CardGroupSummaryDto;
   maxAvailable: number;
   onBrowse: () => void;
   onReview: () => void;

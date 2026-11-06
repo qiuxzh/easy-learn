@@ -18,7 +18,7 @@ import { coverMimeType, fallbackCoverText } from '@/utils/book-cover';
 import { formatDateTime } from '@shared/utils/time-util';
 import { resolveEmbeddingState, toEmbedding } from '@shared/utils/embedding-state';
 import type { EmbeddingState } from '@shared/types/embedding';
-import type { BookDoc, BookUpdateRequest, CoverImage } from '@shared/types/books';
+import type { BookDto, BookUpdateRequest, CoverImage } from '@shared/types/books';
 
 /** 换封面时的本地预览：Blob URL 用于显示，cover 是等待随保存一起落盘的图片内容 */
 interface CoverPreview {
@@ -29,7 +29,7 @@ interface CoverPreview {
 /** 书籍详情弹窗属性 */
 interface BookDetailDialogProps {
   /** 要查看 / 编辑的书籍 */
-  book: BookDoc;
+  book: BookDto;
   /** 关闭弹窗回调 */
   onOpenChange: (open: boolean) => void;
   /** 打开书籍状态弹窗。两个弹窗不并存，由调用方先关详情再开状态 */

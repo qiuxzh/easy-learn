@@ -31,7 +31,7 @@ export enum IpcChannel {
   Attachment_Store = 'attachment:store',
 
   // 书籍（书库）
-  /** main 端打开 dialog 选文件 + 解析 + 写库，返回 BookDoc */
+  /** main 端打开 dialog 选文件 + 解析 + 写库，返回 BookDto */
   Book_PickAndImport = 'book:pickAndImport',
   Book_GetAllBooks = 'book:getAllBooks',
   Book_DeleteBook = 'book:deleteBook',

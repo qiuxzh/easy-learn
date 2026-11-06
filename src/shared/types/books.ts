@@ -11,6 +11,8 @@ export interface CoverImage {
 }
 
 // reader所需要的书的实体类型
+// TODO: 与 `@main/contracts/book` 的 `BookEntity` 重名——那是数据库里的书，这里是 foliate 解析结果。
+// 应改名为 `FoliateBookEntity`，需要同步阅读器组件与 foliate 适配层。
 export interface BookEntity {
   id: string; // 书籍的id
   metadata: BookMetadata; // 书籍的元信息
@@ -101,7 +103,7 @@ export interface BookStageInfo {
 export type BookStages = Partial<Record<BookStageName, BookStageInfo>>;
 
 /** 渲染端展示用的书籍实体 */
-export interface BookDoc {
+export interface BookDto {
   id: string;
   booksName: string;
   booksType: BookType;
@@ -122,14 +124,14 @@ export interface BookImportResult {
   success: boolean;
   /** 用户取消选择时为 false 且无 error */
   canceled?: boolean;
-  book?: BookDoc;
+  book?: BookDto;
   error?: string;
 }
 
 /** 获取所有书籍响应 */
 export interface BookListResult {
   success: boolean;
-  books?: BookDoc[];
+  books?: BookDto[];
   error?: string;
 }
 
@@ -182,7 +184,7 @@ export interface BookUpdateRequest {
 /** 更新书籍信息响应 */
 export interface BookUpdateResult {
   success: boolean;
-  book?: BookDoc;
+  book?: BookDto;
   error?: string;
 }
 

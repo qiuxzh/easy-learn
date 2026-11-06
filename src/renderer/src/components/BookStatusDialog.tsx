@@ -32,7 +32,7 @@ import {
   resolveEmbeddingState,
   toEmbedding,
 } from '@shared/utils/embedding-state';
-import type { BookDoc, BookStageInfo } from '@shared/types/books';
+import type { BookDto, BookStageInfo } from '@shared/types/books';
 import type { OcrRuntime } from '@shared/types/ocr';
 
 /** 节点语气，决定边框与文字配色。 */
@@ -80,7 +80,7 @@ interface NodeView {
 /** 书籍状态弹窗属性 */
 interface BookStatusDialogProps {
   /** 要查看的书籍（列表刷新后会换成最新快照） */
-  book: BookDoc;
+  book: BookDto;
   /** 关闭弹窗回调 */
   onOpenChange: (open: boolean) => void;
 }
@@ -402,7 +402,7 @@ function FlowNode({
 
 /** 各节点要显示的内容，由阶段行与展示状态推出来。 */
 function buildChain(input: {
-  book: BookDoc;
+  book: BookDto;
   counts: { total: number; done: number };
   state: ReturnType<typeof resolveEmbeddingState>;
   stale: boolean;

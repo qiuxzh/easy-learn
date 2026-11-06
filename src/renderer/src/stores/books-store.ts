@@ -1,8 +1,8 @@
 import { create } from 'zustand';
-import type { BookDoc, BookUpdateRequest } from '@shared/types/books';
+import type { BookDto, BookUpdateRequest } from '@shared/types/books';
 
 interface BooksState {
-  books: BookDoc[];
+  books: BookDto[];
   importing: boolean;
   loaded: boolean;
   deletingId: string | null;

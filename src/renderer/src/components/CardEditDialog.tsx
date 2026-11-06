@@ -19,23 +19,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import type { CardGroupSummary, CardRecord } from '@shared/types/flashcards';
+import type { CardGroupSummaryDto, CardDto } from '@shared/types/flashcards';
 
 /** 卡片编辑弹窗属性。 */
 interface CardEditDialogProps {
   /** 被编辑的卡片；未提供时表示新增卡片。 */
-  card?: CardRecord;
+  card?: CardDto;
   /** 新增卡片时默认使用的牌组 ID。 */
   groupId?: string;
   /** 关闭弹窗回调。 */
   onOpenChange: (open: boolean) => void;
   /** 保存成功回调。 */
-  onSaved: (card: CardRecord) => void;
+  onSaved: (card: CardDto) => void;
 }
 
 /** 支持新增和编辑卡片的弹窗。 */
 export function CardEditDialog({ card, groupId, onOpenChange, onSaved }: CardEditDialogProps) {
-  const [groups, setGroups] = useState<CardGroupSummary[]>([]);
+  const [groups, setGroups] = useState<CardGroupSummaryDto[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState(card?.groupId ?? groupId ?? '');
   const [front, setFront] = useState(card?.fields.front ?? '');
   const [back, setBack] = useState(card?.fields.back ?? '');

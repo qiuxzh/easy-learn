@@ -12,7 +12,7 @@ interface EmbeddingStoreState {
   /**
    * 向量化任务的内存态。
    *
-   * 书籍的向量化信息不在这里——它跟着书走（`BookDoc.stages`），
+   * 书籍的向量化信息不在这里——它跟着书走（`BookDto.stages`），
    * 由 `book-service` 的书籍列表一起带回来。
    */
   runtime: EmbeddingRuntime;

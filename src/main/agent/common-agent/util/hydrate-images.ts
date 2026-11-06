@@ -1,7 +1,3 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import { Constants } from '@main/constants';
-import { attachmentRepo } from '@main/db/repo';
 import type { AgentMessage, ImageContent, Message, TextContent } from '@shared/types/chat';
 
 /** 模型不支持图片时顶替图片块的文本 */
@@ -9,21 +5,6 @@ const UNSUPPORTED_PLACEHOLDER = '(image omitted: current model does not support 
 
 /** 附件读取失败时顶替图片块的文本 */
 const MISSING_PLACEHOLDER = '(image omitted: attachment no longer exists)';
-
-/** 按附件 id 读盘并转成 base64，路径必须落在附件目录内 */
-function readAttachment(attachmentId: string): { data: string; mimeType: string } | undefined {
-  const row = attachmentRepo.findById(attachmentId);
-  if (!row) return undefined;
-
-  const target = path.resolve(Constants.dataDir, row.path);
-  const relative = path.relative(Constants.attachmentDir, target);
-  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
-    throw new Error(`非法的附件路径: ${row.path}`);
-  }
-
-  const bytes = fs.readFileSync(target);
-  return { data: bytes.toString('base64'), mimeType: row.mimeType };
-}
 
 /** 消息内容是否含图片块 */
 function hasImageContent(message: Message): boolean {
@@ -34,7 +15,7 @@ function hasImageContent(message: Message): boolean {
 /** 把内容块里的图片引用读成带 base64 的块，没有图片时原样返回入参数组 */
 function hydrateContent(
   content: (TextContent | ImageContent)[],
-  supportsImage: boolean
+  options: ImageHydratorOptions
 ): (TextContent | ImageContent)[] {
   if (!content.some(block => block.type === 'image')) return content;
 
@@ -49,7 +30,7 @@ function hydrateContent(
       continue;
     }
 
-    if (!supportsImage) {
+    if (!options.supportsImage) {
       if (!previousWasPlaceholder) result.push({ type: 'text', text: UNSUPPORTED_PLACEHOLDER });
       previousWasPlaceholder = true;
       continue;
@@ -57,7 +38,7 @@ function hydrateContent(
 
     let attachment: { data: string; mimeType: string } | undefined;
     try {
-      attachment = readAttachment(block.attachmentId);
+      attachment = options.readAttachment?.(block.attachmentId);
     } catch (error) {
       console.error('[imageHydrator] 附件读取异常:', block.attachmentId, error);
     }
@@ -76,13 +57,24 @@ function hydrateContent(
   return result;
 }
 
+/** 创建图片水合器的选项。 */
+export interface ImageHydratorOptions {
+  /** 当前模型是否支持图片 */
+  supportsImage: boolean;
+  /**
+   * 按附件 id 读取 base64 与 MIME；由调用方注入。
+   *
+   * 未提供时图片一律降级为占位文本，内核不直接读盘、也不知道附件目录。
+   */
+  readAttachment?: (attachmentId: string) => { data: string; mimeType: string } | undefined;
+}
+
 /**
  * 产出 convertToLlm：发请求前把图片引用读成 base64，不改动入参对象，读取失败降级为占位文本。
  */
-export function createImageHydrator(options: {
-  /** 当前模型是否支持图片 */
-  supportsImage: boolean;
-}): (messages: AgentMessage[]) => Promise<Message[]> {
+export function createImageHydrator(
+  options: ImageHydratorOptions
+): (messages: AgentMessage[]) => Promise<Message[]> {
   return async messages => {
     if (!messages.some(message => hasImageContent(message))) {
       return messages;
@@ -91,12 +83,12 @@ export function createImageHydrator(options: {
     const result: Message[] = [];
     for (const message of messages) {
       if (message.role === 'user' && Array.isArray(message.content)) {
-        const content = hydrateContent(message.content, options.supportsImage);
+        const content = hydrateContent(message.content, options);
         result.push(content === message.content ? message : { ...message, content });
         continue;
       }
       if (message.role === 'toolResult') {
-        const content = hydrateContent(message.content, options.supportsImage);
+        const content = hydrateContent(message.content, options);
         result.push(content === message.content ? message : { ...message, content });
         continue;
       }

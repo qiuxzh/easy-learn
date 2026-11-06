@@ -1,15 +1,15 @@
 import { useCallback, useState, type ReactElement } from 'react';
 import { toast } from 'sonner';
 import { CardEditDialog } from '@/components/CardEditDialog';
-import type { CardRecord } from '@shared/types/flashcards';
+import type { CardDto } from '@shared/types/flashcards';
 
 /** 弹窗当前的编辑目标：新增时记录牌组，编辑时记录卡片。 */
-type CardEditTarget = { mode: 'create'; groupId: string } | { mode: 'edit'; card: CardRecord };
+type CardEditTarget = { mode: 'create'; groupId: string } | { mode: 'edit'; card: CardDto };
 
 /** useCardEditDialog 的可选配置。 */
 interface UseCardEditDialogOptions {
   /** 卡片保存成功后的回调，用于刷新列表、重置分页等副作用。 */
-  onSaved?: (card: CardRecord) => void;
+  onSaved?: (card: CardDto) => void;
 }
 
 /** useCardEditDialog 返回的操作与弹窗节点。 */
@@ -17,7 +17,7 @@ interface UseCardEditDialogResult {
   /** 打开新增卡片弹窗；未指定牌组时提示错误并保持关闭。 */
   openCreateCard: (groupId?: string) => void;
   /** 打开编辑卡片弹窗。 */
-  openEditCard: (card: CardRecord) => void;
+  openEditCard: (card: CardDto) => void;
   /** 关闭卡片弹窗。 */
   closeCardDialog: () => void;
   /** 需要渲染进组件树的弹窗节点；未打开时为 null。 */
@@ -45,7 +45,7 @@ export function useCardEditDialog({
   }, []);
 
   /** 打开编辑卡片弹窗。 */
-  const openEditCard = useCallback((card: CardRecord) => {
+  const openEditCard = useCallback((card: CardDto) => {
     setTarget({ mode: 'edit', card });
   }, []);
 
@@ -56,7 +56,7 @@ export function useCardEditDialog({
 
   /** 保存成功后：编辑模式关闭弹窗，新增模式保留弹窗以便连续添加。 */
   const handleSaved = useCallback(
-    (card: CardRecord) => {
+    (card: CardDto) => {
       setTarget(current => (current?.mode === 'edit' ? null : current));
       onSaved?.(card);
     },

@@ -22,23 +22,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import type { CardGroupSummary, CardRecord } from '@shared/types/flashcards';
+import type { CardGroupSummaryDto, CardDto } from '@shared/types/flashcards';
 
 /** 内嵌卡片编辑栏属性。 */
 interface CardEditorProps {
   /** 当前编辑的卡片。 */
-  card: CardRecord;
+  card: CardDto;
   /** 关闭编辑栏。 */
   onClose: () => void;
   /** 保存成功回调。 */
-  onSaved: (card: CardRecord) => void;
+  onSaved: (card: CardDto) => void;
   /** 删除成功回调。 */
   onDeleted: () => void;
 }
 
 /** 闪卡浏览页右侧的内嵌卡片编辑栏。 */
 export function CardEditor({ card, onClose, onSaved, onDeleted }: CardEditorProps) {
-  const [groups, setGroups] = useState<CardGroupSummary[]>([]);
+  const [groups, setGroups] = useState<CardGroupSummaryDto[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState(card.groupId);
   const [front, setFront] = useState(card.fields.front);
   const [back, setBack] = useState(card.fields.back);

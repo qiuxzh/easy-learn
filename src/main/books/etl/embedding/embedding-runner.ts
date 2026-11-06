@@ -1,14 +1,10 @@
 import log from 'electron-log';
-import { runInTransaction } from '@main/db';
-import {
-  bookChunkRepo,
-  bookEmbeddingRepo,
-  bookStageRepo,
-  embedIndexRepo,
-  embedVectorRepo,
-} from '@main/db/repo';
-import type { PendingChunk } from '@main/db/repo';
-import { encodeVector } from '@main/db/embedding-identity';
+import type { TransactionRunner } from '@main/contracts/transaction';
+import type { UiEventPublisher } from '@main/contracts/ui-event-publisher';
+import type { EmbeddingConfig } from '@main/contracts/config';
+import type { PendingChunk } from '@main/contracts/book-repo';
+import type { BookRepos } from '@main/infra/repo/repos';
+import { encodeVector } from '@main/infra/embedding-identity';
 import type {
   EmbedCommandResult,
   EmbedStartMode,
@@ -99,13 +95,17 @@ export function estimateProgress(samples: RateSample[], remaining: number): Prog
  * 首次使用一套模型参数时向量表还不存在，没法用「排除已有向量」的查询，
  * 于是先取开头若干分片；这批做完表就建好了，之后走正常路径。
  */
-function takeBatch(bookId: string, index: EmbedIndexRef | null): PendingChunk[] {
+function takeBatch(
+  stores: BookEmbeddingRunnerStores,
+  bookId: string,
+  index: EmbedIndexRef | null
+): PendingChunk[] {
   if (!index) {
-    return bookChunkRepo
+    return stores.repos.bookChunkRepo
       .listFirstByBookId(bookId, BATCH_SIZE)
       .map(row => ({ chunkId: row.id, content: row.content }));
   }
-  return embedVectorRepo.listPendingBookChunks(index.tableName, bookId, BATCH_SIZE);
+  return stores.repos.embedVectorRepo.listPendingBookChunks(index.tableName, bookId, BATCH_SIZE);
 }
 
 /**
@@ -117,6 +117,7 @@ function takeBatch(bookId: string, index: EmbedIndexRef | null): PendingChunk[] 
  * 表名由维度与指纹派生，两者在建表前就确定，注册记录可以直接填表名。
  */
 function persistBatch(
+  stores: BookEmbeddingRunnerStores,
   bookId: string,
   model: ResolvedModel,
   index: EmbedIndexRef | null,
@@ -125,12 +126,12 @@ function persistBatch(
   dimension: number,
   total: number
 ): EmbedIndexRef {
-  return runInTransaction(() => {
+  return stores.transaction(() => {
     let resolved = index;
     if (!resolved) {
       // 两本书可能同时首次使用同一个模型：各自看到的 index 都是 null，
       // 先到的已经注册，后到的必须复用，否则会撞指纹唯一约束
-      const existing = embedIndexRepo.findByFingerprint(model.fingerprint);
+      const existing = stores.repos.embedIndexRepo.findByFingerprint(model.fingerprint);
       if (existing) {
         resolved = {
           id: existing.id,
@@ -138,8 +139,8 @@ function persistBatch(
           dimension: existing.dimension,
         };
       } else {
-        const ref = embedVectorRepo.ensureTable(dimension, model.fingerprint);
-        const row = embedIndexRepo.create({
+        const ref = stores.repos.embedVectorRepo.ensureTable(dimension, model.fingerprint);
+        const row = stores.repos.embedIndexRepo.create({
           fingerprint: model.fingerprint,
           tableName: ref.tableName,
           modelId: model.modelId,
@@ -161,14 +162,14 @@ function persistBatch(
     }));
 
     // 写向量与累加阶段进度同事务，保证 done 不会滞后于向量行。
-    embedVectorRepo.insertBatch(target, rows);
-    bookStageRepo.addEmbedDone({
+    stores.repos.embedVectorRepo.insertBatch(target, rows);
+    stores.repos.bookStageRepo.addEmbedDone({
       bookId,
       total,
       identity: model.fingerprint,
       delta: rows.length,
     });
-    embedIndexRepo.touch(target.id, Date.now(), model.label);
+    stores.repos.embedIndexRepo.touch(target.id, Date.now(), model.label);
     return target;
   });
 }
@@ -183,7 +184,10 @@ function persistBatch(
  * 两种模式共用这一个循环，差别只在开头那一次清理：`rebuild` 连当前模型的一起清，
  * `resume` 只清别的模型，当前模型下没做完的部分接着做。
  */
-export async function runBookEmbedding(ctx: RunContext): Promise<RunOutcome> {
+export async function runBookEmbedding(
+  stores: BookEmbeddingRunnerStores,
+  ctx: RunContext
+): Promise<RunOutcome> {
   const { bookId, mode, model, checkStop, onProgress } = ctx;
 
   // 一本书只允许有一份向量数据，否则同一本书会同时是「当前模型下没做」和
@@ -193,9 +197,9 @@ export async function runBookEmbedding(ctx: RunContext): Promise<RunOutcome> {
   // 向量行与阶段计数，表和注册记录本来就该复用。把 index 置空会让下面重新建一次，
   // 撞上指纹的唯一约束。
   let index = model.index;
-  bookEmbeddingRepo.drop(bookId, mode === 'rebuild' ? null : (index?.id ?? null));
+  stores.repos.bookEmbeddingRepo.drop(bookId, mode === 'rebuild' ? null : (index?.id ?? null));
 
-  const total = bookChunkRepo.countByBookId(bookId);
+  const total = stores.repos.bookChunkRepo.countByBookId(bookId);
   if (total === 0) {
     return { status: 'done', processed: 0 };
   }
@@ -204,10 +208,10 @@ export async function runBookEmbedding(ctx: RunContext): Promise<RunOutcome> {
   if (index) {
     // 以向量表为准校正阶段计数：阶段行可能因崩溃或模型来回切换而与向量表对不上。
     // 只在任务开始时做一次；运行期以向量表为准，阶段行只服务于总览。
-    const actual = embedVectorRepo.countBySource(index.tableName, bookId);
-    const row = bookStageRepo.find(bookId, 'embed');
+    const actual = stores.repos.embedVectorRepo.countBySource(index.tableName, bookId);
+    const row = stores.repos.bookStageRepo.find(bookId, 'embed');
     if (!row || row.identity !== model.fingerprint || row.done !== actual) {
-      bookStageRepo.setEmbedDone({
+      stores.repos.bookStageRepo.setEmbedDone({
         bookId,
         total,
         identity: model.fingerprint,
@@ -216,7 +220,7 @@ export async function runBookEmbedding(ctx: RunContext): Promise<RunOutcome> {
     }
     // 清掉上一次的失败原因：本次运行还没失败，lastError 不该继续保留
     if (row?.lastError) {
-      bookStageRepo.clearError(bookId, 'embed');
+      stores.repos.bookStageRepo.clearError(bookId, 'embed');
     }
     done = actual;
   }
@@ -241,16 +245,16 @@ export async function runBookEmbedding(ctx: RunContext): Promise<RunOutcome> {
 
     // 配置在运行期间被改了：这本书会一半写在旧模型下、一半写在新模型下，
     // 两种向量空间无法混用，只能停下并报错。
-    const active = resolveActiveModel();
+    const active = resolveActiveModel(stores.embeddingConfig, stores.repos.embedIndexRepo);
     if (active?.fingerprint !== model.fingerprint) {
       const error = active
         ? `向量模型已变更为「${active.label}」，任务已停止。切回「${model.label}」可以接着做，或对新模型重新向量化。`
         : '向量模型配置已被移除，任务已停止。';
-      bookStageRepo.setEmbedError({ bookId, total, error });
+      stores.repos.bookStageRepo.setEmbedError({ bookId, total, error });
       return { status: 'failed', processed, error };
     }
 
-    const batch = takeBatch(bookId, index);
+    const batch = takeBatch(stores, bookId, index);
     if (batch.length === 0) {
       return { status: 'done', processed };
     }
@@ -265,7 +269,7 @@ export async function runBookEmbedding(ctx: RunContext): Promise<RunOutcome> {
     if (!result.ok) {
       // 失败原因也写进阶段行：即使一条向量都没写入，也会留下「试过、停在这里」的记录，
       // 下次启动仍能读到，不必只靠返回值带出去。
-      bookStageRepo.setEmbedError({ bookId, total, error: result.message });
+      stores.repos.bookStageRepo.setEmbedError({ bookId, total, error: result.message });
       // 库里只留一条原因；具体是哪一批分片失败写日志
       log.error(
         `[Embedding] 批次失败 book=${bookId} chunks=${batch.map(c => c.chunkId).join(',')} ${result.message}`
@@ -277,11 +281,20 @@ export async function runBookEmbedding(ctx: RunContext): Promise<RunOutcome> {
     // 指纹没变而维度变了，说明服务端换了模型：继续写会把两种向量空间混进同一张表
     if (index && index.dimension !== result.dimension) {
       const error = `接口返回 ${result.dimension} 维，与已建索引的 ${index.dimension} 维不一致`;
-      bookStageRepo.setEmbedError({ bookId, total, error });
+      stores.repos.bookStageRepo.setEmbedError({ bookId, total, error });
       return { status: 'failed', processed, error };
     }
 
-    index = persistBatch(bookId, model, index, batch, result.vectors, result.dimension, total);
+    index = persistBatch(
+      stores,
+      bookId,
+      model,
+      index,
+      batch,
+      result.vectors,
+      result.dimension,
+      total
+    );
     done += batch.length;
     processed += batch.length;
     publish();
@@ -289,9 +302,7 @@ export async function runBookEmbedding(ctx: RunContext): Promise<RunOutcome> {
 }
 
 /** 运行态变化都走这一个回调，包括任务开始、进度推进、暂停与结束。 */
-export interface BookEmbeddingRunnerEvents {
-  onRuntime: (runtime: EmbeddingRuntime) => void;
-}
+// 事件出口见 contracts/ui-event-publisher
 
 /** tasks 里的每一项：正在处理、或已暂停等待恢复的任务。完成、失败、取消的任务会被移除。 */
 interface RunningTask {
@@ -317,14 +328,30 @@ interface RunningTask {
  *
  * 对外输出全部走构造注入的 `onRuntime` 回调。
  */
+export interface BookEmbeddingRunnerStores {
+  transaction: TransactionRunner;
+  repos: BookRepos;
+  embeddingConfig: EmbeddingConfig;
+}
+
+export interface BookEmbeddingRunnerDeps extends BookEmbeddingRunnerStores {
+  events: UiEventPublisher;
+}
+
 export class BookEmbeddingRunner {
-  private readonly events: BookEmbeddingRunnerEvents;
+  readonly transaction: TransactionRunner;
+  readonly repos: BookRepos;
+  readonly embeddingConfig: EmbeddingConfig;
+  private readonly events: UiEventPublisher;
 
   /** 正在处理或已暂停的任务，按书索引；空闲时为空 */
   private readonly tasks = new Map<string, RunningTask>();
 
-  constructor(events: BookEmbeddingRunnerEvents) {
-    this.events = events;
+  constructor(deps: BookEmbeddingRunnerDeps) {
+    this.transaction = deps.transaction;
+    this.repos = deps.repos;
+    this.embeddingConfig = deps.embeddingConfig;
+    this.events = deps.events;
   }
 
   /**
@@ -342,7 +369,7 @@ export class BookEmbeddingRunner {
       return { success: false, error: '这本书正在处理中' };
     }
 
-    const model = resolveActiveModel();
+    const model = resolveActiveModel(this.embeddingConfig, this.repos.embedIndexRepo);
     if (!model) {
       return { success: false, error: '尚未配置或选择向量模型' };
     }
@@ -433,7 +460,7 @@ export class BookEmbeddingRunner {
 
     task.loopActive = true;
     try {
-      const outcome = await runBookEmbedding({
+      const outcome = await runBookEmbedding(this, {
         bookId: task.bookId,
         mode: task.mode,
         model: task.model,
@@ -467,6 +494,6 @@ export class BookEmbeddingRunner {
 
   /** 推一次运行态。 */
   private publish(): void {
-    this.events.onRuntime(this.describe());
+    this.events.publish({ type: 'book-embedding-runtime', runtime: this.describe() });
   }
 }

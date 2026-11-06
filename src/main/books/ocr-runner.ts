@@ -2,12 +2,15 @@ import { rm } from 'node:fs/promises';
 import path from 'node:path';
 import { AuthError, FileNotFoundError, InvalidRequestError } from '@paddleocr/api-sdk';
 import log from 'electron-log';
-import { Constants } from '@main/constants';
-import { configService } from '@main/config';
-import { runInTransaction } from '@main/db';
-import { bookPageRepo, bookRepo, bookStageRepo } from '@main/db/repo';
-import type { BookPageBlock, OcrCommandResult, OcrEvent, OcrRuntime } from '@shared/types/ocr';
-import { attachmentService } from '@main/service/attachment-service';
+import type { TransactionRunner } from '@main/contracts/transaction';
+import type { UiEventPublisher } from '@main/contracts/ui-event-publisher';
+import type { OcrConfig } from '@main/contracts/config';
+import type { BookPageRepo, BookRepo, BookStageRepo } from '@main/contracts/book-repo';
+import type { Paths } from '@main/paths';
+import type { AttachmentService } from '@main/service/attachment-service';
+import type { BookRepos } from '@main/infra/repo/repos';
+import type { ChunkDraft } from './etl/chunking';
+import type { BookPageBlock, OcrCommandResult, OcrRuntime } from '@shared/types/ocr';
 import { DEFAULT_CHUNK_OPTIONS, chunkDocument, createPdfSource } from './etl/chunking';
 import type { PdfTextReport } from './etl/pdf/pdf-pages';
 import { OCR_MODEL_ID, OcrClient, isRetryableOcrError } from './etl/ocr/paddle/client';
@@ -19,7 +22,6 @@ import {
   type OcrPageResult,
 } from './etl/ocr/result';
 import { splitPdf, type PdfChunk } from './etl/pdf/split';
-import { replaceBookChunks } from './book-content';
 
 /** 配置缺省时的分块页数与并发数。 */
 const DEFAULT_PAGE_SIZE = 20;
@@ -49,12 +51,41 @@ interface RuntimeState {
  * 同一时刻只允许一本书在跑；书内按配置并发若干块。
  * 取消只在块边界生效——在飞的块会跑完并落库，服务端任务本来也停不掉。
  */
+export interface BookOcrRunnerDeps {
+  transaction: TransactionRunner;
+  /** 书籍域仓储。 */
+  repos: BookRepos;
+  attachmentService: AttachmentService;
+  replaceChunks: (bookId: string, drafts: ChunkDraft[]) => number;
+  paths: Paths;
+  ocrConfig: OcrConfig;
+  events: UiEventPublisher;
+}
+
 export class BookOcrRunner {
   private state: RuntimeState | null = null;
   private readonly bookDir: string;
+  private readonly transaction: TransactionRunner;
+  private readonly bookRepo: BookRepo;
+  private readonly bookPageRepo: BookPageRepo;
+  private readonly bookStageRepo: BookStageRepo;
+  private readonly attachmentService: AttachmentService;
+  private readonly replaceChunks: (bookId: string, drafts: ChunkDraft[]) => number;
+  private readonly paths: Paths;
+  private readonly ocrConfig: OcrConfig;
+  private readonly events: UiEventPublisher;
 
-  constructor(private readonly onEvent: (event: OcrEvent) => void) {
-    this.bookDir = Constants.booksDir;
+  constructor(deps: BookOcrRunnerDeps) {
+    this.transaction = deps.transaction;
+    this.bookRepo = deps.repos.bookRepo;
+    this.bookPageRepo = deps.repos.bookPageRepo;
+    this.bookStageRepo = deps.repos.bookStageRepo;
+    this.attachmentService = deps.attachmentService;
+    this.replaceChunks = deps.replaceChunks;
+    this.paths = deps.paths;
+    this.ocrConfig = deps.ocrConfig;
+    this.events = deps.events;
+    this.bookDir = deps.paths.booksDir;
   }
 
   /** 当前运行态；没有任务时为空。 */
@@ -69,17 +100,20 @@ export class BookOcrRunner {
       return { success: false, error: '另一本书正在识别，请稍后再试' };
     }
 
-    const book = bookRepo.findById(bookId);
+    const book = this.bookRepo.findById(bookId);
     if (!book) return { success: false, error: '书籍不存在' };
+    const storeName = this.bookRepo.findStoreName(bookId);
+    if (!storeName) return { success: false, error: '书籍源文件不存在' };
     if (book.booksType !== 'pdf') return { success: false, error: '只有 PDF 需要提取文字' };
-    if (!readOcrToken()) return { success: false, error: '请先在设置页配置 OCR 令牌' };
+    if (!readOcrToken(this.ocrConfig))
+      return { success: false, error: '请先在设置页配置 OCR 令牌' };
 
     this.state = {
       bookId,
-      bookFile: path.join(this.bookDir, book.booksStoreName),
+      bookFile: path.join(this.bookDir, storeName),
       phase: 'running',
       total: book.totalPages ?? 0,
-      done: bookPageRepo.countPages(bookId),
+      done: this.bookPageRepo.countPages(bookId),
       cancelled: false,
       active: new Map(),
     };
@@ -106,14 +140,14 @@ export class BookOcrRunner {
     if (!state) return;
 
     const { pageSize, concurrency } = this.readConfig();
-    const workDir = path.join(Constants.dataDir, 'ocr-work', bookId);
+    const workDir = path.join(this.paths.dataDir, 'ocr-work', bookId);
 
     let success = false;
     let cancelled = false;
     let error: string | undefined;
 
     try {
-      const existing = bookPageRepo.listPageNumbers(bookId);
+      const existing = this.bookPageRepo.listPageNumbers(bookId);
       // pdf拆分多个块
       const { pageCount, chunks } = await splitPdf(state.bookFile, pageSize, workDir);
 
@@ -130,7 +164,7 @@ export class BookOcrRunner {
       }
       if (failure) throw failure;
 
-      bookStageRepo.setOcrComplete(bookId, pageCount, OCR_MODEL_ID);
+      this.bookStageRepo.setOcrComplete(bookId, pageCount, OCR_MODEL_ID);
       this.emitRuntime();
 
       try {
@@ -139,17 +173,20 @@ export class BookOcrRunner {
       } catch (chunkError) {
         // 识别本身已经成功：分片失败要记在分片阶段，不能把识别也标成失败
         const message = toError(chunkError).message;
-        bookStageRepo.setStageError(bookId, 'chunk', message);
+        this.bookStageRepo.setStageError(bookId, 'chunk', message);
         error = `文字提取完成，但分片失败：${message}`;
       }
     } catch (runError) {
       error = toError(runError).message;
-      bookStageRepo.setStageError(bookId, 'ocr', error);
+      this.bookStageRepo.setStageError(bookId, 'ocr', error);
     } finally {
       await rm(workDir, { recursive: true, force: true }).catch(() => undefined);
       this.state = null;
       this.emitRuntime();
-      this.onEvent({ kind: 'finished', bookId, success, cancelled, error });
+      this.events.publish({
+        type: 'book-ocr',
+        event: { kind: 'finished', bookId, success, cancelled, error },
+      });
     }
   }
 
@@ -160,7 +197,7 @@ export class BookOcrRunner {
     concurrency: number
   ): Promise<Error | null> {
     const queue = [...chunks];
-    const client = new OcrClient(readOcrToken() ?? '');
+    const client = new OcrClient(readOcrToken(this.ocrConfig) ?? '');
     let failure: Error | null = null;
 
     const worker = async (): Promise<void> => {
@@ -194,7 +231,7 @@ export class BookOcrRunner {
         );
 
         await this.persistPages(state.bookId, parsePaddleResult(result, chunk.start));
-        state.done = bookPageRepo.countPages(state.bookId);
+        state.done = this.bookPageRepo.countPages(state.bookId);
         state.active.delete(chunk.start);
         this.emitRuntime();
         return;
@@ -263,20 +300,20 @@ export class BookOcrRunner {
     const rows = pages.map((page, index) => ({
       bookId,
       page: page.page,
-      blocks: JSON.stringify(blockRows[index]),
+      blocks: blockRows[index],
       updatedAt: now,
     }));
     const pageNumbers = pages.map(page => page.page);
 
     try {
-      runInTransaction(() => {
-        bookPageRepo.deletePages(bookId, pageNumbers);
-        bookPageRepo.insertMany(rows);
-        bookStageRepo.setOcrDone(bookId, bookPageRepo.countPages(bookId));
+      this.transaction(() => {
+        this.bookPageRepo.deletePages(bookId, pageNumbers);
+        this.bookPageRepo.insertMany(rows);
+        this.bookStageRepo.setOcrDone(bookId, this.bookPageRepo.countPages(bookId));
       });
     } catch (error) {
       // 落库失败时把刚登记的附件删掉，避免留下没有归属的图
-      await attachmentService.deleteAttachments(createdAttachments);
+      await this.attachmentService.deleteAttachments(createdAttachments);
       throw error;
     }
   }
@@ -289,7 +326,7 @@ export class BookOcrRunner {
       throw new Error(`插图下载失败：HTTP ${response.status}`);
     }
     const bytes = Buffer.from(await response.arrayBuffer());
-    const stored = await attachmentService.storeImageOriginal(
+    const stored = await this.attachmentService.storeImageOriginal(
       bytes,
       response.headers.get('content-type') ?? 'image/png'
     );
@@ -303,7 +340,7 @@ export class BookOcrRunner {
    * 定位串、切分规则与导入时完全一致，没有第二条路径。
    */
   private async chunkPages(bookId: string): Promise<void> {
-    const pages = bookPageRepo.listBlocks(bookId);
+    const pages = this.bookPageRepo.listBlocks(bookId);
     if (pages.length === 0) return;
 
     const report: PdfTextReport = {
@@ -312,7 +349,7 @@ export class BookOcrRunner {
     };
 
     const drafts = await chunkDocument(createPdfSource(report), DEFAULT_CHUNK_OPTIONS);
-    replaceBookChunks(bookId, drafts);
+    this.replaceChunks(bookId, drafts);
   }
 
   /** 更新某块的进度并广播。 */
@@ -323,7 +360,10 @@ export class BookOcrRunner {
   }
 
   private emitRuntime(): void {
-    this.onEvent({ kind: 'runtime', runtime: this.describe() });
+    this.events.publish({
+      type: 'book-ocr',
+      event: { kind: 'runtime', runtime: this.describe() },
+    });
   }
 
   private toRuntime(state: RuntimeState): OcrRuntime {
@@ -341,7 +381,7 @@ export class BookOcrRunner {
 
   /** 读分块配置。 */
   private readConfig(): { pageSize: number; concurrency: number } {
-    const ocr = configService.get('ocr');
+    const ocr = this.ocrConfig.get();
     return {
       pageSize: clamp(ocr?.pageSize ?? DEFAULT_PAGE_SIZE, 1, 500),
       concurrency: clamp(ocr?.concurrency ?? DEFAULT_CONCURRENCY, 1, 8),
@@ -358,8 +398,8 @@ function isChunkDone(chunk: PdfChunk, existing: Set<number>): boolean {
 }
 
 /** 读配置里的令牌；空串与缺失都视为未配置。 */
-function readOcrToken(): string | null {
-  const token = configService.get('ocr')?.['paddle-ocr']?.token?.trim();
+function readOcrToken(ocr: OcrConfig): string | null {
+  const token = ocr.get()?.['paddle-ocr']?.token?.trim();
   return token ? token : null;
 }
 

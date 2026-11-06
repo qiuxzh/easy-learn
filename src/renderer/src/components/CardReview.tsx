@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import type { CardGroupSummary, CardRecord, CardReviewRating } from '@shared/types/flashcards';
+import type { CardGroupSummaryDto, CardDto, CardReviewRating } from '@shared/types/flashcards';
 
 /** 复习组件属性。 */
 interface CardReviewProps {
@@ -17,8 +17,8 @@ interface CardReviewProps {
 
 /** 按牌组或全部牌组执行 FSRS 复习的 Tab。 */
 export function CardReview({ groupId }: CardReviewProps) {
-  const [group, setGroup] = useState<CardGroupSummary | undefined>();
-  const [queue, setQueue] = useState<CardRecord[]>([]);
+  const [group, setGroup] = useState<CardGroupSummaryDto | undefined>();
+  const [queue, setQueue] = useState<CardDto[]>([]);
   const [showAnswer, setShowAnswer] = useState(false);
   const [loading, setLoading] = useState(true);
   const [reviewing, setReviewing] = useState(false);
@@ -79,7 +79,7 @@ export function CardReview({ groupId }: CardReviewProps) {
   }
 
   /** 用编辑后的内容替换当前复习卡片。 */
-  function handleCardSaved(card: CardRecord) {
+  function handleCardSaved(card: CardDto) {
     setQueue(items => items.map(item => (item.id === card.id ? card : item)));
     setShowAnswer(false);
   }
@@ -230,7 +230,7 @@ function RatingButton({
 }
 
 /** 将新到期卡片增量加入当前复习队列。 */
-function mergeReviewQueue(current: CardRecord[], incoming: CardRecord[]): CardRecord[] {
+function mergeReviewQueue(current: CardDto[], incoming: CardDto[]): CardDto[] {
   const currentIds = new Set(current.map(card => card.id));
   return [...current, ...incoming.filter(card => !currentIds.has(card.id))];
 }
