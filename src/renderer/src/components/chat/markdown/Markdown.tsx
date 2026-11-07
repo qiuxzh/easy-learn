@@ -6,6 +6,7 @@ import 'katex/dist/contrib/copy-tex';
 import { Streamdown, type Components, type PluginConfig } from 'streamdown';
 import { MermaidBlock } from '@/components/chat/markdown/MermaidBlock';
 import { SvgBlock } from '@/components/chat/markdown/SvgBlock';
+import { MarkmapBlock } from '@/components/chat/markdown/MarkmapBlock';
 
 import { cjk } from '@streamdown/cjk';
 import { createCodePlugin } from '@streamdown/code';
@@ -46,6 +47,7 @@ const plugins: PluginConfig = {
   renderers: [
     { language: 'mermaid', component: MermaidBlock },
     { language: 'svg', component: SvgBlock },
+    { language: 'markmap', component: MarkmapBlock },
   ],
 };
 

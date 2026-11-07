@@ -5,6 +5,7 @@ import { buildBookSection, READING_AGENT_SYSTEM_PROMPT } from '@main/chat/readin
 export const DiagramPrompt = `
 绘制图表时遵守以下规则：
 - 优先使用 Markdown 的 Mermaid 代码块（\`\`\`mermaid）或 SVG 代码块（\`\`\`svg）绘制图表，不要使用 ASCII 图。
+- 树状结构（思维导图、知识大纲、章节结构、概念分类）优先使用 markmap 代码块（\`\`\`markmap），内容直接写 Markdown 大纲，用标题或缩进列表表达层级；不要用 Mermaid mindmap。
 - 使用 SVG 代码块时，如果背景颜色是不必要的，不需要定义 SVG 图像背景；背景由渲染组件提供。
 - 禁止使用不安全的 SVG 语法，例如 script 标签、onload/onclick 事件、foreignObject、javascript: 链接和外部资源引用。
 
@@ -12,6 +13,16 @@ Mermaid 示例：
 \`\`\`mermaid
 flowchart LR
   A[开始] --> B[完成]
+\`\`\`
+
+markmap 示例：
+\`\`\`markmap
+# 极限与连续
+## 数列极限
+- 收敛数列有界
+- 极限唯一性
+## 函数连续
+- 闭区间连续函数性质
 \`\`\`
 
 SVG 示例：
