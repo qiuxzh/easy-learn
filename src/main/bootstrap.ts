@@ -20,6 +20,8 @@ import { createBookModule } from './books/create-book-module';
 import { createChatModule } from './chat/create-chat-module';
 import { EmbeddingService } from './service/embedding-service';
 import { AttachmentService } from './service/attachment-service';
+import { LibraryService } from './service/library/library-service';
+import { LibraryStorage } from './service/library/library-storage';
 
 /** 装配应用需要的底层输入。 */
 export interface AppDeps {
@@ -43,6 +45,7 @@ export interface AppServices {
   bookOcrService: BookOcrRunner;
   cardService: FlashcardService;
   embeddingService: EmbeddingService;
+  libraryService: LibraryService;
   readingService: ReadingService;
   sessionService: SessionService;
 }
@@ -84,6 +87,11 @@ export function bootstrap(deps: AppDeps): App {
     attachmentRepo: repos.attachmentRepo,
     store: attachmentStore,
   });
+  const libraryService = new LibraryService({
+    resourceRepo: repos.resourceRepo,
+    storage: new LibraryStorage(deps.paths),
+    transaction: fn => db.transaction(fn),
+  });
 
   const bookModule = createBookModule({
     repos,
@@ -117,6 +125,7 @@ export function bootstrap(deps: AppDeps): App {
       bookOcrService: bookModule.ocrService,
       cardService: cardModule.cardService,
       embeddingService: new EmbeddingService(),
+      libraryService,
       readingService: readingModule.readingService,
       sessionService: chatModule.sessionService,
     },

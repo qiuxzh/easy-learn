@@ -1,0 +1,429 @@
+import path from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { RESOURCE_FORMATS } from '@shared/types/library';
+import type {
+  ImportFilesResult,
+  ListAllFilesInput,
+  ListRecentFilesInput,
+  ListStarredResourcesInput,
+  RejectedImportDTO,
+  ResourceDTO,
+  ResourceFormat,
+  ResourceListOptions,
+  ResourcePathItem,
+  StorageUsageDTO,
+} from '@shared/types/library';
+import type { ResourceEntity } from '@main/contracts/resource';
+import type { ResourceRepo } from '@main/contracts/resource-repo';
+import type { TransactionRunner } from '@main/contracts/transaction';
+import { DomainError } from '@main/domain-error';
+import type { LibraryFileStore } from './library-storage';
+
+/** 扩展名到资料格式：格式就是扩展名本身，只接受白名单内的值。 */
+function formatFromExtension(extension: string): ResourceFormat | null {
+  const candidate = extension.toLowerCase().replace(/^\./, '');
+  return RESOURCE_FORMATS.find(format => format === candidate) ?? null;
+}
+
+/** 名称长度上限。 */
+const MAX_NAME_LENGTH = 120;
+
+/** 名称中不允许出现的字符。 */
+const INVALID_NAME_CHARS = /[\\/:*?"<>|]/g;
+
+/** 「全部资料」与收藏列表的默认/最大条数。 */
+const DEFAULT_PAGE_SIZE = 200;
+const MAX_PAGE_SIZE = 500;
+
+/** 「最近打开」的默认/最大条数。 */
+const DEFAULT_RECENT_SIZE = 50;
+const MAX_RECENT_SIZE = 200;
+
+/** 把调用方传入的条数限制在合法区间。 */
+function clampLimit(value: number | undefined, fallback: number, max: number): number {
+  if (value === undefined) return fallback;
+  return Math.min(Math.max(Math.trunc(value), 1), max);
+}
+
+/** 把调用方传入的偏移量规整为非负整数。 */
+function normalizeOffset(value: number | undefined): number {
+  return Math.max(Math.trunc(value ?? 0), 0);
+}
+
+/** 校验用户输入的名称，返回去掉首尾空白后的值。 */
+function normalizeName(rawName: string): string {
+  const name = rawName.trim();
+  if (name.length === 0) throw new DomainError('名称不能为空');
+  if (name.length > MAX_NAME_LENGTH)
+    throw new DomainError(`名称不能超过 ${MAX_NAME_LENGTH} 个字符`);
+  if (name === '.' || name === '..') throw new DomainError('名称不合法');
+  if (INVALID_NAME_CHARS.test(name)) throw new DomainError('名称不能包含 \\ / : * ? " < > | 字符');
+  return name;
+}
+
+/** 清洗导入文件的原始文件名；清空后回落到默认名。 */
+function sanitizeImportedName(fileName: string): string {
+  const cleaned = fileName.trim().replace(INVALID_NAME_CHARS, '_');
+  return cleaned.length > 0 ? cleaned : '未命名';
+}
+
+/** 给文件补全扩展名；扩展名与格式不一致时拒绝。 */
+function normalizeFileRename(name: string, format: ResourceFormat): string {
+  const extensionFormat = formatFromExtension(path.extname(name));
+  if (!extensionFormat) return `${name}.${format}`;
+  if (extensionFormat !== format) throw new DomainError('不能修改文件扩展名');
+  return name;
+}
+
+/** 创建 LibraryService 所需的依赖。 */
+export interface LibraryServiceDeps {
+  /** 资料库条目仓储。 */
+  resourceRepo: ResourceRepo;
+  /** 库内文件落盘与删除。 */
+  storage: LibraryFileStore;
+  /** 在事务里执行同步逻辑。 */
+  transaction: TransactionRunner;
+  /** 当前时间，测试可覆盖。 */
+  now?: () => number;
+}
+
+/**
+ * 资料库用例服务：目录树的增删改查与文件导入。
+ *
+ * 所有名称冲突、越界移动与格式校验都在这里拒绝；仓储只负责行，磁盘只由 storage 负责。
+ */
+export class LibraryService {
+  private readonly resourceRepo: ResourceRepo;
+  private readonly storage: LibraryFileStore;
+  private readonly transaction: TransactionRunner;
+  private readonly now: () => number;
+
+  constructor(deps: LibraryServiceDeps) {
+    this.resourceRepo = deps.resourceRepo;
+    this.storage = deps.storage;
+    this.transaction = deps.transaction;
+    this.now = deps.now ?? Date.now;
+  }
+
+  /** 列出某目录的直接子项；`parentId` 为 null 表示顶层。 */
+  listChildren(parentId: string | null, options?: ResourceListOptions): ResourceDTO[] {
+    return this.toDtos(this.resourceRepo.listChildren(parentId, options));
+  }
+
+  /**
+   * 新建文件夹。
+   *
+   * @throws 父目录不存在、名称不合法或同级重名
+   */
+  createFolder(parentId: string | null, rawName: string): ResourceDTO {
+    const name = normalizeName(rawName);
+    this.assertParent(parentId);
+    this.assertNameAvailable(parentId, name);
+
+    const timestamp = this.now();
+    const entity = this.resourceRepo.create({
+      id: randomUUID(),
+      parentId,
+      kind: 'folder',
+      name,
+      format: null,
+      blobPath: null,
+      sizeBytes: null,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
+    return this.toDtoWithCounts(entity);
+  }
+
+  /**
+   * 把选中的文件复制进资料库。
+   *
+   * 单个文件失败不中断整批，失败原因随结果返回；同名文件自动追加序号。
+   */
+  importFiles(parentId: string | null, sourcePaths: readonly string[]): ImportFilesResult {
+    this.assertParent(parentId);
+
+    const imported: ResourceDTO[] = [];
+    const rejected: RejectedImportDTO[] = [];
+
+    for (const sourcePath of sourcePaths) {
+      const format = formatFromExtension(path.extname(sourcePath));
+      if (!format) {
+        rejected.push({ sourcePath, reason: 'UNSUPPORTED_FORMAT' });
+        continue;
+      }
+
+      const id = randomUUID();
+      const name = this.uniqueImportedName(parentId, path.basename(sourcePath));
+
+      let stored: { blobPath: string; sizeBytes: number };
+      try {
+        stored = this.storage.importFile(sourcePath, id, format);
+      } catch (e) {
+        console.error('[LibraryService] import copy failed:', sourcePath, e);
+        rejected.push({ sourcePath, reason: 'COPY_FAILED' });
+        continue;
+      }
+
+      try {
+        const timestamp = this.now();
+        const entity = this.resourceRepo.create({
+          id,
+          parentId,
+          kind: 'file',
+          name,
+          format,
+          blobPath: stored.blobPath,
+          sizeBytes: stored.sizeBytes,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        });
+        imported.push(this.toDtoWithCounts(entity));
+      } catch (e) {
+        console.error('[LibraryService] import record failed:', sourcePath, e);
+        this.storage.removeBlobs([stored.blobPath]);
+        rejected.push({ sourcePath, reason: 'RECORD_FAILED' });
+      }
+    }
+
+    return { canceled: false, imported, rejected };
+  }
+
+  /**
+   * 重命名文件或文件夹。
+   *
+   * @throws 条目不存在、名称不合法、同级重名，或文件扩展名被改动
+   */
+  renameResource(id: string, rawName: string): ResourceDTO {
+    const entity = this.getEntity(id);
+    const normalized = normalizeName(rawName);
+    const name =
+      entity.kind === 'file'
+        ? normalizeFileRename(normalized, this.fileFormat(entity))
+        : normalized;
+
+    if (name !== entity.name) this.assertNameAvailable(entity.parentId, name, id);
+
+    const updatedAt = this.now();
+    this.resourceRepo.updateName(id, name, updatedAt);
+    return this.toDtoWithCounts({ ...entity, name, updatedAt });
+  }
+
+  /**
+   * 把条目移动到新父目录。
+   *
+   * @throws 条目或目标目录不存在、目标是文件、移动到自身的子孙目录，或目标目录重名
+   */
+  reparentResource(id: string, newParentId: string | null): ResourceDTO {
+    const entity = this.getEntity(id);
+
+    if (newParentId !== null) {
+      const target = this.getEntity(newParentId);
+      if (target.kind !== 'folder') throw new DomainError('目标不是文件夹');
+      this.assertNotInside(id, newParentId);
+    }
+
+    if (entity.parentId === newParentId) return this.toDtoWithCounts(entity);
+
+    this.assertNameAvailable(newParentId, entity.name, id);
+    const updatedAt = this.now();
+    this.resourceRepo.updateParent(id, newParentId, updatedAt);
+    return this.toDtoWithCounts({ ...entity, parentId: newParentId, updatedAt });
+  }
+
+  /**
+   * 删除单个文件，同时删除库内源文件。
+   *
+   * @throws 条目不存在，或目标不是文件
+   */
+  deleteFile(id: string): void {
+    const entity = this.getEntity(id);
+    if (entity.kind !== 'file') throw new DomainError('只能对文件执行删除');
+
+    this.transaction(() => this.resourceRepo.deleteByIds([id]));
+    this.storage.removeBlobs([entity.blobPath]);
+  }
+
+  /**
+   * 递归删除文件夹及其全部子项，同时删除库内源文件。
+   *
+   * @throws 条目不存在，或目标不是文件夹
+   */
+  deleteFolderRecursive(id: string): void {
+    const root = this.getEntity(id);
+    if (root.kind !== 'folder') throw new DomainError('只能对文件夹执行递归删除');
+
+    const subtree = this.collectSubtree(root);
+    this.transaction(() => this.resourceRepo.deleteByIds(subtree.map(item => item.id)));
+    this.storage.removeBlobs(subtree.map(item => item.blobPath));
+  }
+
+  /** 按资源 id 解析库内源文件的相对路径，供 app:// 寻址；不是文件时返回 null。 */
+  resolveResourceBlob(id: string): string | null {
+    const entity = this.resourceRepo.findById(id);
+    return entity?.kind === 'file' ? entity.blobPath : null;
+  }
+
+  /**
+   * 设置收藏状态。
+   *
+   * @throws 条目不存在
+   */
+  setStarred(id: string, starred: boolean): ResourceDTO {
+    const entity = this.getEntity(id);
+    if (entity.starred !== starred) this.resourceRepo.setStarred(id, starred);
+    return this.toDtoWithCounts({ ...entity, starred });
+  }
+
+  /**
+   * 记录最近打开时间。
+   *
+   * @throws 条目不存在
+   */
+  markOpened(id: string): void {
+    this.getEntity(id);
+    this.resourceRepo.markOpened(id, this.now());
+  }
+
+  /** 平铺列出全部文件，用于「全部资料」；`limit` 默认 200、上限 500。 */
+  listAllFiles(input: ListAllFilesInput = {}): ResourceDTO[] {
+    const limit = clampLimit(input.limit, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
+    return this.toDtos(this.resourceRepo.listAllFiles(limit, normalizeOffset(input.offset)));
+  }
+
+  /** 按最近打开时间倒序列出文件；`limit` 默认 50、上限 200。 */
+  listRecentFiles(input: ListRecentFilesInput = {}): ResourceDTO[] {
+    return this.toDtos(
+      this.resourceRepo.listRecentFiles(
+        clampLimit(input.limit, DEFAULT_RECENT_SIZE, MAX_RECENT_SIZE)
+      )
+    );
+  }
+
+  /** 列出收藏的条目；`limit` 默认 200、上限 500。 */
+  listStarredResources(input: ListStarredResourcesInput = {}): ResourceDTO[] {
+    return this.toDtos(
+      this.resourceRepo.listStarredResources(
+        clampLimit(input.limit, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE)
+      )
+    );
+  }
+
+  /** 资料库占用的磁盘空间。 */
+  getStorageUsage(): StorageUsageDTO {
+    return { usedBytes: this.resourceRepo.sumFileSize() };
+  }
+
+  /** 取目录到根的路径，从顶层目录到目标目录；目标不存在时抛错。 */
+  getResourcePath(id: string): ResourcePathItem[] {
+    const segments: ResourcePathItem[] = [];
+    let currentId: string | null = id;
+
+    while (currentId !== null) {
+      const entity = this.resourceRepo.findById(currentId);
+      if (!entity) throw new DomainError('资源不存在');
+      segments.unshift({ id: entity.id, name: entity.name });
+      currentId = entity.parentId;
+    }
+
+    return segments;
+  }
+
+  /** 递归收集一棵子树的行，先序。 */
+  private collectSubtree(root: ResourceEntity): ResourceEntity[] {
+    const entities: ResourceEntity[] = [root];
+    const folderIds = [root.id];
+    for (let index = 0; index < folderIds.length; index += 1) {
+      const children = this.resourceRepo.listChildren(folderIds[index]);
+      for (const child of children) {
+        entities.push(child);
+        if (child.kind === 'folder') folderIds.push(child.id);
+      }
+    }
+    return entities;
+  }
+
+  /** 导入时避开同名：`报告.pdf` 冲突后依次尝试 `报告 (1).pdf`。 */
+  private uniqueImportedName(parentId: string | null, fileName: string): string {
+    const base = sanitizeImportedName(fileName);
+    const extension = path.extname(base);
+    const stem = extension ? base.slice(0, -extension.length) : base;
+
+    let candidate = base;
+    let index = 1;
+    while (this.resourceRepo.findChildByName(parentId, candidate)) {
+      candidate = `${stem} (${index})${extension}`;
+      index += 1;
+    }
+    return candidate;
+  }
+
+  /** 校验父目录：null 表示顶层，其余必须是已存在的文件夹。 */
+  private assertParent(parentId: string | null): void {
+    if (parentId === null) return;
+    const parent = this.resourceRepo.findById(parentId);
+    if (!parent || parent.kind !== 'folder') throw new DomainError('目标文件夹不存在');
+  }
+
+  /** 校验同级重名；`excludeId` 用于重命名与移动时排除自身。 */
+  private assertNameAvailable(parentId: string | null, name: string, excludeId?: string): void {
+    const existing = this.resourceRepo.findChildByName(parentId, name);
+    if (existing && existing.id !== excludeId) throw new DomainError('同一目录下已存在同名条目');
+  }
+
+  /** 校验不会把目录移动进自己的子孙：从目标父目录向上找到根。 */
+  private assertNotInside(id: string, targetParentId: string): void {
+    let current: string | null = targetParentId;
+    while (current !== null) {
+      if (current === id) throw new DomainError('不能把文件夹移动到自己的子目录中');
+      current = this.resourceRepo.findById(current)?.parentId ?? null;
+    }
+  }
+
+  /** 读条目，不存在时抛出领域错误。 */
+  private getEntity(id: string): ResourceEntity {
+    const entity = this.resourceRepo.findById(id);
+    if (!entity) throw new DomainError('资源不存在');
+    return entity;
+  }
+
+  /** 文件格式是文件行的不变量，缺失说明数据损坏。 */
+  private fileFormat(entity: ResourceEntity): ResourceFormat {
+    if (entity.format === null) throw new DomainError('文件缺少格式信息');
+    return entity.format;
+  }
+
+  /** 把一批行映射成渲染层 DTO，文件夹附带直接子项数。 */
+  private toDtos(entities: ResourceEntity[]): ResourceDTO[] {
+    const folderIds = entities.filter(entity => entity.kind === 'folder').map(entity => entity.id);
+    const counts = folderIds.length > 0 ? this.resourceRepo.countChildrenByParents(folderIds) : {};
+    return entities.map(entity =>
+      this.toDto(entity, entity.kind === 'folder' ? (counts[entity.id] ?? 0) : null)
+    );
+  }
+
+  /** 单条映射，文件夹附带直接子项数。 */
+  private toDtoWithCounts(entity: ResourceEntity): ResourceDTO {
+    if (entity.kind === 'file') return this.toDto(entity, null);
+    const counts = this.resourceRepo.countChildrenByParents([entity.id]);
+    return this.toDto(entity, counts[entity.id] ?? 0);
+  }
+
+  /** 把行映射成渲染层 DTO。 */
+  private toDto(entity: ResourceEntity, childrenCount: number | null): ResourceDTO {
+    return {
+      id: entity.id,
+      parentId: entity.parentId,
+      kind: entity.kind,
+      name: entity.name,
+      format: entity.format,
+      sizeBytes: entity.sizeBytes,
+      lastOpenedAt: entity.lastOpenedAt,
+      starred: entity.starred,
+      childrenCount,
+      url: entity.kind === 'file' ? `app:///resource/${entity.id}` : null,
+      createdAt: entity.createdAt,
+      updatedAt: entity.updatedAt,
+    };
+  }
+}

@@ -2,6 +2,7 @@ import type { App } from '@main/bootstrap';
 import { registerAttachmentHandlers } from './attachment-handlers';
 import { registerBookHandlers } from './book-handlers';
 import { registerCardHandlers } from './card-handlers';
+import { registerLibraryHandlers } from './library-handlers';
 import { registerChatHandlers } from './chat-handlers';
 import { registerAppHandlers } from './app-handlers';
 import { registerSettingsHandlers } from './settings-handlers';
@@ -22,6 +23,7 @@ export function setupIpcHandlers(app: App): void {
     app.services.bookOcrService
   );
   registerCardHandlers(app.services.cardService);
+  registerLibraryHandlers(app.services.libraryService);
   registerChatHandlers(app.services.sessionService);
   registerSettingsHandlers(app.configService, app.services.embeddingService);
   registerReadingHandlers(app.services.readingService);

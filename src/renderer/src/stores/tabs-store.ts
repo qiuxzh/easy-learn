@@ -6,6 +6,7 @@ export type TabType =
   | 'home'
   | 'chat'
   | 'bookshelf'
+  | 'library'
   | 'card-management'
   | 'card-browser'
   | 'card-review'
@@ -57,6 +58,7 @@ const TAB_TITLES: Record<TabType, string> = {
   home: '新标签页',
   chat: '对话',
   bookshelf: '书库',
+  library: '资料库',
   'card-management': '闪卡',
   'card-browser': '闪卡浏览',
   'card-review': '复习',
@@ -67,6 +69,7 @@ const TAB_TITLES: Record<TabType, string> = {
 const SINGLETON_TAB_IDS: Partial<Record<TabType, string>> = {
   home: 'home',
   bookshelf: 'bookshelf',
+  library: 'library',
   'card-management': 'card-management',
   'card-browser': 'card-browser',
 };

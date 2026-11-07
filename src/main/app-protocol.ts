@@ -14,6 +14,10 @@ export interface AppProtocolDeps {
   attachmentDir: string;
   /** 按 id 查附件记录。 */
   attachmentService: AttachmentService;
+  /** 资料库目录，`/doc` 寻址的越权校验以它为界。 */
+  libraryDir: string;
+  /** 按资源 id 解析库内源文件相对 data 目录的路径；不是文件时返回 null。 */
+  resolveResourceBlob: (id: string) => string | null;
 }
 
 /**
@@ -45,6 +49,39 @@ export function registerAppProtocolPrivileges(): void {
 
 /** 附件寻址专用的保留 hostname 段；data 目录下不得创建同名目录 */
 const ATTACHMENT_HOSTNAME = 'attachment-resource';
+
+/** 资源寻址专用的保留 hostname 段；URL 形如 app:///resource/<resourceId> */
+const RESOURCE_HOSTNAME = 'resource';
+
+/** 处理资源寻址：按资源 id 查库内路径，校验后读文件返回 */
+async function handleResourceRequest(resourceId: string, deps: AppProtocolDeps): Promise<Response> {
+  const blobPath = deps.resolveResourceBlob(resourceId);
+  if (!blobPath) {
+    return new Response('Not Found', { status: 404 });
+  }
+
+  const target = path.resolve(deps.dataDir, blobPath);
+  if (!isInsideDir(deps.libraryDir, target)) {
+    log.warn('[app://] blocked (invalid doc path):', resourceId, '->', target);
+    return new Response('Forbidden', { status: 403 });
+  }
+
+  try {
+    const fileResp = await net.fetch(pathToFileURL(target).href);
+    if (fileResp.status === 404) {
+      return new Response('Not Found', { status: 404 });
+    }
+    const mimeType = mime.lookup(target) || 'application/octet-stream';
+    return new Response(fileResp.body, {
+      status: fileResp.status,
+      statusText: fileResp.statusText,
+      headers: { 'Content-Type': mimeType },
+    });
+  } catch (e) {
+    log.error('[app://] resource request error:', resourceId, e);
+    return new Response('Internal Server Error', { status: 500 });
+  }
+}
 
 /** 处理附件寻址：按 id 查附件表拿路径与 MIME，再读文件返回 */
 async function handleAttachmentRequest(
@@ -89,6 +126,15 @@ async function handleAppRequest(req: Request, deps: AppProtocolDeps): Promise<Re
         return new Response('Bad Request', { status: 400 });
       }
       return handleAttachmentRequest(attachmentId, deps);
+    }
+
+    // 资源寻址走独立的 hostname 段
+    if (url.hostname === RESOURCE_HOSTNAME) {
+      const resourceId = decodeURIComponent(url.pathname).replace(/^\/+/, '');
+      if (!resourceId) {
+        return new Response('Bad Request', { status: 400 });
+      }
+      return handleResourceRequest(resourceId, deps);
     }
 
     // 浏览器把 app:///path 解析为 hostname="path的第一段" + pathname="/剩余段"

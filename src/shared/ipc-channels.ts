@@ -26,6 +26,36 @@ export enum IpcChannel {
   // File 操作
   File_OpenDialog = 'file:openDialog',
 
+  // 资料库（虚拟文件系统）
+  /** 列出某目录的直接子项 */
+  Library_ListChildren = 'library:listChildren',
+  /** 新建文件夹 */
+  Library_CreateFolder = 'library:createFolder',
+  /** main 端弹框选多个文件并复制进目标目录 */
+  Library_ImportFiles = 'library:importFiles',
+  /** 重命名单个文件或文件夹 */
+  Library_RenameResource = 'library:renameResource',
+  /** 把文件或文件夹移到新父目录 */
+  Library_ReparentResource = 'library:reparentResource',
+  /** 删除单个文件（含库内源文件） */
+  Library_DeleteFile = 'library:deleteFile',
+  /** 递归删除文件夹及其全部子项（含库内源文件） */
+  Library_DeleteFolderRecursive = 'library:deleteFolderRecursive',
+  /** 平铺列出全部文件，用于「全部资料」 */
+  Library_ListAllFiles = 'library:listAllFiles',
+  /** 按最近打开时间倒序列出文件 */
+  Library_ListRecentFiles = 'library:listRecentFiles',
+  /** 列出收藏的条目 */
+  Library_ListStarredResources = 'library:listStarredResources',
+  /** 资料库占用的磁盘空间 */
+  Library_GetStorageUsage = 'library:getStorageUsage',
+  /** 设置收藏状态 */
+  Library_SetStarred = 'library:setStarred',
+  /** 记录最近打开时间，由阅读器打开文件时调用 */
+  Library_MarkOpened = 'library:markOpened',
+  /** 取目录到根的路径，用于面包屑 */
+  Library_GetResourcePath = 'library:getResourcePath',
+
   // 附件（聊天输入）
   /** 附件入库：落盘图片字节或弹框选择，返回图片引用 */
   Attachment_Store = 'attachment:store',

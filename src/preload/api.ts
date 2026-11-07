@@ -16,6 +16,25 @@ import type {
 } from '@shared/types/chat';
 import type { FileOpenRequest, FileOpenResult } from '@shared/types/file';
 import type {
+  CreateFolderInput,
+  DeleteFileInput,
+  DeleteFolderRecursiveInput,
+  ImportFilesInput,
+  ImportFilesResult,
+  ListAllFilesInput,
+  ListChildrenInput,
+  ListRecentFilesInput,
+  ListStarredResourcesInput,
+  MarkOpenedInput,
+  GetResourcePathInput,
+  RenameResourceInput,
+  ReparentResourceInput,
+  ResourceDTO,
+  ResourcePathItem,
+  SetStarredInput,
+  StorageUsageDTO,
+} from '@shared/types/library';
+import type {
   EmbedCommandResult,
   EmbeddingRuntime,
   EmbedStartRequest,
@@ -123,6 +142,42 @@ export const api = {
   // 文件操作
   openFileDialog: (req?: FileOpenRequest) =>
     ipcRenderer.invoke(IpcChannel.File_OpenDialog, req) as Promise<FileOpenResult>,
+
+  // 资料库（虚拟文件系统）
+  library: {
+    listChildren: (request: ListChildrenInput) =>
+      ipcRenderer.invoke(IpcChannel.Library_ListChildren, request) as Promise<ResourceDTO[]>,
+    listAllFiles: (request: ListAllFilesInput = {}) =>
+      ipcRenderer.invoke(IpcChannel.Library_ListAllFiles, request) as Promise<ResourceDTO[]>,
+    listRecentFiles: (request: ListRecentFilesInput = {}) =>
+      ipcRenderer.invoke(IpcChannel.Library_ListRecentFiles, request) as Promise<ResourceDTO[]>,
+    listStarredResources: (request: ListStarredResourcesInput = {}) =>
+      ipcRenderer.invoke(IpcChannel.Library_ListStarredResources, request) as Promise<
+        ResourceDTO[]
+      >,
+    getStorageUsage: () =>
+      ipcRenderer.invoke(IpcChannel.Library_GetStorageUsage) as Promise<StorageUsageDTO>,
+    createFolder: (request: CreateFolderInput) =>
+      ipcRenderer.invoke(IpcChannel.Library_CreateFolder, request) as Promise<ResourceDTO>,
+    importFiles: (request: ImportFilesInput) =>
+      ipcRenderer.invoke(IpcChannel.Library_ImportFiles, request) as Promise<ImportFilesResult>,
+    renameResource: (request: RenameResourceInput) =>
+      ipcRenderer.invoke(IpcChannel.Library_RenameResource, request) as Promise<ResourceDTO>,
+    reparentResource: (request: ReparentResourceInput) =>
+      ipcRenderer.invoke(IpcChannel.Library_ReparentResource, request) as Promise<ResourceDTO>,
+    setStarred: (request: SetStarredInput) =>
+      ipcRenderer.invoke(IpcChannel.Library_SetStarred, request) as Promise<ResourceDTO>,
+    markOpened: (request: MarkOpenedInput) =>
+      ipcRenderer.invoke(IpcChannel.Library_MarkOpened, request) as Promise<void>,
+    getResourcePath: (request: GetResourcePathInput) =>
+      ipcRenderer.invoke(IpcChannel.Library_GetResourcePath, request) as Promise<
+        ResourcePathItem[]
+      >,
+    deleteFile: (request: DeleteFileInput) =>
+      ipcRenderer.invoke(IpcChannel.Library_DeleteFile, request) as Promise<void>,
+    deleteFolderRecursive: (request: DeleteFolderRecursiveInput) =>
+      ipcRenderer.invoke(IpcChannel.Library_DeleteFolderRecursive, request) as Promise<void>,
+  },
 
   // 附件（聊天输入）
   storeAttachments: (req: AttachmentStoreRequest) =>

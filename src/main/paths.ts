@@ -12,6 +12,8 @@ export interface Paths {
   readonly attachmentDir: string;
   /** 书籍源文件目录，位于数据根目录下。 */
   readonly booksDir: string;
+  /** 资料库源文件目录，位于数据根目录下。 */
+  readonly libraryDir: string;
   /** 主数据库文件。 */
   readonly databasePath: string;
 }
@@ -28,6 +30,7 @@ export function createPaths(dataDir: string): Paths {
     dataDir: root,
     attachmentDir: path.join(root, 'attachment'),
     booksDir: path.join(root, 'books'),
+    libraryDir: path.join(root, 'library'),
     databasePath: path.join(root, 'easy-learn.db'),
   });
 }

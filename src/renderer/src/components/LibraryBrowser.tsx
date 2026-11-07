@@ -1,0 +1,759 @@
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  ArrowUpDown,
+  Check,
+  ChevronRight,
+  Filter,
+  FolderInput,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Star,
+  Trash2,
+  Upload,
+} from 'lucide-react';
+import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
+import { Input } from '@/components/ui/input';
+import { SegmentedToggle } from '@/components/ui/segmented-toggle';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu';
+import { LIBRARY_ROOT_KEY, useLibraryStore } from '@/stores/library-store';
+import { ResourceIcon } from '@/components/ResourceIcon';
+import { FORMAT_LABEL, formatBytes, formatDate } from '@/utils/library-format';
+import type { ResourceDTO, ResourceFormat, ResourceSort } from '@shared/types/library';
+
+/** 工具栏排序项的展示名。 */
+const SORT_LABEL: Record<ResourceSort, string> = {
+  name: '名称',
+  size: '大小',
+  updatedAt: '修改时间',
+};
+
+/** 类型过滤选项；all 表示不过滤。 */
+const FILTER_OPTIONS: Array<{ value: 'all' | ResourceFormat; label: string }> = [
+  { value: 'all', label: '全部类型' },
+  { value: 'pdf', label: 'PDF' },
+  { value: 'epub', label: 'EPUB' },
+  { value: 'md', label: 'MD' },
+  { value: 'txt', label: 'TXT' },
+];
+
+/** 当前打开的对话框。 */
+type ActiveDialog =
+  | { kind: 'create' }
+  | { kind: 'rename'; item: ResourceDTO }
+  | { kind: 'move'; item: ResourceDTO }
+  | null;
+
+/** 一个可展开的目录选项节点。 */
+function PickerFolder({
+  folder,
+  depth,
+  value,
+  onChange,
+}: {
+  folder: ResourceDTO;
+  depth: number;
+  value: string | null;
+  onChange: (id: string | null) => void;
+}) {
+  const children = useLibraryStore(s => s.childrenCache[folder.id]);
+  const loadChildren = useLibraryStore(s => s.loadChildren);
+  const [open, setOpen] = useState(false);
+  const subFolders = (children ?? []).filter(item => item.kind === 'folder');
+
+  function toggle(): void {
+    if (!open && !children) void loadChildren(folder.id);
+    setOpen(value => !value);
+  }
+
+  return (
+    <div>
+      <PickerRow
+        id={folder.id}
+        name={folder.name}
+        depth={depth}
+        value={value}
+        onChange={onChange}
+        expanded={open}
+        onToggle={toggle}
+      />
+      {open &&
+        subFolders.map(child => (
+          <PickerFolder
+            key={child.id}
+            folder={child}
+            depth={depth + 1}
+            value={value}
+            onChange={onChange}
+          />
+        ))}
+    </div>
+  );
+}
+
+/** 目录选择的一行。 */
+function PickerRow({
+  id,
+  name,
+  depth,
+  value,
+  onChange,
+  expanded,
+  onToggle,
+}: {
+  id: string | null;
+  name: string;
+  depth: number;
+  value: string | null;
+  onChange: (id: string | null) => void;
+  expanded?: boolean;
+  onToggle?: () => void;
+}) {
+  return (
+    <div className="flex h-8 items-center gap-1 rounded-md px-1 hover:bg-secondary">
+      <button
+        type="button"
+        aria-label={expanded ? '收起目录' : '展开目录'}
+        className={cn(
+          'flex h-6 w-5 shrink-0 items-center justify-center text-muted-foreground',
+          !onToggle && 'invisible'
+        )}
+        onClick={onToggle}
+      >
+        <ChevronRight className={cn('h-3.5 w-3.5 transition-transform', expanded && 'rotate-90')} />
+      </button>
+      <button
+        type="button"
+        className="flex min-w-0 flex-1 items-center gap-2 text-left text-sm"
+        style={{ paddingLeft: depth * 10 }}
+        onClick={() => onChange(id)}
+      >
+        {value === id ? (
+          <Check className="h-3.5 w-3.5 shrink-0" />
+        ) : (
+          <span className="h-3.5 w-3.5 shrink-0" />
+        )}
+        <ResourceIcon kind="folder" size="sm" className="shrink-0" />
+        <span className="truncate">{name}</span>
+      </button>
+    </div>
+  );
+}
+
+/** 移动到对话框里的目录树。 */
+function FolderPicker({
+  value,
+  onChange,
+}: {
+  value: string | null;
+  onChange: (id: string | null) => void;
+}) {
+  const rootChildren = useLibraryStore(s => s.childrenCache[LIBRARY_ROOT_KEY]);
+  const rootFolders = (rootChildren ?? []).filter(item => item.kind === 'folder');
+  const loadChildren = useLibraryStore(s => s.loadChildren);
+
+  useEffect(() => {
+    void loadChildren(null);
+  }, [loadChildren]);
+
+  return (
+    <div className="max-h-56 overflow-auto rounded-md border border-stroke-3 p-1">
+      <PickerRow id={null} name="资料库" depth={0} value={value} onChange={onChange} />
+      {rootFolders.map(folder => (
+        <PickerFolder key={folder.id} folder={folder} depth={1} value={value} onChange={onChange} />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * 资料库主区：工具栏、文件夹行、文件网格与详情视图，以及重命名/移动/删除对话框。
+ */
+export function LibraryBrowser() {
+  const path = useLibraryStore(s => s.path);
+  const items = useLibraryStore(s => s.items);
+  const viewMode = useLibraryStore(s => s.viewMode);
+  const sort = useLibraryStore(s => s.sort);
+  const direction = useLibraryStore(s => s.direction);
+  const formats = useLibraryStore(s => s.formats);
+  const selectedIds = useLibraryStore(s => s.selectedIds);
+  const loading = useLibraryStore(s => s.loading);
+  const error = useLibraryStore(s => s.error);
+  const importing = useLibraryStore(s => s.importing);
+
+  const load = useLibraryStore(s => s.load);
+  const openFolder = useLibraryStore(s => s.openFolder);
+  const setSort = useLibraryStore(s => s.setSort);
+  const setFormats = useLibraryStore(s => s.setFormats);
+  const setViewMode = useLibraryStore(s => s.setViewMode);
+  const select = useLibraryStore(s => s.select);
+  const importFiles = useLibraryStore(s => s.importFiles);
+  const createFolder = useLibraryStore(s => s.createFolder);
+  const renameResource = useLibraryStore(s => s.renameResource);
+  const reparentResource = useLibraryStore(s => s.reparentResource);
+  const deleteFile = useLibraryStore(s => s.deleteFile);
+  const deleteFolderRecursive = useLibraryStore(s => s.deleteFolderRecursive);
+  const setStarred = useLibraryStore(s => s.setStarred);
+
+  const [dialog, setDialog] = useState<ActiveDialog>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<ResourceDTO | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [draftName, setDraftName] = useState('');
+  const [moveTarget, setMoveTarget] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [hover, setHover] = useState<{ item: ResourceDTO; left: number; top: number } | null>(null);
+
+  const contentRef = useRef<HTMLDivElement>(null);
+  const hoverTimer = useRef<number | null>(null);
+
+  useEffect(
+    () => () => {
+      if (hoverTimer.current !== null) window.clearTimeout(hoverTimer.current);
+    },
+    []
+  );
+
+  const activeFilter = formats[0] ?? 'all';
+  const breadcrumb = path;
+
+  function openRename(item: ResourceDTO): void {
+    setDraftName(item.name);
+    setDialog({ kind: 'rename', item });
+    setDialogOpen(true);
+  }
+
+  function openMove(item: ResourceDTO): void {
+    setMoveTarget(item.parentId);
+    setDialog({ kind: 'move', item });
+    setDialogOpen(true);
+  }
+
+  function openDelete(item: ResourceDTO): void {
+    setDeleteTarget(item);
+    setDeleteOpen(true);
+  }
+
+  function openCreate(): void {
+    setDraftName('');
+    setDialog({ kind: 'create' });
+    setDialogOpen(true);
+  }
+
+  async function handleCreate(): Promise<void> {
+    const name = draftName.trim();
+    if (!name) return;
+    setBusy(true);
+    const message = await createFolder(name);
+    setBusy(false);
+    if (message) toast.error(message);
+    else {
+      toast.success('已新建文件夹');
+      setDialogOpen(false);
+    }
+  }
+
+  async function handleRename(): Promise<void> {
+    if (!dialog || dialog.kind !== 'rename') return;
+    const name = draftName.trim();
+    if (!name) return;
+    setBusy(true);
+    const message = await renameResource(dialog.item.id, name);
+    setBusy(false);
+    if (message) toast.error(message);
+    else {
+      setDialogOpen(false);
+    }
+  }
+
+  async function handleMove(): Promise<void> {
+    if (!dialog || dialog.kind !== 'move') return;
+    setBusy(true);
+    const message = await reparentResource(dialog.item.id, moveTarget);
+    setBusy(false);
+    if (message) toast.error(message);
+    else {
+      toast.success('已移动');
+      setDialogOpen(false);
+    }
+  }
+
+  async function handleDelete(): Promise<void> {
+    if (!deleteTarget) return;
+    setBusy(true);
+    const message =
+      deleteTarget.kind === 'folder'
+        ? await deleteFolderRecursive(deleteTarget.id)
+        : await deleteFile(deleteTarget.id);
+    setBusy(false);
+    if (message) toast.error(message);
+    else {
+      toast.success('已删除');
+      setDeleteOpen(false);
+    }
+  }
+
+  async function handleImport(): Promise<void> {
+    const message = await importFiles();
+    if (message) {
+      toast.error(message);
+      return;
+    }
+    const result = useLibraryStore.getState().lastImport;
+    if (!result || result.canceled) return;
+    if (result.imported.length > 0) toast.success(`已导入 ${result.imported.length} 个文件`);
+    if (result.rejected.length > 0) toast.error(`${result.rejected.length} 个文件未导入`);
+  }
+
+  async function toggleStarred(item: ResourceDTO): Promise<void> {
+    const message = await setStarred(item.id, !item.starred);
+    if (message) toast.error(message);
+  }
+
+  function handleHoverStart(item: ResourceDTO, element: HTMLElement): void {
+    if (hoverTimer.current !== null) window.clearTimeout(hoverTimer.current);
+    hoverTimer.current = window.setTimeout(() => {
+      const container = contentRef.current;
+      if (!container) return;
+      const rect = element.getBoundingClientRect();
+      const box = container.getBoundingClientRect();
+      const cardWidth = 248;
+      const left = Math.max(
+        8,
+        Math.min(rect.left - box.left + rect.width + 8, box.width - cardWidth - 8)
+      );
+      const top = Math.max(8, Math.min(rect.top - box.top, box.height - 160));
+      setHover({ item, left, top });
+    }, 400);
+  }
+
+  function handleHoverEnd(): void {
+    if (hoverTimer.current !== null) window.clearTimeout(hoverTimer.current);
+    setHover(null);
+  }
+
+  function renderMenuItems(item: ResourceDTO): ReactNode {
+    return (
+      <>
+        <ContextMenuItem onSelect={() => openRename(item)}>
+          <Pencil className="h-4 w-4" />
+          重命名
+        </ContextMenuItem>
+        <ContextMenuItem onSelect={() => openMove(item)}>
+          <FolderInput className="h-4 w-4" />
+          移动到…
+        </ContextMenuItem>
+        <ContextMenuItem onSelect={() => void toggleStarred(item)}>
+          <Star className="h-4 w-4" />
+          {item.starred ? '取消收藏' : '收藏'}
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem className="text-destructive" onSelect={() => openDelete(item)}>
+          <Trash2 className="h-4 w-4" />
+          删除
+        </ContextMenuItem>
+      </>
+    );
+  }
+
+  return (
+    <section className="flex min-w-0 flex-1 flex-col">
+      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-stroke-3 px-3">
+        <div className="flex min-w-0 items-center gap-1 text-sm">
+          {breadcrumb.map((segment, index) => {
+            const last = index === breadcrumb.length - 1;
+            return (
+              <span key={segment.id ?? 'root'} className="flex min-w-0 items-center gap-1">
+                {index > 0 && (
+                  <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                )}
+                {last ? (
+                  <span className="truncate font-medium">{segment.name}</span>
+                ) : (
+                  <button
+                    type="button"
+                    className="truncate text-muted-foreground hover:text-foreground"
+                    onClick={() => void openFolder(segment.id)}
+                  >
+                    {segment.name}
+                  </button>
+                )}
+              </span>
+            );
+          })}
+        </div>
+
+        <div className="ml-auto flex items-center gap-1">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm">
+                <ArrowUpDown className="h-4 w-4" />
+                {SORT_LABEL[sort]}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {(Object.keys(SORT_LABEL) as ResourceSort[]).map(key => (
+                <DropdownMenuItem key={key} onSelect={() => void setSort(key, direction)}>
+                  {sort === key ? <Check className="h-4 w-4" /> : <span className="h-4 w-4" />}
+                  {SORT_LABEL[key]}
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => void setSort(sort, 'asc')}>
+                {direction === 'asc' ? <Check className="h-4 w-4" /> : <span className="h-4 w-4" />}
+                升序
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void setSort(sort, 'desc')}>
+                {direction === 'desc' ? (
+                  <Check className="h-4 w-4" />
+                ) : (
+                  <span className="h-4 w-4" />
+                )}
+                降序
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm">
+                <Filter className="h-4 w-4" />
+                {FILTER_OPTIONS.find(option => option.value === activeFilter)?.label}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {FILTER_OPTIONS.map(option => (
+                <DropdownMenuItem
+                  key={option.value}
+                  onSelect={() => void setFormats(option.value === 'all' ? [] : [option.value])}
+                >
+                  {activeFilter === option.value ? (
+                    <Check className="h-4 w-4" />
+                  ) : (
+                    <span className="h-4 w-4" />
+                  )}
+                  {option.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <SegmentedToggle
+            value={viewMode}
+            options={[
+              { value: 'grid', label: '网格' },
+              { value: 'detail', label: '列表' },
+            ]}
+            onChange={setViewMode}
+          />
+
+          <Button variant="outline" size="sm" onClick={openCreate}>
+            <Plus className="h-4 w-4" />
+            新建文件夹
+          </Button>
+          <Button
+            variant="solid"
+            size="sm"
+            onClick={() => void handleImport()}
+            disabled={importing}
+          >
+            <Upload className="h-4 w-4" />
+            导入
+          </Button>
+          <IconButton label="刷新" onClick={() => void load()} disabled={loading}>
+            <RefreshCw className="h-4 w-4" />
+          </IconButton>
+        </div>
+      </div>
+
+      <div ref={contentRef} className="relative min-h-0 flex-1 overflow-auto p-3">
+        {loading ? (
+          <div className="text-sm text-muted-foreground">正在加载…</div>
+        ) : error ? (
+          <div className="flex items-center gap-2 text-sm text-destructive">
+            {error}
+            <Button variant="ghost" size="sm" onClick={() => void load()}>
+              重试
+            </Button>
+          </div>
+        ) : items.length === 0 ? (
+          <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
+            <span>这里还没有内容</span>
+            <div className="flex gap-2">
+              <Button variant="solid" size="sm" onClick={() => void handleImport()}>
+                导入文件
+              </Button>
+              <Button variant="outline" size="sm" onClick={openCreate}>
+                新建文件夹
+              </Button>
+            </div>
+          </div>
+        ) : viewMode === 'grid' ? (
+          <div className="flex flex-wrap gap-1">
+            {items.map(item => (
+              <ContextMenu key={item.id}>
+                <ContextMenuTrigger asChild>
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    className={cn(
+                      'group relative flex h-28 w-28 flex-col items-center justify-center gap-2 rounded-lg p-1.5 hover:bg-secondary',
+                      selectedIds.includes(item.id) && 'bg-secondary'
+                    )}
+                    onClick={() => select([item.id])}
+                    onDoubleClick={() => {
+                      if (item.kind === 'folder') {
+                        handleHoverEnd();
+                        void openFolder(item.id);
+                      }
+                    }}
+                    onKeyDown={event => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        select([item.id]);
+                      }
+                    }}
+                    onMouseEnter={event => handleHoverStart(item, event.currentTarget)}
+                    onMouseLeave={handleHoverEnd}
+                  >
+                    <ResourceIcon kind={item.kind} format={item.format} />
+                    <span className="w-full shrink-0 truncate text-center text-xs">
+                      {item.name}
+                    </span>
+
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon
+                          aria-label="更多"
+                          className="absolute right-0.5 top-0.5 opacity-0 group-hover:opacity-100"
+                        >
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onSelect={() => openRename(item)}>
+                          <Pencil className="h-4 w-4" />
+                          重命名
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => openMove(item)}>
+                          <FolderInput className="h-4 w-4" />
+                          移动到…
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => void toggleStarred(item)}>
+                          <Star className="h-4 w-4" />
+                          {item.starred ? '取消收藏' : '收藏'}
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          className="text-destructive"
+                          onSelect={() => openDelete(item)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          删除
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </ContextMenuTrigger>
+                <ContextMenuContent>{renderMenuItems(item)}</ContextMenuContent>
+              </ContextMenu>
+            ))}
+          </div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-xs text-muted-foreground">
+                <th className="px-2 py-2 text-left font-medium">名称</th>
+                <th className="px-2 py-2 text-left font-medium">类型</th>
+                <th className="px-2 py-2 text-left font-medium">大小</th>
+                <th className="px-2 py-2 text-left font-medium">修改时间</th>
+                <th className="px-2 py-2 text-left font-medium">分片</th>
+                <th className="px-2 py-2 text-left font-medium">向量化</th>
+                <th className="px-2 py-2 text-left font-medium">OCR</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map(item => (
+                <tr
+                  key={item.id}
+                  className={cn(
+                    'hover:bg-secondary',
+                    selectedIds.includes(item.id) && 'bg-secondary'
+                  )}
+                  onClick={() => select([item.id])}
+                  onDoubleClick={() => {
+                    if (item.kind === 'folder') {
+                      handleHoverEnd();
+                      void openFolder(item.id);
+                    }
+                  }}
+                >
+                  <td className="px-2 py-2">
+                    <div className="flex items-center gap-2">
+                      {item.kind === 'folder' ? (
+                        <ResourceIcon kind="folder" size="sm" />
+                      ) : (
+                        <ResourceIcon kind="file" format={item.format} size="sm" />
+                      )}
+                      <span className="truncate">{item.name}</span>
+                    </div>
+                  </td>
+                  <td className="px-2 py-2 text-muted-foreground">
+                    {item.kind === 'folder'
+                      ? '文件夹'
+                      : item.format
+                        ? FORMAT_LABEL[item.format]
+                        : '—'}
+                  </td>
+                  <td className="px-2 py-2 text-muted-foreground">
+                    {item.kind === 'folder' ? '—' : formatBytes(item.sizeBytes)}
+                  </td>
+                  <td className="px-2 py-2 text-muted-foreground">{formatDate(item.updatedAt)}</td>
+                  <td className="px-2 py-2 text-muted-foreground">—</td>
+                  <td className="px-2 py-2 text-muted-foreground">—</td>
+                  <td className="px-2 py-2 text-muted-foreground">—</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+        {hover && items.some(item => item.id === hover.item.id) && (
+          <div
+            className="pointer-events-none absolute z-10 w-64 rounded-lg border border-stroke-3 bg-card p-3 text-sm shadow-panel"
+            style={{ left: hover.left, top: hover.top }}
+          >
+            <div className="truncate font-medium">{hover.item.name}</div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {hover.item.kind === 'folder'
+                ? `文件夹 · ${hover.item.childrenCount ?? 0} 项`
+                : `${hover.item.format ? FORMAT_LABEL[hover.item.format] : ''} · ${formatBytes(hover.item.sizeBytes)}`}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              修改于 {formatDate(hover.item.updatedAt)}
+            </div>
+            <div className="mt-2 text-xs text-muted-foreground">分片 — · 向量化 — · OCR —</div>
+          </div>
+        )}
+      </div>
+
+      <Dialog open={dialogOpen && dialog?.kind === 'create'} onOpenChange={setDialogOpen}>
+        <DialogContent onCloseAutoFocus={event => event.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle>新建文件夹</DialogTitle>
+          </DialogHeader>
+          <Input
+            autoFocus
+            value={draftName}
+            placeholder="文件夹名称"
+            onChange={event => setDraftName(event.target.value)}
+            onKeyDown={event => {
+              if (event.key === 'Enter') void handleCreate();
+            }}
+          />
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setDialogOpen(false)}>
+              取消
+            </Button>
+            <Button variant="solid" size="sm" disabled={busy} onClick={() => void handleCreate()}>
+              创建
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={dialogOpen && dialog?.kind === 'rename'} onOpenChange={setDialogOpen}>
+        <DialogContent onCloseAutoFocus={event => event.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle>重命名</DialogTitle>
+          </DialogHeader>
+          <Input
+            autoFocus
+            value={draftName}
+            onChange={event => setDraftName(event.target.value)}
+            onKeyDown={event => {
+              if (event.key === 'Enter') void handleRename();
+            }}
+          />
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setDialogOpen(false)}>
+              取消
+            </Button>
+            <Button variant="solid" size="sm" disabled={busy} onClick={() => void handleRename()}>
+              保存
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={dialogOpen && dialog?.kind === 'move'} onOpenChange={setDialogOpen}>
+        <DialogContent onCloseAutoFocus={event => event.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle>移动到</DialogTitle>
+          </DialogHeader>
+          <FolderPicker value={moveTarget} onChange={setMoveTarget} />
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setDialogOpen(false)}>
+              取消
+            </Button>
+            <Button variant="solid" size="sm" disabled={busy} onClick={() => void handleMove()}>
+              移动
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent onCloseAutoFocus={event => event.preventDefault()}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除「{deleteTarget?.name ?? ''}」？</AlertDialogTitle>
+            <AlertDialogDescription>删除后不可恢复。</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void handleDelete()} disabled={busy}>
+              删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </section>
+  );
+}

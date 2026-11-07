@@ -53,6 +53,8 @@ function startApplication(): App {
     dataDir: paths.dataDir,
     attachmentDir: paths.attachmentDir,
     attachmentService: app.services.attachmentService,
+    libraryDir: paths.libraryDir,
+    resolveResourceBlob: id => app.services.libraryService.resolveResourceBlob(id),
   });
   setupIpcHandlers(app);
   log.info('IPC handlers registered');

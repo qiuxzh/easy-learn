@@ -1,6 +1,7 @@
 import { memo, type ComponentType, type ReactElement } from 'react';
 import { ChatPage } from '@/pages/ChatPage';
 import { BookShelf } from '@/pages/BookShelf';
+import { LibraryPage } from '@/pages/Library';
 import { Flashcard } from '@/pages/Flashcard';
 import { Home } from '@/pages/Home';
 import { CardBrowser } from '@/components/CardBrowser';
@@ -20,6 +21,7 @@ const TAB_COMPONENTS: Record<TabType, ComponentType<TabContentProps>> = {
   home: Home as ComponentType<TabContentProps>,
   chat: ChatPage as ComponentType<TabContentProps>,
   bookshelf: BookShelf as ComponentType<TabContentProps>,
+  library: LibraryPage as ComponentType<TabContentProps>,
   'card-management': Flashcard as ComponentType<TabContentProps>,
   'card-browser': CardBrowser as ComponentType<TabContentProps>,
   'card-review': CardReview as ComponentType<TabContentProps>,

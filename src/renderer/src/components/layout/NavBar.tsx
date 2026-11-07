@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import { BookOpen, MessageCircle, Moon, Settings, Sun, WalletCards } from 'lucide-react';
+import { BookOpen, Library, MessageCircle, Moon, Settings, Sun, WalletCards } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';
 import { SettingsDialog } from '@/pages/Settings';
 import { useTabsStore, type TabType } from '@/stores/tabs-store';
@@ -14,6 +14,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { type: 'chat', label: '对话', icon: <MessageCircle /> },
   { type: 'bookshelf', label: '书库', icon: <BookOpen /> },
+  { type: 'library', label: '资料库', icon: <Library /> },
   { type: 'card-management', label: '闪卡', icon: <WalletCards /> },
 ];
 

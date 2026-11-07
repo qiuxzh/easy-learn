@@ -1,3 +1,7 @@
+/**
+ * 受控使用时 open 与内容数据分开保存：Radix 在 open 置为 false 后仍会保留内容播放退场动画，关闭时同时清空数据会让动画期间的标题与内容变空。
+ * 没有 AlertDialogTrigger 时，关闭时的焦点恢复目标可能已经卸载；需要关闭焦点恢复时在 AlertDialogContent 上传入 onCloseAutoFocus 并阻止默认行为，否则焦点陷阱会反复寻找不存在的目标。
+ */
 import * as React from 'react';
 import * as AlertDialogPrimitive from '@radix-ui/react-alert-dialog';
 

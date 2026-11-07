@@ -57,6 +57,28 @@ export async function pickCoverImage(): Promise<CoverImage | null> {
 }
 
 /**
+ * 弹文件框选多个资料文件。
+ *
+ * @returns 用户选择的绝对路径列表；取消选择时返回 null
+ */
+export async function pickLibraryFiles(): Promise<string[] | null> {
+  const result = await dialog.showOpenDialog({
+    title: '导入资料',
+    properties: ['openFile', 'multiSelections'],
+    filters: [
+      { name: '资料', extensions: ['pdf', 'epub', 'md', 'txt'] },
+      { name: 'PDF 文件', extensions: ['pdf'] },
+      { name: 'EPUB 文件', extensions: ['epub'] },
+      { name: 'Markdown 文件', extensions: ['md'] },
+      { name: '文本文件', extensions: ['txt'] },
+      { name: '所有文件', extensions: ['*'] },
+    ],
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  return result.filePaths;
+}
+
+/**
  * 弹文件框选多张图片，读成字节。
  *
  * @returns 每张图片的字节与声明的 MIME；取消选择时返回 null

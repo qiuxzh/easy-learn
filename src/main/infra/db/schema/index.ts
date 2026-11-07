@@ -2,6 +2,12 @@ import { bookTable, bookSQL } from './book';
 import { bookChunkTable, bookChunkSQL, bookChunkBookIdIndexSQL } from './book-chunk';
 import { bookStageTable, bookStageSQL } from './book-stage';
 import { bookPageTable, bookPageSQL } from './book-page';
+import {
+  resourceTable,
+  resourceSQL,
+  resourceParentIndexSQL,
+  resourceParentNameIndexSQL,
+} from './resource';
 import { attachmentTable, attachmentSQL } from './attachment';
 import {
   cardGroupTable,
@@ -36,11 +42,13 @@ export {
   agentEntryTable,
   embedIndexTable,
   attachmentTable,
+  resourceTable,
 };
 export type { BookRow, InsertBookRow } from './book';
 export type { BookChunkRow, InsertBookChunkRow } from './book-chunk';
 export type { BookStage, BookStageRow, InsertBookStageRow } from './book-stage';
 export type { BookPageRow, InsertBookPageRow } from './book-page';
+export type { ResourceRow, InsertResourceRow } from './resource';
 export type { AttachmentRow, InsertAttachmentRow } from './attachment';
 export type { CardGroupRow, InsertCardGroupRow, CardRow, InsertCardRow } from './flashcard';
 export type { AgentSessionRow, InsertAgentSessionRow } from './agent-session';
@@ -66,4 +74,7 @@ export const tableSQLs = [
   embedIndexSQL,
   embedIndexFingerprintIndexSQL,
   embedIndexModelIndexSQL,
+  resourceSQL,
+  resourceParentIndexSQL,
+  resourceParentNameIndexSQL,
 ];
