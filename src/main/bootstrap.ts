@@ -22,6 +22,8 @@ import { EmbeddingService } from './service/embedding-service';
 import { AttachmentService } from './service/attachment-service';
 import { LibraryService } from './service/library/library-service';
 import { LibraryStorage } from './service/library/library-storage';
+import { TaskScheduler } from './service/task/task-scheduler';
+import { createTaskWorkspace } from './service/task/task-workspace';
 
 /** 装配应用需要的底层输入。 */
 export interface AppDeps {
@@ -48,6 +50,7 @@ export interface AppServices {
   libraryService: LibraryService;
   readingService: ReadingService;
   sessionService: SessionService;
+  taskService: TaskScheduler;
 }
 
 /** 装配完成的应用。 */
@@ -93,6 +96,13 @@ export function bootstrap(deps: AppDeps): App {
     transaction: fn => db.transaction(fn),
   });
 
+  const taskService = new TaskScheduler({
+    taskRepo: repos.taskRepo,
+    definitions: [],
+    workspace: createTaskWorkspace(deps.paths.taskWorkDir),
+  });
+  taskService.start();
+
   const bookModule = createBookModule({
     repos,
     paths: deps.paths,
@@ -128,8 +138,10 @@ export function bootstrap(deps: AppDeps): App {
       libraryService,
       readingService: readingModule.readingService,
       sessionService: chatModule.sessionService,
+      taskService,
     },
     shutdown: async () => {
+      await taskService.shutdown();
       await chatModule.sessionService.dispose();
       db.sqlite.close();
     },

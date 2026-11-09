@@ -25,6 +25,8 @@ import { createSessionEntryRepo } from './create-session-entry-repo';
 import { createSessionRepo } from './create-session-repo';
 import { createResourceRepo } from './create-resource-repo';
 import type { ResourceRepo } from '@main/contracts/resource-repo';
+import { createTaskRepo } from './create-task-repo';
+import type { TaskRepo } from '@main/contracts/task-repo';
 
 /** 全应用的仓储集合，由装配根一次创建后传给各模块。 */
 export interface Repos {
@@ -41,6 +43,7 @@ export interface Repos {
   embedIndexRepo: EmbedIndexRepo;
   embedVectorRepo: EmbedVectorRepo;
   resourceRepo: ResourceRepo;
+  taskRepo: TaskRepo;
 }
 
 /** 书籍域用到的仓储视图。 */
@@ -85,5 +88,6 @@ export function createRepos(db: DbHandle): Repos {
     embedIndexRepo,
     embedVectorRepo,
     resourceRepo: createResourceRepo(db),
+    taskRepo: createTaskRepo(db),
   };
 }

@@ -30,6 +30,7 @@ import {
   embedIndexFingerprintIndexSQL,
   embedIndexModelIndexSQL,
 } from './embed-index';
+import { taskTable, taskSQL, taskTypeStatusCreatedIndexSQL } from './task';
 
 export {
   bookTable,
@@ -43,6 +44,7 @@ export {
   embedIndexTable,
   attachmentTable,
   resourceTable,
+  taskTable,
 };
 export type { BookRow, InsertBookRow } from './book';
 export type { BookChunkRow, InsertBookChunkRow } from './book-chunk';
@@ -54,6 +56,7 @@ export type { CardGroupRow, InsertCardGroupRow, CardRow, InsertCardRow } from '.
 export type { AgentSessionRow, InsertAgentSessionRow } from './agent-session';
 export type { AgentEntryRow, InsertAgentEntryRow } from './agent-entry';
 export type { EmbedIndexRow, InsertEmbedIndexRow } from './embed-index';
+export type { TaskRow, InsertTaskRow } from './task';
 
 export const tableSQLs = [
   bookSQL,
@@ -77,4 +80,6 @@ export const tableSQLs = [
   resourceSQL,
   resourceParentIndexSQL,
   resourceParentNameIndexSQL,
+  taskSQL,
+  taskTypeStatusCreatedIndexSQL,
 ];
