@@ -38,6 +38,15 @@
   background-color: var(--scrollbar-thumb-hover);
 }
 
+/* 工具条内的横向滚动只在溢出时生效，滚动条不占视觉 */
+.tab-strip {
+  scrollbar-width: none;
+}
+
+.tab-strip::-webkit-scrollbar {
+  display: none;
+}
+
 /* Radix ScrollArea 默认给视口内容注入 table 布局。
    需要随面板收窄并显示省略号时，用 scroll-area-fit 让内容跟随视口宽度。 */
 .scroll-area-fit [data-radix-scroll-area-viewport] > div {
