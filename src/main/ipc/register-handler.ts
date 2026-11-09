@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron';
-import log from 'electron-log';
+import { log } from '@main/logging';
 import { DomainError } from '@main/domain-error';
 
 /** 成功时随 `success` 一起返回的字段；返回空对象表示只带 `success`。 */

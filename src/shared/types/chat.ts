@@ -6,7 +6,7 @@
  * 上下文装载等纯内核类型仍留在主进程。
  */
 
-import { CompactionResult } from '@main/agent/common-agent/compaction/compaction';
+import type { CompactionResult } from '@main/agent/common-agent/compaction/compaction';
 
 /** 内置的模型 API 种类。 */
 export type KnownApi =

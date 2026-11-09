@@ -2,9 +2,9 @@
  * 书籍检索服务。
  *
  * 两条链路的算法都不在这里：BM25 的在 `@main/retrieval/bm25`，
- * 向量的在 `@main/infra/db/vector-extension` 加载的 sqlite-vector 扩展里。
+ * 向量的在 infra 加载的 sqlite-vector 扩展里；扩展是否就绪由仓储实现负责，检索服务不感知。
  */
-import log from 'electron-log';
+import { log } from '@main/logging';
 import type { EmbeddingConfig } from '@main/contracts/config';
 import type { BookChunkEntity, VectorSearchHit } from '@main/contracts/book-repo';
 import type {
@@ -14,7 +14,6 @@ import type {
   EmbedVectorRepo,
 } from '@main/contracts/book-repo';
 import type { BookRepos } from '@main/infra/repo/repos';
-import { assertVectorExtensionReady } from '@main/infra/db/vector-extension';
 import { Bm25Retriever } from '@main/retrieval/bm25/retriever';
 import type { BookEmbedding } from '@shared/types/books';
 import type { EmbeddingIdentity } from '@shared/utils/embedding-identity';
@@ -119,12 +118,6 @@ export class BookRetrievalService {
     // 它把「没做过」和「已过期」都归成 none，具体措辞由 describeNotSearchable 再区分。
     if (deriveDataState(embedding, identity) !== 'done') {
       return { ok: false, message: describeNotSearchable(embedding, identity, model.label) };
-    }
-
-    try {
-      assertVectorExtensionReady();
-    } catch (error) {
-      return { ok: false, message: describeError(error) };
     }
 
     let queryVector: number[];

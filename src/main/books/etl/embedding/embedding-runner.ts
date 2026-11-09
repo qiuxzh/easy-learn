@@ -1,4 +1,4 @@
-import log from 'electron-log';
+import { log } from '@main/logging';
 import type { TransactionRunner } from '@main/contracts/transaction';
 import type { UiEventPublisher } from '@main/contracts/ui-event-publisher';
 import type { EmbeddingConfig } from '@main/contracts/config';

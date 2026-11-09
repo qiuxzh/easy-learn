@@ -7,7 +7,42 @@ import react from 'eslint-plugin-react';
 import reactHooks from 'eslint-plugin-react-hooks';
 import jsxA11y from 'eslint-plugin-jsx-a11y';
 import globals from 'globals';
+import path from 'node:path';
+import ts from 'typescript';
 import { RESTRICTED_CLASSES } from './scripts/spec/tailwind-class-rules.js';
+import { ARCHITECTURE_GATES } from './scripts/spec/architecture-gates.js';
+
+const tsconfig = ts.readConfigFile(
+  path.join(import.meta.dirname, 'tsconfig.json'),
+  ts.sys.readFile
+);
+if (tsconfig.error) throw new Error('无法读取 tsconfig.json');
+const { options: tsOptions } = ts.parseJsonConfigFileContent(
+  tsconfig.config,
+  ts.sys,
+  import.meta.dirname
+);
+const PATH_MAPPINGS = Object.entries(tsOptions.paths ?? {}).map(([alias, targets]) => ({
+  aliasBase: alias.replace(/\/?\*$/, ''),
+  targetBase: targets[0].replace(/\/?\*$/, '').replace(/\/$/, ''),
+}));
+
+/** 把门禁的项目路径翻译成 import 字面量；只从 tsconfig paths 推导，不维护第二份 alias。 */
+function aliasGroupsFor(target) {
+  if (!target.startsWith('src/')) return [target, `${target}/**`];
+  const groups = new Set();
+  for (const { aliasBase, targetBase } of PATH_MAPPINGS) {
+    if (target !== targetBase && !target.startsWith(`${targetBase}/`)) continue;
+    const suffix = target
+      .slice(targetBase.length)
+      .replace(/^\//, '')
+      .replace(/\.tsx?$/, '');
+    const base = suffix ? `${aliasBase}/${suffix}` : aliasBase;
+    groups.add(base);
+    groups.add(`${base}/**`);
+  }
+  return groups.size > 0 ? [...groups] : [target];
+}
 
 /** 默认 selector 去掉 `style` 变量：它指向 CSS 变量对象，不是类名清单 */
 const CLASS_SELECTORS = getDefaultSelectors().filter(selector => selector.name !== '^styles?$');
@@ -69,6 +104,21 @@ export default [
       react: { version: 'detect' },
     },
   },
+  ...ARCHITECTURE_GATES.map(gate => ({
+    files: gate.from,
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: gate.forbid.map(target => ({
+            group: aliasGroupsFor(target.to),
+            message: target.reason,
+            allowTypeImports: target.allowTypeOnly === true,
+          })),
+        },
+      ],
+    },
+  })),
   {
     files: ['src/renderer/src/**/*.{ts,tsx}'],
     plugins: { 'better-tailwindcss': betterTailwindcss },

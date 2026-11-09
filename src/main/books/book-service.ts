@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import log from 'electron-log';
+import { log } from '@main/logging';
 import type {
   BookDeleteResult,
   BookDto,
@@ -20,7 +20,6 @@ import type { Paths } from '@main/paths';
 import type { AttachmentService } from '@main/service/attachment-service';
 import type { BookRepos } from '@main/infra/repo/repos';
 import type { BookEntity } from '@main/contracts/book';
-import type { EmbedCommandResult, EmbedStartRequest } from '@shared/types/embedding';
 import type { OcrCommandResult } from '@shared/types/ocr';
 import type { BookReaderService } from './book-reader-service';
 import type { BookRetrievalService } from './book-retrieval-service';

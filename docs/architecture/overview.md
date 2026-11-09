@@ -40,6 +40,5 @@ main/index.ts          启动流程：路径 → bootstrap → 注册 IPC → �
 
 ## 已知缺口
 
-- 分层仍靠约定，没有 lint 规则机械约束跨层 import。
 - 表结构仍是 drizzle 声明与手写 DDL 两份，没有版本化迁移。
 - 工具层与部分仓储行为缺少自动化测试。

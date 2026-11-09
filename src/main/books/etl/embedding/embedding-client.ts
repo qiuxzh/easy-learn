@@ -1,7 +1,6 @@
 /**
  * 兼容openai格式的embedding模型操作客户端
  */
-import { net } from 'electron';
 import type { EmbedCallOptions, EmbedClientConfig, EmbedFailure, EmbedResult } from './types';
 
 /** 批量调用的默认超时。一次几十条文本，比设置页的连通性测试慢得多。 */
@@ -118,8 +117,8 @@ async function callOnce(
 
   let response: Response;
   try {
-    // 用 net.fetch 而不是全局 fetch，才能走系统代理与系统证书
-    response = await net.fetch(config.endpoint.trim(), {
+    // 使用全局 fetch；代理与证书由运行时环境决定
+    response = await fetch(config.endpoint.trim(), {
       method: 'POST',
       headers,
       body: JSON.stringify({

@@ -12,7 +12,7 @@ import { drizzle } from 'drizzle-orm/better-sqlite3';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import Database from 'better-sqlite3';
 import type { Database as SqliteDatabase } from 'better-sqlite3';
-import log from 'electron-log';
+import { log } from '@main/logging';
 import * as schema from './schema';
 import { tableSQLs } from './schema';
 import { loadVectorExtension } from './vector-extension';

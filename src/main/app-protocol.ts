@@ -1,7 +1,7 @@
 import { protocol, net } from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import log from 'electron-log';
+import { log } from '@main/logging';
 import mime from 'mime-types';
 import { isInsideDir } from '@main/utils/attachment-util';
 import type { AttachmentService } from '@main/service/attachment-service';

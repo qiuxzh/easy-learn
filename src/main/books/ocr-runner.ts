@@ -1,7 +1,7 @@
 import { rm } from 'node:fs/promises';
 import path from 'node:path';
 import { AuthError, FileNotFoundError, InvalidRequestError } from '@paddleocr/api-sdk';
-import log from 'electron-log';
+import { log } from '@main/logging';
 import type { TransactionRunner } from '@main/contracts/transaction';
 import type { UiEventPublisher } from '@main/contracts/ui-event-publisher';
 import type { OcrConfig } from '@main/contracts/config';

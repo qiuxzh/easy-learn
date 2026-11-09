@@ -1,10 +1,8 @@
 import { describe, expect, it } from 'vitest';
-// @ts-expect-error 规则模块是普通 .js，没有类型声明（TS7016）
 import { RESTRICTED_CLASSES } from '../tailwind-class-rules.js';
 
 /** 复刻 no-restricted-classes 的判定：逐条 match，命中即拦 */
 function isBlocked(className: string): boolean {
-  // @ts-expect-error 放开上面那条后 RESTRICTED_CLASSES 是 any，回调参数没有上下文类型（TS7006）
   return RESTRICTED_CLASSES.some(rule => className.match(new RegExp(rule.pattern)) !== null);
 }
 

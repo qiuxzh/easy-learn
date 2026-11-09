@@ -4,6 +4,7 @@ import { optimizer } from '@electron-toolkit/utils';
 import { existsSync, mkdirSync } from 'fs';
 import path from 'path';
 import log from 'electron-log';
+import { setLogSink } from './logging';
 import { createWindow } from './window';
 import { setupIpcHandlers } from './ipc/setup';
 import { bootstrap, type App } from './bootstrap';
@@ -99,6 +100,7 @@ function registerLifecycle(): void {
 
 // 初始化日志系统
 log.initialize({ preload: true });
+setLogSink(log);
 log.info('Application starting...');
 
 registerProcessErrorHandlers();

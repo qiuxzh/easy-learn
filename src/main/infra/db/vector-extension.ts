@@ -10,7 +10,7 @@
  *   声明逻辑在 `repo/embed-vector-repo.ts` 的 `ensureVectorIndex` 里按「扫描前懒声明」实现。
  */
 import { createRequire } from 'node:module';
-import log from 'electron-log';
+import { log } from '@main/logging';
 import type { Database as SqliteDatabase } from 'better-sqlite3';
 
 /**

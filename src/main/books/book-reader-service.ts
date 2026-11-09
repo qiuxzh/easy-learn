@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import log from 'electron-log';
+import { log } from '@main/logging';
 import type { FoliateBook } from '@/components/reader/foliate-types';
 import type { TOCItem } from '@shared/types/books';
 import type { ImageContent } from '@shared/types/chat';
