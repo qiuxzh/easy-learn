@@ -7,6 +7,7 @@ import { registerChatHandlers } from './chat-handlers';
 import { registerAppHandlers } from './app-handlers';
 import { registerSettingsHandlers } from './settings-handlers';
 import { registerReadingHandlers } from './reading-handlers';
+import { registerTaskHandlers } from './task-handlers';
 
 /**
  * 注册 IPC 处理器。
@@ -23,7 +24,8 @@ export function setupIpcHandlers(app: App): void {
     app.services.bookOcrService
   );
   registerCardHandlers(app.services.cardService);
-  registerLibraryHandlers(app.services.libraryService);
+  registerLibraryHandlers(app.services.libraryService, app.services.libraryOcrService);
+  registerTaskHandlers(app.services.taskService);
   registerChatHandlers(app.services.sessionService);
   registerSettingsHandlers(app.configService, app.services.embeddingService);
   registerReadingHandlers(app.services.readingService);

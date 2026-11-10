@@ -23,7 +23,7 @@ import type { BookEntity } from '@main/contracts/book';
 import type { OcrCommandResult } from '@shared/types/ocr';
 import type { BookReaderService } from './book-reader-service';
 import type { BookRetrievalService } from './book-retrieval-service';
-import type { BookEmbeddingRunner } from './etl/embedding';
+import type { BookEmbeddingRunner } from '@main/service/etl/embedding';
 import type { BookOcrRunner } from './ocr-runner';
 import { parseEpubFile } from './book-parser';
 import {
@@ -32,13 +32,13 @@ import {
   createEpubSource,
   createPdfSource,
   type ChunkDraft,
-} from './etl/chunking';
+} from '@main/service/etl/chunking';
 import {
   classifyPdfText,
   readPdfText,
   type PdfTextKind,
   type PdfTextReport,
-} from './etl/pdf/pdf-pages';
+} from '@main/service/etl/pdf/pdf-pages';
 import { replaceBookChunks } from './replace-chunks';
 import { toAttachmentUrl, toBook } from './util';
 

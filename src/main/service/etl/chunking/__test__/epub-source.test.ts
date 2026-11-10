@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { FoliateBook, FoliateSection } from '@/components/reader/foliate-types';
-import { initFoliatePolyfill } from '../../../foliate-polyfill';
+import { initFoliatePolyfill } from '@main/service/etl/foliate-polyfill';
 import { chunkDocument } from '../chunk-document';
 import { DEFAULT_CHUNK_OPTIONS } from '../splitter';
 import { createEpubSource } from '../epub-source';

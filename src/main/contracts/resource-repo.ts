@@ -15,12 +15,6 @@ export interface ResourceRepo {
   /** 批量统计文件夹的直接子项数，按父目录 id 索引。 */
   countChildrenByParents(parentIds: string[]): Record<string, number>;
 
-  /** 按名称平铺全部文件，用于「全部资料」。 */
-  listAllFiles(limit: number, offset: number): ResourceEntity[];
-
-  /** 按最近打开时间倒序列出文件。 */
-  listRecentFiles(limit: number): ResourceEntity[];
-
   /** 列出收藏的条目（文件与文件夹）。 */
   listStarredResources(limit: number): ResourceEntity[];
 
@@ -36,8 +30,11 @@ export interface ResourceRepo {
   /** 更新父目录与修改时间。 */
   updateParent(id: string, parentId: string | null, updatedAt: number): void;
 
-  /** 记录最近打开时间。 */
-  markOpened(id: string, openedAt: number): void;
+  /** 读取解析元数据 JSON；未计算过时返回 null。 */
+  findDocMeta(id: string): string | null;
+
+  /** 写入解析元数据 JSON；传 null 清空。 */
+  setDocMeta(id: string, docMeta: string | null): void;
 
   /** 更新收藏状态。 */
   setStarred(id: string, starred: boolean): void;

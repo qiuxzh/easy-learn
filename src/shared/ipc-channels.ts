@@ -41,20 +41,33 @@ export enum IpcChannel {
   Library_DeleteFile = 'library:deleteFile',
   /** 递归删除文件夹及其全部子项（含库内源文件） */
   Library_DeleteFolderRecursive = 'library:deleteFolderRecursive',
-  /** 平铺列出全部文件，用于「全部资料」 */
-  Library_ListAllFiles = 'library:listAllFiles',
-  /** 按最近打开时间倒序列出文件 */
-  Library_ListRecentFiles = 'library:listRecentFiles',
   /** 列出收藏的条目 */
   Library_ListStarredResources = 'library:listStarredResources',
   /** 资料库占用的磁盘空间 */
   Library_GetStorageUsage = 'library:getStorageUsage',
   /** 设置收藏状态 */
   Library_SetStarred = 'library:setStarred',
-  /** 记录最近打开时间，由阅读器打开文件时调用 */
-  Library_MarkOpened = 'library:markOpened',
   /** 取目录到根的路径，用于面包屑 */
-  Library_GetResourcePath = 'library:getResourcePath',
+  Library_GetResourcePath = 'library:getResourcePath' /** 读取一个资料的识别状态 */,
+  Library_OcrGetState = 'library:ocrGetState',
+  /** 启动识别；`restart` 为 true 时清掉旧页块与分片 */
+  Library_OcrStart = 'library:ocrStart',
+  /** 取消该资料正在进行的识别任务 */
+  Library_OcrCancel = 'library:ocrCancel',
+
+  // 后台任务（任务编排器）
+  /** 全部任务：排队、运行、暂停与失败 */
+  Task_List = 'task:list',
+  /** 按 id 取单个任务 */
+  Task_Get = 'task:get',
+  Task_Pause = 'task:pause',
+  Task_Resume = 'task:resume',
+  Task_Cancel = 'task:cancel',
+  Task_Retry = 'task:retry',
+  /** 忽略失败任务，删除记录 */
+  Task_Dismiss = 'task:dismiss',
+  /** 主进程推给渲染层的任务事件 */
+  Task_Event = '#task:event',
 
   // 附件（聊天输入）
   /** 附件入库：落盘图片字节或弹框选择，返回图片引用 */

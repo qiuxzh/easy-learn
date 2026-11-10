@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import JSZip from 'jszip';
-import { initFoliatePolyfill } from './foliate-polyfill';
+import { initFoliatePolyfill } from '@main/service/etl/foliate-polyfill';
 import { parseEpubFromBuffer, extractCoverFromZip } from '@shared/utils/book-parser';
 import type { FoliateBook } from '@/components/reader/foliate-types';
 import type { TOCItem } from '@shared/types/books';

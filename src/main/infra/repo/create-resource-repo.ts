@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import type { DbHandle } from '@main/infra/db/connection';
 import type { ResourceRepo } from '@main/contracts/resource-repo';
 import type { ResourceCreate } from '@main/contracts/resource';
@@ -94,25 +94,6 @@ export function createResourceRepo(handle: DbHandle): ResourceRepo {
       return counts;
     },
 
-    listAllFiles: (limit, offset) =>
-      handle.db
-        .select()
-        .from(resourceTable)
-        .where(eq(resourceTable.kind, 'file'))
-        .orderBy(asc(resourceTable.name))
-        .limit(limit)
-        .offset(offset)
-        .all(),
-
-    listRecentFiles: limit =>
-      handle.db
-        .select()
-        .from(resourceTable)
-        .where(and(eq(resourceTable.kind, 'file'), isNotNull(resourceTable.lastOpenedAt)))
-        .orderBy(desc(resourceTable.lastOpenedAt))
-        .limit(limit)
-        .all(),
-
     listStarredResources: limit =>
       handle.db
         .select()
@@ -153,12 +134,17 @@ export function createResourceRepo(handle: DbHandle): ResourceRepo {
         .run();
     },
 
-    markOpened: (id, openedAt) => {
-      handle.db
-        .update(resourceTable)
-        .set({ lastOpenedAt: openedAt })
+    findDocMeta: id => {
+      const row = handle.db
+        .select({ docMeta: resourceTable.docMeta })
+        .from(resourceTable)
         .where(eq(resourceTable.id, id))
-        .run();
+        .get();
+      return row?.docMeta ?? null;
+    },
+
+    setDocMeta: (id, docMeta) => {
+      handle.db.update(resourceTable).set({ docMeta }).where(eq(resourceTable.id, id)).run();
     },
 
     setStarred: (id, starred) => {

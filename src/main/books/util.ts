@@ -1,7 +1,7 @@
 import type { FoliateBook, FoliateDestination } from '@/components/reader/foliate-types';
 import type { BookEntity } from '@main/contracts/book';
 import type { BookDto, BookStages, TOCItem } from '@shared/types/books';
-import { collectPlainText, type PictureUnitLookup } from './etl/chunking/html-text';
+import { collectPlainText, type PictureUnitLookup } from '@main/service/etl/chunking/html-text';
 
 interface TextNodeLike {
   nodeType: number;

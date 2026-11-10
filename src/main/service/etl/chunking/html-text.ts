@@ -1,4 +1,4 @@
-import { extractMathFormula, formatMathFormula, isDisplayMath, isMathElement } from '../../formula';
+import { extractMathFormula, formatMathFormula, isDisplayMath, isMathElement } from './formula';
 import type { TextUnit } from './types';
 
 /**

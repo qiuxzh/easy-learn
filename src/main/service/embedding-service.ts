@@ -1,4 +1,4 @@
-import { embedTexts } from '@main/books/etl/embedding';
+import { embedTexts } from '@main/service/etl/embedding';
 import { DomainError } from '@main/domain-error';
 import type { TestEmbeddingEndpointRequest } from '@shared/types/embedding';
 

@@ -16,6 +16,8 @@ export const resourceTable = sqliteTable('resource', {
   blobPath: text('blob_path'),
   /** 文件字节数；文件夹为 null。 */
   sizeBytes: integer('size_bytes'),
+  /** 解析元数据 JSON（页数、是否有文本层等）；按需计算后缓存。 */
+  docMeta: text('doc_meta'),
   /** 最近一次在阅读器中打开的时间，Unix 毫秒；从未打开为 null。 */
   lastOpenedAt: integer('last_opened_at'),
   /** 是否已收藏。 */
@@ -38,6 +40,7 @@ CREATE TABLE IF NOT EXISTS resource (
   format TEXT,
   blob_path TEXT,
   size_bytes INTEGER,
+  doc_meta TEXT,
   last_opened_at INTEGER,
   starred INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL,

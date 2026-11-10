@@ -106,8 +106,6 @@ interface LibraryState {
   deleteFile: (id: string) => Promise<string | null>;
   deleteFolderRecursive: (id: string) => Promise<string | null>;
   setStarred: (id: string, starred: boolean) => Promise<string | null>;
-  /** 记录最近打开；失败不打断阅读。 */
-  markOpened: (id: string) => Promise<void>;
   /** 读取存储占用。 */
   loadStorageUsage: () => Promise<void>;
 }
@@ -355,14 +353,6 @@ export const useLibraryStore = create<LibraryState>()(
         return null;
       } catch (e) {
         return String(e);
-      }
-    },
-
-    markOpened: async id => {
-      try {
-        await window.api.library.markOpened({ id });
-      } catch (e) {
-        console.warn('[library] markOpened failed:', e);
       }
     },
 

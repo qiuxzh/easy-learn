@@ -1,7 +1,7 @@
 import type { TransactionRunner } from '@main/contracts/transaction';
 import type { BookRepos } from '@main/infra/repo/repos';
 import type { BookRetrievalService } from './book-retrieval-service';
-import type { ChunkDraft } from './etl/chunking';
+import type { ChunkDraft } from '@main/service/etl/chunking';
 
 /** 替换分片所需的依赖。 */
 export interface ReplaceChunksDeps {

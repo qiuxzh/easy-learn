@@ -27,6 +27,9 @@ import { createResourceRepo } from './create-resource-repo';
 import type { ResourceRepo } from '@main/contracts/resource-repo';
 import { createTaskRepo } from './create-task-repo';
 import type { TaskRepo } from '@main/contracts/task-repo';
+import { createResourceOcrPageRepo } from './create-resource-ocr-page-repo';
+import { createResourceChunkRepo } from './create-resource-chunk-repo';
+import type { ResourceOcrPageRepo, ResourceChunkRepo } from '@main/contracts/resource-ocr-repo';
 
 /** 全应用的仓储集合，由装配根一次创建后传给各模块。 */
 export interface Repos {
@@ -44,6 +47,8 @@ export interface Repos {
   embedVectorRepo: EmbedVectorRepo;
   resourceRepo: ResourceRepo;
   taskRepo: TaskRepo;
+  resourceOcrPageRepo: ResourceOcrPageRepo;
+  resourceChunkRepo: ResourceChunkRepo;
 }
 
 /** 书籍域用到的仓储视图。 */
@@ -89,5 +94,7 @@ export function createRepos(db: DbHandle): Repos {
     embedVectorRepo,
     resourceRepo: createResourceRepo(db),
     taskRepo: createTaskRepo(db),
+    resourceOcrPageRepo: createResourceOcrPageRepo(db),
+    resourceChunkRepo: createResourceChunkRepo(db),
   };
 }

@@ -1,4 +1,5 @@
 /** OCR 领域的共享类型：页块、运行态与事件。 */
+import type { TaskProgress, TaskStatus } from './task';
 
 /** 识别模型在界面上的展示名。 */
 export const OCR_MODEL_LABEL = 'PaddleOCR-VL-1.6';
@@ -62,3 +63,36 @@ export type OcrEvent =
   | { kind: 'runtime'; runtime: OcrRuntime | null }
   /** 一次识别结束，界面据此重新拉取书籍 */
   | { kind: 'finished'; bookId: string; success: boolean; cancelled: boolean; error?: string };
+
+/** 资料库 OCR 的对外状态；`task` 是当前识别任务。 */
+export interface ResourceOcrStateDTO {
+  /** 是否提供识别入口：PDF 恒为 true，其它格式 false。 */
+  applicable: boolean;
+  hasTextLayer: boolean | null;
+  pageCount: number | null;
+  donePages: number;
+  chunkCount: number;
+  task: {
+    id: string;
+    status: TaskStatus;
+    progress: TaskProgress | null;
+  } | null;
+}
+
+export interface OcrGetStateInput {
+  resourceId: string;
+}
+
+export interface OcrStartInput {
+  resourceId: string;
+  /** 清掉旧页块与分片，从头识别。 */
+  restart?: boolean;
+}
+
+export interface OcrStartResult {
+  taskId: string;
+}
+
+export interface OcrCancelInput {
+  resourceId: string;
+}

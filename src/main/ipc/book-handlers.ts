@@ -8,7 +8,7 @@ import type {
   BookUpdateRequest,
 } from '@shared/types/books';
 import type { BookService } from '@main/books/book-service';
-import type { BookEmbeddingRunner } from '@main/books/etl/embedding';
+import type { BookEmbeddingRunner } from '@main/service/etl/embedding';
 import type { BookOcrRunner } from '@main/books/ocr-runner';
 import { pickBookFile, pickCoverImage } from './dialogs';
 import { registerDirectHandler } from './register-handler';

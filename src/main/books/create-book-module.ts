@@ -6,11 +6,11 @@ import type { AttachmentService } from '@main/service/attachment-service';
 import type { Repos } from '@main/infra/repo/repos';
 import { BookRetrievalService } from './book-retrieval-service';
 import { BookReaderService } from './book-reader-service';
-import { BookEmbeddingRunner } from './etl/embedding';
+import { BookEmbeddingRunner } from '@main/service/etl/embedding';
 import { BookOcrRunner } from './ocr-runner';
 import { BookService } from './book-service';
 import { replaceBookChunks } from './replace-chunks';
-import type { ChunkDraft } from './etl/chunking';
+import type { ChunkDraft } from '@main/service/etl/chunking';
 
 /** 书籍模块对外暴露的能力。 */
 export interface BookModule {

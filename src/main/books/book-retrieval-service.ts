@@ -18,8 +18,8 @@ import { Bm25Retriever } from '@main/retrieval/bm25/retriever';
 import type { BookEmbedding } from '@shared/types/books';
 import type { EmbeddingIdentity } from '@shared/utils/embedding-identity';
 import { deriveDataState, describeEmbedding, isStale } from '@shared/utils/embedding-state';
-import { embedTexts, resolveActiveModel } from './etl/embedding';
-import type { ResolvedModel } from './etl/embedding';
+import { embedTexts, resolveActiveModel } from '@main/service/etl/embedding';
+import type { ResolvedModel } from '@main/service/etl/embedding';
 
 /** 查询向量化的超时与重试次数。这是用户等着的交互路径，比批量向量化短得多。 */
 const QUERY_EMBED_TIMEOUT_MS = 8_000;

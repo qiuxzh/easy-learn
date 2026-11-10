@@ -3,8 +3,6 @@ import { randomUUID } from 'node:crypto';
 import { RESOURCE_FORMATS } from '@shared/types/library';
 import type {
   ImportFilesResult,
-  ListAllFilesInput,
-  ListRecentFilesInput,
   ListStarredResourcesInput,
   RejectedImportDTO,
   ResourceDTO,
@@ -31,23 +29,14 @@ const MAX_NAME_LENGTH = 120;
 /** 名称中不允许出现的字符。 */
 const INVALID_NAME_CHARS = /[\\/:*?"<>|]/g;
 
-/** 「全部资料」与收藏列表的默认/最大条数。 */
+/** 收藏列表的默认/最大条数。 */
 const DEFAULT_PAGE_SIZE = 200;
 const MAX_PAGE_SIZE = 500;
-
-/** 「最近打开」的默认/最大条数。 */
-const DEFAULT_RECENT_SIZE = 50;
-const MAX_RECENT_SIZE = 200;
 
 /** 把调用方传入的条数限制在合法区间。 */
 function clampLimit(value: number | undefined, fallback: number, max: number): number {
   if (value === undefined) return fallback;
   return Math.min(Math.max(Math.trunc(value), 1), max);
-}
-
-/** 把调用方传入的偏移量规整为非负整数。 */
-function normalizeOffset(value: number | undefined): number {
-  return Math.max(Math.trunc(value ?? 0), 0);
 }
 
 /** 校验用户输入的名称，返回去掉首尾空白后的值。 */
@@ -233,7 +222,7 @@ export class LibraryService {
 
   /**
    * 删除单个文件，同时删除库内源文件。
-   *
+   * TODO BUG：无法删除资料引用的附件，例如 pdf ocr的结果
    * @throws 条目不存在，或目标不是文件
    */
   deleteFile(id: string): void {
@@ -273,31 +262,6 @@ export class LibraryService {
     const entity = this.getEntity(id);
     if (entity.starred !== starred) this.resourceRepo.setStarred(id, starred);
     return this.toDtoWithCounts({ ...entity, starred });
-  }
-
-  /**
-   * 记录最近打开时间。
-   *
-   * @throws 条目不存在
-   */
-  markOpened(id: string): void {
-    this.getEntity(id);
-    this.resourceRepo.markOpened(id, this.now());
-  }
-
-  /** 平铺列出全部文件，用于「全部资料」；`limit` 默认 200、上限 500。 */
-  listAllFiles(input: ListAllFilesInput = {}): ResourceDTO[] {
-    const limit = clampLimit(input.limit, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
-    return this.toDtos(this.resourceRepo.listAllFiles(limit, normalizeOffset(input.offset)));
-  }
-
-  /** 按最近打开时间倒序列出文件；`limit` 默认 50、上限 200。 */
-  listRecentFiles(input: ListRecentFilesInput = {}): ResourceDTO[] {
-    return this.toDtos(
-      this.resourceRepo.listRecentFiles(
-        clampLimit(input.limit, DEFAULT_RECENT_SIZE, MAX_RECENT_SIZE)
-      )
-    );
   }
 
   /** 列出收藏的条目；`limit` 默认 200、上限 500。 */

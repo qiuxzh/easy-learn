@@ -7,7 +7,7 @@ import type { Paths } from './paths';
 import type { UiEventPublisher } from './contracts/ui-event-publisher';
 import type { ModelConfig } from './contracts/model-config';
 import type { BookService } from './books/book-service';
-import type { BookEmbeddingRunner } from './books/etl/embedding';
+import type { BookEmbeddingRunner } from './service/etl/embedding';
 import type { BookOcrRunner } from './books/ocr-runner';
 import type { FlashcardService } from './service/flashcard-service';
 import type { ReadingService } from './service/reading-service';
@@ -24,6 +24,9 @@ import { LibraryService } from './service/library/library-service';
 import { LibraryStorage } from './service/library/library-storage';
 import { TaskScheduler } from './service/task/task-scheduler';
 import { createTaskWorkspace } from './service/task/task-workspace';
+import { LibraryOcrService } from './service/library/library-ocr-service';
+import { createLibraryOcrTask } from './service/library/library-ocr-task';
+import { toTaskEventPayload } from './service/task/task-event-mapper';
 
 /** 装配应用需要的底层输入。 */
 export interface AppDeps {
@@ -48,6 +51,7 @@ export interface AppServices {
   cardService: FlashcardService;
   embeddingService: EmbeddingService;
   libraryService: LibraryService;
+  libraryOcrService: LibraryOcrService;
   readingService: ReadingService;
   sessionService: SessionService;
   taskService: TaskScheduler;
@@ -96,12 +100,32 @@ export function bootstrap(deps: AppDeps): App {
     transaction: fn => db.transaction(fn),
   });
 
+  const libraryOcrTask = createLibraryOcrTask({
+    paths: deps.paths,
+    transaction: fn => db.transaction(fn),
+    ocrConfig,
+    resourceRepo: repos.resourceRepo,
+    pageRepo: repos.resourceOcrPageRepo,
+    chunkRepo: repos.resourceChunkRepo,
+    attachmentService,
+  });
+
   const taskService = new TaskScheduler({
     taskRepo: repos.taskRepo,
-    definitions: [],
+    definitions: [libraryOcrTask],
     workspace: createTaskWorkspace(deps.paths.taskWorkDir),
+    onEvent: event => events.publish({ type: 'task-event', event: toTaskEventPayload(event) }),
   });
   taskService.start();
+
+  const libraryOcrService = new LibraryOcrService({
+    paths: deps.paths,
+    transaction: fn => db.transaction(fn),
+    resourceRepo: repos.resourceRepo,
+    pageRepo: repos.resourceOcrPageRepo,
+    chunkRepo: repos.resourceChunkRepo,
+    taskService: taskService,
+  });
 
   const bookModule = createBookModule({
     repos,
@@ -136,6 +160,7 @@ export function bootstrap(deps: AppDeps): App {
       cardService: cardModule.cardService,
       embeddingService: new EmbeddingService(),
       libraryService,
+      libraryOcrService,
       readingService: readingModule.readingService,
       sessionService: chatModule.sessionService,
       taskService,

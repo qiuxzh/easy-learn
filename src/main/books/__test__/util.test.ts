@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { initFoliatePolyfill } from '../foliate-polyfill';
+import { initFoliatePolyfill } from '@main/service/etl/foliate-polyfill';
 import { extractSegmentText } from '../util';
 
 /** 创建用于正文提取测试的 XHTML 文档。 */

@@ -9,19 +9,19 @@ import type { BookPageRepo, BookRepo, BookStageRepo } from '@main/contracts/book
 import type { Paths } from '@main/paths';
 import type { AttachmentService } from '@main/service/attachment-service';
 import type { BookRepos } from '@main/infra/repo/repos';
-import type { ChunkDraft } from './etl/chunking';
+import type { ChunkDraft } from '@main/service/etl/chunking';
 import type { BookPageBlock, OcrCommandResult, OcrRuntime } from '@shared/types/ocr';
-import { DEFAULT_CHUNK_OPTIONS, chunkDocument, createPdfSource } from './etl/chunking';
-import type { PdfTextReport } from './etl/pdf/pdf-pages';
-import { OCR_MODEL_ID, OcrClient, isRetryableOcrError } from './etl/ocr/paddle/client';
-import { parsePaddleResult } from './etl/ocr/paddle/parser';
+import { DEFAULT_CHUNK_OPTIONS, chunkDocument, createPdfSource } from '@main/service/etl/chunking';
+import type { PdfTextReport } from '@main/service/etl/pdf/pdf-pages';
+import { OCR_MODEL_ID, OcrClient, isRetryableOcrError } from '@main/service/etl/ocr/paddle/client';
+import { parsePaddleResult } from '@main/service/etl/ocr/paddle/parser';
 import {
   mergePageBlocks,
   ocrBlocksToText,
   type OcrImage,
   type OcrPageResult,
-} from './etl/ocr/result';
-import { splitPdf, type PdfChunk } from './etl/pdf/split';
+} from '@main/service/etl/ocr/result';
+import { splitPdf, type PdfChunk } from '@main/service/etl/pdf/split';
 
 /** 配置缺省时的分块页数与并发数。 */
 const DEFAULT_PAGE_SIZE = 20;

@@ -21,10 +21,14 @@ import {
   resolveNextTocAnchorElement,
   toResultToc,
 } from './util';
-import { initFoliatePolyfill } from './foliate-polyfill';
-import { buildPictureUnit } from './etl/chunking';
-import { ocrBlocksToText } from './etl/ocr/result';
-import { readPdfPageTexts, renderPdfPagePng, type PdfTextPage } from './etl/pdf/pdf-pages';
+import { initFoliatePolyfill } from '@main/service/etl/foliate-polyfill';
+import { buildPictureUnit } from '@main/service/etl/chunking';
+import { ocrBlocksToText } from '@main/service/etl/ocr/result';
+import {
+  readPdfPageTexts,
+  renderPdfPagePng,
+  type PdfTextPage,
+} from '@main/service/etl/pdf/pdf-pages';
 
 export const DEFAULT_READ_OFFSET = 0;
 export const DEFAULT_READ_LENGTH = 12000;

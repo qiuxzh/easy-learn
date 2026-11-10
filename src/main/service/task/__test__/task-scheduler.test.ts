@@ -156,7 +156,7 @@ function createFakeWorkspace(): FakeWorkspace {
 function createTestScheduler(
   options: {
     run?: TaskDefinition['run'];
-    resume?: TaskDefinition['resume'];
+    pausable?: TaskDefinition['pausable'];
     timeoutMs?: number;
     maxConcurrency?: number;
   } = {}
@@ -166,7 +166,7 @@ function createTestScheduler(
   const definition: TaskDefinition = {
     taskType: 'demo',
     maxConcurrency: options.maxConcurrency ?? 2,
-    resume: options.resume ?? 'skip',
+    pausable: options.pausable,
     timeoutMs: options.timeoutMs ?? 5_000,
     run: options.run ?? (async () => {}),
   };
@@ -223,8 +223,8 @@ describe('TaskScheduler 派发', () => {
         new TaskScheduler({
           taskRepo: repo,
           definitions: [
-            { taskType: 'demo', maxConcurrency: 1, resume: 'skip', run: async () => {} },
-            { taskType: 'demo', maxConcurrency: 2, resume: 'skip', run: async () => {} },
+            { taskType: 'demo', maxConcurrency: 1, run: async () => {} },
+            { taskType: 'demo', maxConcurrency: 2, run: async () => {} },
           ],
           workspace,
         })
@@ -297,9 +297,9 @@ describe('TaskScheduler 暂停与恢复', () => {
     expect(repo.findById(task.id)?.error?.code).toBe('ABORT_TIMEOUT');
   });
 
-  it('声明 resume 为 none 的任务拒绝暂停', async () => {
+  it('声明不可暂停的任务拒绝暂停', async () => {
     const { scheduler } = createTestScheduler({
-      resume: 'none',
+      pausable: false,
       run: async () => {
         await sleep(100);
       },

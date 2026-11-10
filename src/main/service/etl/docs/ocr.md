@@ -44,13 +44,3 @@ split → 并发提交 → 轮询 → 映射 → 下载插图并登记附件 →
   块里存 `attachmentId` 与 bbox，展示走 `app://attachment-resource/<id>`；
 - 每个块都保留 `bbox`（`[x1, y1, x2, y2]`，服务端识别时的页面像素坐标），
   存在 `book_page.blocks` 的 JSON 里，供将来做版面还原或定位。
-
-## 分片
-
-识别完成后读 `book_page`，每页拼成纯文本，复用文字层 PDF 的文档源切分，
-定位串仍是 `pdf:<页>`——OCR 书和文字层书没有第二条分片路径。
-
-## 表
-
-`book_page`：`(book_id, page)` 主键，`blocks` 是 `BookPageBlock[]` 的 JSON。
-行存在即表示该页已识别，空块表示空白页，没有状态列。

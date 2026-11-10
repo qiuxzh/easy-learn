@@ -2,6 +2,7 @@ import type { ChatEventPayload } from '@shared/types/chat';
 import type { ConfigSnapshot } from '@shared/config';
 import type { EmbeddingRuntime } from '@shared/types/embedding';
 import type { OcrEvent } from '@shared/types/ocr';
+import type { TaskEventPayload } from '@shared/types/task';
 
 /**
  * 主进程需要主动推给渲染层的事件。
@@ -13,6 +14,7 @@ export type UiEvent =
   | { type: 'chat-event'; payload: ChatEventPayload }
   | { type: 'book-embedding-runtime'; runtime: EmbeddingRuntime }
   | { type: 'book-ocr'; event: OcrEvent }
+  | { type: 'task-event'; event: TaskEventPayload }
   | { type: 'config-changed'; snapshot: ConfigSnapshot };
 
 /** 事件出口。业务代码只 publish，不知道接收方是窗口、日志还是测试替身。 */

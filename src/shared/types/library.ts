@@ -116,20 +116,6 @@ export interface DeleteFolderRecursiveInput {
   id: string;
 }
 
-/** 平铺列出全部文件，用于「全部资料」视图。 */
-export interface ListAllFilesInput {
-  /** 分页大小，默认 200，上限 500。 */
-  limit?: number;
-  /** 分页偏移，默认 0。 */
-  offset?: number;
-}
-
-/** 按最近打开时间倒序列出文件。 */
-export interface ListRecentFilesInput {
-  /** 返回条数，默认 50，上限 200。 */
-  limit?: number;
-}
-
 /** 列出收藏的条目（文件与文件夹）。 */
 export interface ListStarredResourcesInput {
   /** 返回条数，默认 200，上限 500。 */
@@ -140,11 +126,6 @@ export interface ListStarredResourcesInput {
 export interface SetStarredInput {
   id: string;
   starred: boolean;
-}
-
-/** 标记最近打开；由阅读器打开文件时调用。 */
-export interface MarkOpenedInput {
-  id: string;
 }
 
 /** 资料库占用的磁盘空间。 */

@@ -31,6 +31,12 @@ import {
   embedIndexModelIndexSQL,
 } from './embed-index';
 import { taskTable, taskSQL, taskTypeStatusCreatedIndexSQL } from './task';
+import { resourceOcrPageTable, resourceOcrPageSQL } from './resource-ocr-page';
+import {
+  resourceChunkTable,
+  resourceChunkSQL,
+  resourceChunkResourceIdxUniqueSQL,
+} from './resource-chunk';
 
 export {
   bookTable,
@@ -45,6 +51,8 @@ export {
   attachmentTable,
   resourceTable,
   taskTable,
+  resourceOcrPageTable,
+  resourceChunkTable,
 };
 export type { BookRow, InsertBookRow } from './book';
 export type { BookChunkRow, InsertBookChunkRow } from './book-chunk';
@@ -57,6 +65,8 @@ export type { AgentSessionRow, InsertAgentSessionRow } from './agent-session';
 export type { AgentEntryRow, InsertAgentEntryRow } from './agent-entry';
 export type { EmbedIndexRow, InsertEmbedIndexRow } from './embed-index';
 export type { TaskRow, InsertTaskRow } from './task';
+export type { ResourceOcrPageRow, InsertResourceOcrPageRow } from './resource-ocr-page';
+export type { ResourceChunkRow, InsertResourceChunkRow } from './resource-chunk';
 
 export const tableSQLs = [
   bookSQL,
@@ -82,4 +92,7 @@ export const tableSQLs = [
   resourceParentNameIndexSQL,
   taskSQL,
   taskTypeStatusCreatedIndexSQL,
+  resourceOcrPageSQL,
+  resourceChunkSQL,
+  resourceChunkResourceIdxUniqueSQL,
 ];

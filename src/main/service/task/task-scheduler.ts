@@ -155,7 +155,7 @@ export class TaskScheduler {
     }
 
     const definition = this.definitions.get(task.taskType);
-    if (definition?.resume === 'none') return { ok: false, reason: 'unsupported' };
+    if (definition?.pausable === false) return { ok: false, reason: 'unsupported' };
 
     const execution = this.running.get(id);
     if (!execution) return { ok: false, reason: 'wrong_status' };
@@ -266,8 +266,18 @@ export class TaskScheduler {
     return this.taskRepo.findById(id);
   }
 
+  /** 列出全部任务。 */
   list(): TaskEntity[] {
     return this.taskRepo.list();
+  }
+
+  /**
+   * 列出某个任务类型的任务。
+   *
+   * @param taskType 任务类型
+   */
+  listByType(taskType: string): TaskEntity[] {
+    return this.taskRepo.list().filter(task => task.taskType === taskType);
   }
 
   /** 订阅任务事件，返回退订函数。 */
@@ -393,7 +403,7 @@ export class TaskScheduler {
         const ratio = total > 0 ? Math.min(finished / total, 1) : 0;
         const progress: TaskProgress = { kind: 'ratio', ratio };
         this.taskRepo.updateProgress(task.id, progress);
-        this.emit({ type: 'progress', taskId: task.id, progress });
+        this.emit({ type: 'progress', taskId: task.id, progress, finished, total });
       },
     };
 

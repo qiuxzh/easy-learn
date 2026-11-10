@@ -37,19 +37,13 @@ export interface TaskContext {
   report(finished: number, total: number): void;
 }
 
-/** 暂停或崩溃恢复后的续跑方式。 */
-export type TaskResumeMode = 'skip' | 'restart' | 'none';
-
 /** 任务类型注册项；处理器只写业务，不感知队列与持久化。 */
 export interface TaskDefinition {
   taskType: string;
   /** 该任务类型同时允许执行的数量；每个类型各自限流。 */
   maxConcurrency: number;
-  /**
-   * `skip`：恢复时跳过域表中已完成的单元；`restart`：从零重跑；
-   * `none`：任务不可中断，暂停请求会被拒绝。
-   */
-  resume: TaskResumeMode;
+  /** 暂停后能否续跑；false 时调度器拒绝暂停。 */
+  pausable?: boolean;
   /** 单次执行的总超时；省略时用调度器默认值。 */
   timeoutMs?: number;
   run(ctx: TaskContext): Promise<void>;
@@ -72,7 +66,13 @@ export class TaskFailure extends Error {
 export type TaskEvent =
   | { type: 'created'; task: TaskEntity }
   | { type: 'updated'; task: TaskEntity }
-  | { type: 'progress'; taskId: string; progress: TaskProgress }
+  | {
+      type: 'progress';
+      taskId: string;
+      progress: TaskProgress;
+      finished: number;
+      total: number;
+    }
   | {
       type: 'settled';
       taskId: string;
@@ -81,11 +81,4 @@ export type TaskEvent =
     };
 
 /** 生命周期操作被拒绝的原因；调用方据此决定提示文案。 */
-export type TaskOpFailureReason =
-  | 'not_found'
-  | 'wrong_status'
-  | 'still_running'
-  | 'unsupported'
-  | 'abort_timeout';
-
-export type TaskOpResult = { ok: true } | { ok: false; reason: TaskOpFailureReason };
+export type { TaskOpFailureReason, TaskOpResult } from '@shared/types/task';

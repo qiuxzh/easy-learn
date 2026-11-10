@@ -11,6 +11,8 @@ function toChannel(event: UiEvent): string {
       return IpcChannel.Book_EmbeddingRuntime;
     case 'book-ocr':
       return IpcChannel.Book_OcrEvent;
+    case 'task-event':
+      return IpcChannel.Task_Event;
     case 'config-changed':
       return IpcChannel.Config_Changed;
   }
@@ -24,6 +26,8 @@ function toPayload(event: UiEvent): unknown {
     case 'book-embedding-runtime':
       return event.runtime;
     case 'book-ocr':
+      return event.event;
+    case 'task-event':
       return event.event;
     case 'config-changed':
       return event.snapshot;

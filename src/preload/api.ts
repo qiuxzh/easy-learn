@@ -21,11 +21,8 @@ import type {
   DeleteFolderRecursiveInput,
   ImportFilesInput,
   ImportFilesResult,
-  ListAllFilesInput,
   ListChildrenInput,
-  ListRecentFilesInput,
   ListStarredResourcesInput,
-  MarkOpenedInput,
   GetResourcePathInput,
   RenameResourceInput,
   ReparentResourceInput,
@@ -71,7 +68,17 @@ import type {
 } from '@shared/types/flashcards';
 import { ipcRenderer, type IpcRendererEvent } from 'electron';
 import { IpcChannel } from '@shared/ipc-channels';
-import type { OcrCommandResult, OcrEvent, OcrRuntime } from '@shared/types/ocr';
+import type {
+  OcrCancelInput,
+  OcrCommandResult,
+  OcrEvent,
+  OcrGetStateInput,
+  OcrRuntime,
+  OcrStartInput,
+  OcrStartResult,
+  ResourceOcrStateDTO,
+} from '@shared/types/ocr';
+import type { TaskEventPayload, TaskIdInput, TaskOpResult, TaskSnapshot } from '@shared/types/task';
 import type {
   ConfigRemoveRequest,
   ConfigSetRequest,
@@ -120,6 +127,40 @@ export const api = {
     },
   },
 
+  // 后台任务
+  tasks: {
+    list: () => ipcRenderer.invoke(IpcChannel.Task_List) as Promise<TaskSnapshot[]>,
+    get: (taskId: string) =>
+      ipcRenderer.invoke(IpcChannel.Task_Get, {
+        taskId,
+      } satisfies TaskIdInput) as Promise<TaskSnapshot | null>,
+    pause: (taskId: string) =>
+      ipcRenderer.invoke(IpcChannel.Task_Pause, {
+        taskId,
+      } satisfies TaskIdInput) as Promise<TaskOpResult>,
+    resume: (taskId: string) =>
+      ipcRenderer.invoke(IpcChannel.Task_Resume, {
+        taskId,
+      } satisfies TaskIdInput) as Promise<TaskOpResult>,
+    cancel: (taskId: string) =>
+      ipcRenderer.invoke(IpcChannel.Task_Cancel, {
+        taskId,
+      } satisfies TaskIdInput) as Promise<TaskOpResult>,
+    retry: (taskId: string) =>
+      ipcRenderer.invoke(IpcChannel.Task_Retry, {
+        taskId,
+      } satisfies TaskIdInput) as Promise<TaskOpResult>,
+    dismiss: (taskId: string) =>
+      ipcRenderer.invoke(IpcChannel.Task_Dismiss, {
+        taskId,
+      } satisfies TaskIdInput) as Promise<TaskOpResult>,
+    onEvent: (callback: (event: TaskEventPayload) => void) => {
+      const listener = (_event: IpcRendererEvent, payload: TaskEventPayload) => callback(payload);
+      ipcRenderer.on(IpcChannel.Task_Event, listener);
+      return () => ipcRenderer.removeListener(IpcChannel.Task_Event, listener);
+    },
+  },
+
   // 向量模型配置：只有「这套参数能不能用」这一件事
   embedding: {
     testEndpoint: (request: TestEmbeddingEndpointRequest) =>
@@ -147,10 +188,6 @@ export const api = {
   library: {
     listChildren: (request: ListChildrenInput) =>
       ipcRenderer.invoke(IpcChannel.Library_ListChildren, request) as Promise<ResourceDTO[]>,
-    listAllFiles: (request: ListAllFilesInput = {}) =>
-      ipcRenderer.invoke(IpcChannel.Library_ListAllFiles, request) as Promise<ResourceDTO[]>,
-    listRecentFiles: (request: ListRecentFilesInput = {}) =>
-      ipcRenderer.invoke(IpcChannel.Library_ListRecentFiles, request) as Promise<ResourceDTO[]>,
     listStarredResources: (request: ListStarredResourcesInput = {}) =>
       ipcRenderer.invoke(IpcChannel.Library_ListStarredResources, request) as Promise<
         ResourceDTO[]
@@ -167,8 +204,6 @@ export const api = {
       ipcRenderer.invoke(IpcChannel.Library_ReparentResource, request) as Promise<ResourceDTO>,
     setStarred: (request: SetStarredInput) =>
       ipcRenderer.invoke(IpcChannel.Library_SetStarred, request) as Promise<ResourceDTO>,
-    markOpened: (request: MarkOpenedInput) =>
-      ipcRenderer.invoke(IpcChannel.Library_MarkOpened, request) as Promise<void>,
     getResourcePath: (request: GetResourcePathInput) =>
       ipcRenderer.invoke(IpcChannel.Library_GetResourcePath, request) as Promise<
         ResourcePathItem[]
@@ -177,6 +212,12 @@ export const api = {
       ipcRenderer.invoke(IpcChannel.Library_DeleteFile, request) as Promise<void>,
     deleteFolderRecursive: (request: DeleteFolderRecursiveInput) =>
       ipcRenderer.invoke(IpcChannel.Library_DeleteFolderRecursive, request) as Promise<void>,
+    ocrGetState: (request: OcrGetStateInput) =>
+      ipcRenderer.invoke(IpcChannel.Library_OcrGetState, request) as Promise<ResourceOcrStateDTO>,
+    ocrStart: (request: OcrStartInput) =>
+      ipcRenderer.invoke(IpcChannel.Library_OcrStart, request) as Promise<OcrStartResult>,
+    ocrCancel: (request: OcrCancelInput) =>
+      ipcRenderer.invoke(IpcChannel.Library_OcrCancel, request) as Promise<void>,
   },
 
   // 附件（聊天输入）
