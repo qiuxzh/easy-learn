@@ -49,6 +49,8 @@ export enum IpcChannel {
   Library_SetStarred = 'library:setStarred',
   /** 取目录到根的路径，用于面包屑 */
   Library_GetResourcePath = 'library:getResourcePath',
+  /** 取单个资料详情，含 doc_meta 里的目录缓存 */
+  Library_GetResource = 'library:getResource',
   /** 读取一个资料的识别状态 */
   Library_OcrGetState = 'library:ocrGetState',
   /** 批量读取资料的识别状态，供列表展示 */

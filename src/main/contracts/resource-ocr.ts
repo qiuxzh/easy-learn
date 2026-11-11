@@ -1,13 +1,8 @@
 import type { BookPageBlock } from '@shared/types/ocr';
 import type { OcrStartResult, ResourceOcrStateDTO } from '@shared/types/ocr';
 
-/** `resource.doc_meta` 的 JSON 形状。 */
-export interface ResourceDocMeta {
-  /** PDF 总页数；非 PDF 为 0。 */
-  pageCount: number;
-  /** 整本是否可以直接读文本层。 */
-  hasTextLayer: boolean;
-}
+// `ResourceDocMeta`（doc_meta 的 JSON 形状）已迁到 @shared/types/library；
+// 这里只保留 OCR 自身的类型。
 
 /** 一页的 OCR 结果。 */
 export interface ResourceOcrPage {

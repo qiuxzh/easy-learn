@@ -40,6 +40,8 @@ export interface ResourceCreate {
   format: ResourceFormat | null;
   blobPath: string | null;
   sizeBytes: number | null;
+  /** 导入时一次算好的文档元数据 JSON；解析失败或该格式不处理时为 null。 */
+  docMeta?: string | null;
   lastOpenedAt?: number | null;
   starred?: boolean;
   createdAt?: number;

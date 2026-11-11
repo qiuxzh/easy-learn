@@ -89,7 +89,7 @@ src/
 - 文件名规范：只有 React 组件用 PascalCase，shadcn组件遵循下载后的组件名，其他一律 kebab-case
 - 代码可读性：不允许把大量内容写到一行，例如有多个字段的对象。适当的换行、缩进，提高代码可读性
 - agent-browser在用户要求后才用，因为校验耗时较旧
-- 如无特殊要求，过于简单的ts类型不应该独立出来定义类型。如`type Direction = 'left' | 'right'`
+- 如无特殊要求，过于简单的ts类型不应该独立出来定义类型。反例：`type Direction = 'left' | 'right'` ，type XXXRequestDto = ｛requestId:string｝
 
 ### 前端
 

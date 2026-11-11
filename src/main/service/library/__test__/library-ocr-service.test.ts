@@ -1,10 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ResourceEntity } from '@main/contracts/resource';
-import type {
-  ResourceChunkDraft,
-  ResourceDocMeta,
-  ResourceOcrPage,
-} from '@main/contracts/resource-ocr';
+import type { ResourceChunkDraft, ResourceOcrPage } from '@main/contracts/resource-ocr';
+import type { PdfInfo } from '@main/service/etl/pdf/inspect';
 import type { ResourceChunkRepo, ResourceOcrPageRepo } from '@main/contracts/resource-ocr-repo';
 import type { ResourceRepo } from '@main/contracts/resource-repo';
 import type { TaskEntity } from '@main/contracts/task';
@@ -137,7 +134,7 @@ function createService(options: {
   resource?: ResourceEntity;
   tasks?: TaskEntity[];
   pages?: number[];
-  inspect?: (filePath: string) => Promise<ResourceDocMeta>;
+  inspect?: (filePath: string) => Promise<PdfInfo>;
 }) {
   const resourceRepo = createFakeResourceRepo(options.resource ?? createResource());
   const pageRepo = createFakePageRepo(options.pages ?? []);
@@ -145,7 +142,7 @@ function createService(options: {
   const taskService = createFakeTaskService(options.tasks ?? []);
   const inspect =
     options.inspect ??
-    vi.fn(async (): Promise<ResourceDocMeta> => ({ pageCount: 20, hasTextLayer: false }));
+    vi.fn(async (): Promise<PdfInfo> => ({ pageCount: 20, hasTextLayer: false }));
 
   const service = new LibraryOcrService({
     paths,
@@ -185,10 +182,14 @@ describe('LibraryOcrService 状态', () => {
       donePages: 0,
       chunkCount: 0,
     });
-    expect(resourceRepo.setDocMeta).toHaveBeenCalledWith(
-      'r-1',
-      JSON.stringify({ pageCount: 20, hasTextLayer: false })
-    );
+    const written = vi.mocked(resourceRepo.setDocMeta).mock.calls[0]?.[1];
+    expect(typeof written).toBe('string');
+    expect(JSON.parse(written as string)).toMatchObject({
+      format: 'pdf',
+      pageCount: 20,
+      hasTextLayer: false,
+      toc: null,
+    });
   });
 
   it('有文本层的 PDF 仍然适用识别', async () => {

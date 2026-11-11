@@ -25,14 +25,19 @@ export default defineConfig({
     build: {
       sourcemap: true,
       rollupOptions: {
-        // 原生 / WASM 模块必须外部化，由 node_modules 在运行时提供：
+        // 原生 / WASM / 自带 worker 的模块必须外部化，由 node_modules 在运行时提供：
         // - pdfium 按 import.meta.url 定位同目录下的 pdfium.wasm，被 bundle 成单文件后路径失效
         // - @napi-rs/canvas 带 .node 原生绑定，被打进 ESM 产物会退化成顶层 require()，
         //   启动即报 "require is not defined in ES module scope"
-        // 后两项属于主进程的 ETL / OCR 链（pdfium 光栅化 + canvas 编码页面图），
-        // 该链目前没有接入口，因此不会被静态 import 到主 bundle；保留在这里是为了接线时不再踩坑。
-        // 渲染进程的 PDF 预览走的是 pdf.js，与它们无关，两条链不得互相 import。
-        external: ['better-sqlite3', 'jieba-wasm', '@hyzyla/pdfium', '@napi-rs/canvas'],
+        // - pdfjs-dist 内部会动态 import 同目录的 pdf.worker.mjs（Node 下走 fake worker），
+        //   打进单文件主 bundle 后相对路径会失效；主进程只用它读 outline，不渲染页面。
+        external: [
+          'better-sqlite3',
+          'jieba-wasm',
+          '@hyzyla/pdfium',
+          '@napi-rs/canvas',
+          /^pdfjs-dist(\/|$)/,
+        ],
       },
     },
     resolve: {

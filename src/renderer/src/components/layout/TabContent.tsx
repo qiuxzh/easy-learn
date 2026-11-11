@@ -4,6 +4,7 @@ import { BookShelf } from '@/pages/BookShelf';
 import { LibraryPage } from '@/pages/Library';
 import { Flashcard } from '@/pages/Flashcard';
 import { Home } from '@/pages/Home';
+import { PreviewPage } from '@/pages/PreviewPage';
 import { CardBrowser } from '@/components/CardBrowser';
 import { CardReview } from '@/components/CardReview';
 import { ReaderView } from '@/components/reader/ReaderView';
@@ -14,6 +15,7 @@ type TabContentProps = {
   tabId?: string;
   bookId?: string;
   groupId?: string;
+  resourceId?: string;
 };
 
 /** Tab 类型到内容组件的映射。 */
@@ -26,6 +28,7 @@ const TAB_COMPONENTS: Record<TabType, ComponentType<TabContentProps>> = {
   'card-browser': CardBrowser as ComponentType<TabContentProps>,
   'card-review': CardReview as ComponentType<TabContentProps>,
   reader: ReaderView,
+  preview: PreviewPage as ComponentType<TabContentProps>,
 };
 
 /** 渲染全部 Tab，切换时通过 hidden 保留组件内部状态。 */
@@ -39,7 +42,12 @@ export const TabContent = memo(function TabContent(): ReactElement {
         const Component = TAB_COMPONENTS[tab.type];
         return (
           <div key={tab.id} className={`h-full w-full ${tab.id === activeTabId ? '' : 'hidden'}`}>
-            <Component tabId={tab.id} bookId={tab.params?.bookId} groupId={tab.params?.groupId} />
+            <Component
+              tabId={tab.id}
+              bookId={tab.params?.bookId}
+              groupId={tab.params?.groupId}
+              resourceId={tab.params?.resourceId}
+            />
           </div>
         );
       })}

@@ -10,7 +10,8 @@ export type TabType =
   | 'card-management'
   | 'card-browser'
   | 'card-review'
-  | 'reader';
+  | 'reader'
+  | 'preview';
 
 /** 新增 Tab 时透传给目标组件的参数。 */
 export interface AddTabParams {
@@ -18,6 +19,8 @@ export interface AddTabParams {
 
   bookId?: string;
   groupId?: string;
+  /** 预览页：一个 Tab 对应一份资料，重复打开时激活已有实例。 */
+  resourceId?: string;
 }
 
 /** Tab 实例信息。 */
@@ -63,6 +66,7 @@ const TAB_TITLES: Record<TabType, string> = {
   'card-browser': '闪卡浏览',
   'card-review': '复习',
   reader: '阅读',
+  preview: '预览',
 };
 
 /** 单例 Tab 的固定 ID。 */
@@ -79,6 +83,10 @@ function genId(type: TabType, params?: AddTabParams): string {
   // 单牌组复习按牌组复用标签；不带牌组的今日复习共用一个标签。
   if (type === 'card-review') {
     return params?.groupId ? `review-${params.groupId}` : 'review-today';
+  }
+  // 一个 Tab = 一份资料：同一资料重复打开只激活已有 Tab，不新建实例。
+  if (type === 'preview' && params?.resourceId) {
+    return `preview-${params.resourceId}`;
   }
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   return `${type}-${suffix}`;

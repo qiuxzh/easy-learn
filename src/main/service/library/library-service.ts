@@ -6,6 +6,7 @@ import type {
   ListStarredResourcesInput,
   RejectedImportDTO,
   ResourceDTO,
+  ResourceDetailDTO,
   ResourceFormat,
   ResourceListOptions,
   ResourcePathItem,
@@ -15,6 +16,8 @@ import type { ResourceEntity } from '@main/contracts/resource';
 import type { ResourceRepo } from '@main/contracts/resource-repo';
 import type { TransactionRunner } from '@main/contracts/transaction';
 import { DomainError } from '@main/domain-error';
+import { parseDocMeta, serializeDocMeta } from './doc-meta';
+import { readPdfDocMeta } from './pdf-doc-meta';
 import type { LibraryFileStore } from './library-storage';
 
 /** 扩展名到资料格式：格式就是扩展名本身，只接受白名单内的值。 */
@@ -127,9 +130,14 @@ export class LibraryService {
   /**
    * 把选中的文件复制进资料库。
    *
+   * 顺序处理：每份文件落盘后按格式算好 docMeta，随记录一次写入（不开后台任务），
+   * 导入返回时元数据一定可用。目录解析失败只记日志，不影响导入结果。
    * 单个文件失败不中断整批，失败原因随结果返回；同名文件自动追加序号。
    */
-  importFiles(parentId: string | null, sourcePaths: readonly string[]): ImportFilesResult {
+  async importFiles(
+    parentId: string | null,
+    sourcePaths: readonly string[]
+  ): Promise<ImportFilesResult> {
     this.assertParent(parentId);
 
     const imported: ResourceDTO[] = [];
@@ -154,6 +162,17 @@ export class LibraryService {
         continue;
       }
 
+      // 按资料类型分派：首版只有 PDF 需要解析元数据，其它格式不加工。
+      // 直接用源文件 sourcePath，落盘副本与它内容一致，不需要再拼 dataDir。
+      let docMeta: string | null = null;
+      if (format === 'pdf') {
+        try {
+          docMeta = serializeDocMeta(await readPdfDocMeta(sourcePath));
+        } catch (e) {
+          console.error('[LibraryService] doc meta parse failed:', sourcePath, e);
+        }
+      }
+
       try {
         const timestamp = this.now();
         const entity = this.resourceRepo.create({
@@ -164,6 +183,7 @@ export class LibraryService {
           format,
           blobPath: stored.blobPath,
           sizeBytes: stored.sizeBytes,
+          docMeta,
           createdAt: timestamp,
           updatedAt: timestamp,
         });
@@ -291,6 +311,21 @@ export class LibraryService {
     }
 
     return segments;
+  }
+
+  /**
+   * 取单份资料的详情，含 doc_meta 里的目录缓存。
+   *
+   * 列表 DTO 不带 docMeta，只有预览页打开资料时才读这一份。
+   * 缓存的 format 与资源当前 format 不一致说明文件被同名替换过，直接作废。
+   */
+  getResource(id: string): ResourceDetailDTO {
+    const entity = this.getEntity(id);
+    const cached = parseDocMeta(this.resourceRepo.findDocMeta(id));
+    return {
+      resource: this.toDtoWithCounts(entity),
+      docMeta: cached && cached.format === entity.format ? cached : null,
+    };
   }
 
   /** 递归收集一棵子树的行，先序。 */

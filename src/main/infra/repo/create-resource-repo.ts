@@ -48,6 +48,7 @@ export function createResourceRepo(handle: DbHandle): ResourceRepo {
           format: data.format,
           blobPath: data.blobPath,
           sizeBytes: data.sizeBytes,
+          docMeta: data.docMeta ?? null,
           lastOpenedAt: data.lastOpenedAt ?? null,
           starred: data.starred ?? false,
           createdAt: data.createdAt ?? now,

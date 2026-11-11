@@ -5,15 +5,12 @@ import type { TransactionRunner } from '@main/contracts/transaction';
 import type { ResourceEntity } from '@main/contracts/resource';
 import type { ResourceRepo } from '@main/contracts/resource-repo';
 import type { ResourceChunkRepo, ResourceOcrPageRepo } from '@main/contracts/resource-ocr-repo';
-import type {
-  ResourceDocMeta,
-  ResourceOcrStartResult,
-  ResourceOcrState,
-} from '@main/contracts/resource-ocr';
+import type { ResourceOcrStartResult, ResourceOcrState } from '@main/contracts/resource-ocr';
 import type { TaskEntity } from '@main/contracts/task';
 import type { TaskScheduler } from '@main/service/task/task-scheduler';
-import { readPdfInfo } from '@main/service/etl/pdf/inspect';
-import { parseDocMeta, serializeDocMeta } from './doc-meta';
+import { readPdfInfo, type PdfInfo } from '@main/service/etl/pdf/inspect';
+import type { PdfDocMeta } from '@shared/types/library';
+import { parsePdfDocMeta, patchPdfDocMeta } from './doc-meta';
 
 /** OCR 任务类型；与 `createLibraryOcrTask` 注册的 key 保持一致。 */
 export const LIBRARY_OCR_TASK_TYPE = 'ocr-pdf';
@@ -27,7 +24,7 @@ export interface LibraryOcrServiceDeps {
   /** 任务编排器。 */
   taskService: TaskScheduler;
   /** 读取 PDF 元数据；测试可替换。 */
-  inspect?: (filePath: string) => Promise<ResourceDocMeta>;
+  inspect?: (filePath: string) => Promise<PdfInfo>;
 }
 
 /**
@@ -42,7 +39,7 @@ export class LibraryOcrService {
   private readonly pageRepo: ResourceOcrPageRepo;
   private readonly chunkRepo: ResourceChunkRepo;
   private readonly taskService: TaskScheduler;
-  private readonly inspect: (filePath: string) => Promise<ResourceDocMeta>;
+  private readonly inspect: (filePath: string) => Promise<PdfInfo>;
   /** 正在启动的资源 id；挡住两次 IPC 同时入队。 */
   private readonly starting = new Set<string>();
 
@@ -90,7 +87,7 @@ export class LibraryOcrService {
       const resource = this.resourceRepo.findById(resourceId);
       const meta =
         resource && resource.kind === 'file' && resource.format === 'pdf'
-          ? parseDocMeta(this.resourceRepo.findDocMeta(resourceId))
+          ? parsePdfDocMeta(this.resourceRepo.findDocMeta(resourceId))
           : null;
       result[resourceId] = this.buildState(resource, meta);
     }
@@ -134,16 +131,15 @@ export class LibraryOcrService {
     }
   }
 
-  /** 确保缓存里有 PDF 元数据；没有时读取并写回。 */
-  private async ensureDocMeta(resource: ResourceEntity): Promise<ResourceDocMeta> {
-    const cached = parseDocMeta(this.resourceRepo.findDocMeta(resource.id));
+  /** 确保缓存里有 PDF 元数据；没有时读取并局部写回，保留已有 toc。 */
+  private async ensureDocMeta(resource: ResourceEntity): Promise<PdfDocMeta> {
+    const cached = parsePdfDocMeta(this.resourceRepo.findDocMeta(resource.id));
     if (cached) return cached;
     if (!resource.blobPath) throw new DomainError('资料文件不存在');
 
     try {
-      const meta = await this.inspect(path.join(this.paths.dataDir, resource.blobPath));
-      this.resourceRepo.setDocMeta(resource.id, serializeDocMeta(meta));
-      return meta;
+      const info = await this.inspect(path.join(this.paths.dataDir, resource.blobPath));
+      return patchPdfDocMeta(this.resourceRepo, resource.id, info);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       throw new DomainError(`无法读取 PDF：${message}`);
@@ -153,7 +149,7 @@ export class LibraryOcrService {
   /** 把资源与元数据拼成界面要的状态。 */
   private buildState(
     resource: ResourceEntity | undefined,
-    meta: ResourceDocMeta | null
+    meta: PdfDocMeta | null
   ): ResourceOcrState {
     const isPdf = !!resource && resource.kind === 'file' && resource.format === 'pdf';
     return {

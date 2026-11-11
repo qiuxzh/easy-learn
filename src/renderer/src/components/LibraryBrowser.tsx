@@ -57,6 +57,7 @@ import {
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
 import { LIBRARY_ROOT_KEY, useLibraryStore } from '@/stores/library-store';
+import { useTabsStore } from '@/stores/tabs-store';
 import { useTaskStore } from '@/stores/task-store';
 import { ResourceDetailDrawer } from '@/components/ResourceDetailDrawer';
 import { ResourceIcon } from '@/components/ResourceIcon';
@@ -646,6 +647,10 @@ export function LibraryBrowser() {
                         onDoubleClick={() => {
                           if (item.kind === 'folder') {
                             void openFolder(item.id);
+                          } else {
+                            useTabsStore
+                              .getState()
+                              .addTab('preview', { resourceId: item.id, title: item.name });
                           }
                         }}
                         onKeyDown={event => {
@@ -746,6 +751,10 @@ export function LibraryBrowser() {
                       onDoubleClick={() => {
                         if (item.kind === 'folder') {
                           void openFolder(item.id);
+                        } else {
+                          useTabsStore
+                            .getState()
+                            .addTab('preview', { resourceId: item.id, title: item.name });
                         }
                       }}
                     >

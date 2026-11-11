@@ -89,6 +89,9 @@ export function registerLibraryHandlers(library: LibraryService, ocr: LibraryOcr
     library.getResourcePath(request.id)
   );
 
+  // 预览页打开资料：取详情与 doc_meta 里的目录缓存
+  registerDirectHandler(IpcChannel.Library_GetResource, (id: string) => library.getResource(id));
+
   // 读取一个资料的识别状态
   registerDirectHandler(IpcChannel.Library_OcrGetState, (request: OcrGetStateInput) =>
     ocr.getState(request.resourceId)

@@ -27,6 +27,7 @@ import type {
   RenameResourceInput,
   ReparentResourceInput,
   ResourceDTO,
+  ResourceDetailDTO,
   ResourcePathItem,
   SetStarredInput,
   StorageUsageDTO,
@@ -208,6 +209,8 @@ export const api = {
       ipcRenderer.invoke(IpcChannel.Library_GetResourcePath, request) as Promise<
         ResourcePathItem[]
       >,
+    getResource: (id: string) =>
+      ipcRenderer.invoke(IpcChannel.Library_GetResource, id) as Promise<ResourceDetailDTO>,
     deleteFile: (request: DeleteFileInput) =>
       ipcRenderer.invoke(IpcChannel.Library_DeleteFile, request) as Promise<void>,
     deleteFolderRecursive: (request: DeleteFolderRecursiveInput) =>

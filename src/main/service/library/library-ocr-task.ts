@@ -7,7 +7,8 @@ import type { TaskContext, TaskDefinition } from '@main/contracts/task';
 import { TaskFailure } from '@main/contracts/task';
 import type { ResourceRepo } from '@main/contracts/resource-repo';
 import type { ResourceChunkRepo, ResourceOcrPageRepo } from '@main/contracts/resource-ocr-repo';
-import type { ResourceDocMeta, ResourceOcrPage } from '@main/contracts/resource-ocr';
+import type { ResourceOcrPage } from '@main/contracts/resource-ocr';
+import type { PdfDocMeta } from '@shared/types/library';
 import type { AttachmentService } from '@main/service/attachment-service';
 import { createPdfSource } from '@main/service/etl/chunking';
 import { OcrClient, isRetryableOcrError } from '@main/service/etl/ocr/paddle/client';
@@ -22,7 +23,7 @@ import { readPdfInfo } from '@main/service/etl/pdf/inspect';
 import type { PdfTextReport } from '@main/service/etl/pdf/pdf-pages';
 import { splitPdf, type PdfChunk } from '@main/service/etl/pdf/split';
 import { chunkResource } from './resource-chunking';
-import { parseDocMeta, serializeDocMeta } from './doc-meta';
+import { parsePdfDocMeta, patchPdfDocMeta } from './doc-meta';
 
 /** 配置缺省时的分块页数与并发数。 */
 const DEFAULT_PAGE_SIZE = 20;
@@ -86,8 +87,8 @@ async function runPdfOcr(deps: LibraryOcrTaskDeps, ctx: TaskContext): Promise<vo
   // pdf 切片
   const { pageCount, chunks } = await splitPdf(filePath, config.pageSize, ctx.workspaceDir);
   if (pageCount !== meta.pageCount) {
-    // 数据不一致以最新的为准
-    deps.resourceRepo.setDocMeta(resourceId, serializeDocMeta({ ...meta, pageCount }));
+    // 数据不一致以最新的为准；局部回写，保留导入时算好的 toc
+    patchPdfDocMeta(deps.resourceRepo, resourceId, { pageCount });
   }
   ctx.report(existing.size, pageCount);
 
@@ -246,13 +247,11 @@ async function ensureDocMeta(
   deps: LibraryOcrTaskDeps,
   resourceId: string,
   filePath: string
-): Promise<ResourceDocMeta> {
-  const cached = parseDocMeta(deps.resourceRepo.findDocMeta(resourceId));
+): Promise<PdfDocMeta> {
+  const cached = parsePdfDocMeta(deps.resourceRepo.findDocMeta(resourceId));
   if (cached) return cached;
 
-  const meta = await readPdfInfo(filePath);
-  deps.resourceRepo.setDocMeta(resourceId, serializeDocMeta(meta));
-  return meta;
+  return patchPdfDocMeta(deps.resourceRepo, resourceId, await readPdfInfo(filePath));
 }
 
 /** 块里的每一页都已经有结果时，这一块就跳过。 */

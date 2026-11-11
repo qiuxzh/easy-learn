@@ -5,9 +5,10 @@ import { IconButton } from '@/components/ui/icon-button';
 import { InputBar } from '@/components/chat/InputBar';
 import { ChatMessages } from '@/components/chat/ChatMessages';
 import { SessionSummaryList } from '@/components/chat/SessionSummaryList';
+import { ResizeHandle } from '@/components/layout/ResizeHandle';
 import { TempSideChat } from '@/components/chat/TempSideChat';
 import { useChat } from '@/hooks/use-chat';
-import { usePanelWidth, type PanelResizeHandler } from '@/hooks/use-panel-width';
+import { usePanelWidth } from '@/hooks/use-panel-width';
 import { useSessionActions } from '@/hooks/use-session-actions';
 
 /** 左侧会话栏的宽度区间：比这更窄放不下标题，更宽会挤掉正文列 */
@@ -48,7 +49,7 @@ export const ChatPage = memo(function ChatPage({ bookId }: { bookId?: string }) 
         <>
           <aside
             style={{ width: sidebarWidth.width }}
-            className="flex shrink-0 flex-col border-r border-stroke-3 bg-surface-1"
+            className="flex shrink-0 flex-col bg-surface-1"
           >
             {/* 新会话做成列表的第一行：与会话行同一套高度、圆角与 hover */}
             <div className="flex shrink-0 flex-col p-2">
@@ -111,7 +112,7 @@ export const ChatPage = memo(function ChatPage({ bookId }: { bookId?: string }) 
           <ResizeHandle label="调整临时会话宽度" onResize={tempSideChatWidth.resize} />
           <div
             style={{ width: tempSideChatWidth.width }}
-            className="flex shrink-0 flex-col border-l border-stroke-3"
+            className="flex shrink-0 flex-col bg-background"
           >
             <TempSideChat onClose={() => setTempSideChatOpen(false)} />
           </div>
@@ -120,16 +121,3 @@ export const ChatPage = memo(function ChatPage({ bookId }: { bookId?: string }) 
     </div>
   );
 });
-
-/** 分栏之间的拖拽分隔条：平时透明，悬停才显出一条细线 */
-function ResizeHandle({ label, onResize }: { label: string; onResize: PanelResizeHandler }) {
-  return (
-    <div
-      role="separator"
-      aria-orientation="vertical"
-      aria-label={label}
-      onPointerDown={onResize}
-      className="w-1.5 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-border"
-    />
-  );
-}

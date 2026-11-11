@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useRef } from 'react';
 import {
   BookMarked,
   BookOpen,
+  FileText,
   House,
   Layers,
   Library,
@@ -74,6 +75,7 @@ const TAB_ICONS: Record<TabType, LucideIcon> = {
   'card-browser': Layers,
   'card-review': Repeat2,
   reader: BookMarked,
+  preview: FileText,
 };
 
 /** 顶部 Tab 标签条 */

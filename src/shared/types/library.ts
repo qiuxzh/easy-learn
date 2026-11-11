@@ -146,3 +146,64 @@ export interface ResourcePathItem {
 export interface GetResourcePathInput {
   id: string;
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// 文档元数据（resource.doc_meta 的 JSON 形状）
+//
+// 按 `format` 判别：导入时由各格式自己的处理链一次写入，viewer 只读自己那份。
+// 目录（toc）的形状由该格式的 viewer 定义，不为其他格式预设统一节点类型。
+// ────────────────────────────────────────────────────────────────────────────
+
+/** docMeta 结构版本；改字段或改含义时递增，旧缓存一律视为脏数据重算。 */
+export const DOC_META_SCHEMA_VERSION = 1;
+
+/** PDF 目录解析器版本；解析算法升级后旧的 toc 缓存失效重算。 */
+export const PDF_TOC_PARSER_VERSION = 1;
+
+/** PDF 目录里的单个条目。 */
+export interface PdfTocItem {
+  /** 目录标题；空标题在解析时过滤。 */
+  title: string;
+  /** 1-based 物理页；null 表示目标解不出、不可跳转。 */
+  page: number | null;
+  /** 页面标签（如 "iv"）；没有时省略。 */
+  pageLabel?: string | null;
+  /** 子条目，由 PDF viewer 自己递归渲染缩进。 */
+  items?: PdfTocItem[];
+}
+
+/** PDF 的目录数据整体。 */
+export interface PdfToc {
+  /** 空数组表示「解析过、该资料确实没有内置目录」，不是「没解析」。 */
+  items: PdfTocItem[];
+  parserVersion: number;
+}
+
+interface DocMetaBase<F extends ResourceFormat> {
+  /** 与 resource.format 交叉校验；不一致说明文件被替换过，缓存作废。 */
+  format: F;
+  schemaVersion: number;
+}
+
+/** PDF 的文档元数据。 */
+export interface PdfDocMeta extends DocMetaBase<'pdf'> {
+  pageCount: number;
+  hasTextLayer: boolean;
+  /** null = 尚未解析（含旧格式缓存）；PdfToc = 解析结果，items 可为 []。 */
+  toc: PdfToc | null;
+  /** 每页的显示标签；无标签为 null。 */
+  pageLabels: string[] | null;
+}
+
+/** 其它格式的 viewer 落地时各自补自己的目录形状，这里先只占位。 */
+export type EpubDocMeta = DocMetaBase<'epub'>;
+export type MarkdownDocMeta = DocMetaBase<'md'>;
+export type TextDocMeta = DocMetaBase<'txt'>;
+
+export type ResourceDocMeta = PdfDocMeta | EpubDocMeta | MarkdownDocMeta | TextDocMeta;
+
+/** 单个资料的详情；列表 DTO 不带 docMeta，避免目录树传输整份目录。 */
+export interface ResourceDetailDTO {
+  resource: ResourceDTO;
+  docMeta: ResourceDocMeta | null;
+}
