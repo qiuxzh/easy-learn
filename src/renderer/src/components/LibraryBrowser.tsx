@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowUpDown,
   Check,
@@ -6,9 +6,14 @@ import {
   Filter,
   FolderInput,
   MoreHorizontal,
+  Pause,
   Pencil,
+  Play,
   Plus,
   RefreshCw,
+  RotateCcw,
+  ScanText,
+  Square,
   Star,
   Trash2,
   Upload,
@@ -16,6 +21,7 @@ import {
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { SegmentedToggle } from '@/components/ui/segmented-toggle';
@@ -51,9 +57,20 @@ import {
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
 import { LIBRARY_ROOT_KEY, useLibraryStore } from '@/stores/library-store';
+import { useTaskStore } from '@/stores/task-store';
+import { ResourceDetailDrawer } from '@/components/ResourceDetailDrawer';
 import { ResourceIcon } from '@/components/ResourceIcon';
 import { FORMAT_LABEL, formatBytes, formatDate } from '@/utils/library-format';
+import {
+  collectOcrTasks,
+  describeOcrTaskFailure,
+  ocrStatusLabel,
+  ocrStatusTone,
+  resolveOcrProgress,
+  resolveOcrStatus,
+} from '@/utils/library-ocr';
 import type { ResourceDTO, ResourceFormat, ResourceSort } from '@shared/types/library';
+import type { TaskOpResult } from '@shared/types/task';
 
 /** 工具栏排序项的展示名。 */
 const SORT_LABEL: Record<ResourceSort, string> = {
@@ -228,6 +245,32 @@ export function LibraryBrowser() {
   const deleteFile = useLibraryStore(s => s.deleteFile);
   const deleteFolderRecursive = useLibraryStore(s => s.deleteFolderRecursive);
   const setStarred = useLibraryStore(s => s.setStarred);
+  const startOcr = useLibraryStore(s => s.startOcr);
+  const loadOcrStates = useLibraryStore(s => s.loadOcrStates);
+  const ocrStates = useLibraryStore(s => s.ocrStates);
+  const tasks = useTaskStore(s => s.tasks);
+
+  const ocrTasks = useMemo(() => collectOcrTasks(tasks), [tasks]);
+  const pdfIds = useMemo(
+    () => items.filter(item => item.kind === 'file' && item.format === 'pdf').map(item => item.id),
+    [items]
+  );
+  const selectedFile = useMemo(
+    () => items.find(item => item.kind === 'file' && selectedIds.includes(item.id)) ?? null,
+    [items, selectedIds]
+  );
+
+  useEffect(() => {
+    if (pdfIds.length > 0) void loadOcrStates(pdfIds);
+  }, [pdfIds, loadOcrStates]);
+
+  const previousOcrTaskIds = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const current = new Set(tasks.filter(task => task.taskType === 'ocr-pdf').map(task => task.id));
+    const hasSettled = [...previousOcrTaskIds.current].some(id => !current.has(id));
+    previousOcrTaskIds.current = current;
+    if (hasSettled && pdfIds.length > 0) void loadOcrStates(pdfIds);
+  }, [tasks, pdfIds, loadOcrStates]);
 
   const [dialog, setDialog] = useState<ActiveDialog>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -236,17 +279,6 @@ export function LibraryBrowser() {
   const [draftName, setDraftName] = useState('');
   const [moveTarget, setMoveTarget] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [hover, setHover] = useState<{ item: ResourceDTO; left: number; top: number } | null>(null);
-
-  const contentRef = useRef<HTMLDivElement>(null);
-  const hoverTimer = useRef<number | null>(null);
-
-  useEffect(
-    () => () => {
-      if (hoverTimer.current !== null) window.clearTimeout(hoverTimer.current);
-    },
-    []
-  );
 
   const activeFilter = formats[0] ?? 'all';
   const breadcrumb = path;
@@ -344,29 +376,56 @@ export function LibraryBrowser() {
     if (message) toast.error(message);
   }
 
-  function handleHoverStart(item: ResourceDTO, element: HTMLElement): void {
-    if (hoverTimer.current !== null) window.clearTimeout(hoverTimer.current);
-    hoverTimer.current = window.setTimeout(() => {
-      const container = contentRef.current;
-      if (!container) return;
-      const rect = element.getBoundingClientRect();
-      const box = container.getBoundingClientRect();
-      const cardWidth = 248;
-      const left = Math.max(
-        8,
-        Math.min(rect.left - box.left + rect.width + 8, box.width - cardWidth - 8)
-      );
-      const top = Math.max(8, Math.min(rect.top - box.top, box.height - 160));
-      setHover({ item, left, top });
-    }, 400);
+  function getOcrView(item: ResourceDTO) {
+    if (item.kind !== 'file' || item.format !== 'pdf') return null;
+    const task = ocrTasks.get(item.id);
+    const state = ocrStates[item.id];
+    const status = resolveOcrStatus(task, state);
+    const progress = resolveOcrProgress(task, state);
+    return {
+      task,
+      state,
+      status,
+      progress,
+      label: ocrStatusLabel(status, progress),
+      tone: ocrStatusTone(status),
+    };
   }
 
-  function handleHoverEnd(): void {
-    if (hoverTimer.current !== null) window.clearTimeout(hoverTimer.current);
-    setHover(null);
+  async function handleOcrStart(item: ResourceDTO, restart = false): Promise<void> {
+    try {
+      await startOcr(item.id, restart);
+      toast.success(restart ? '已重新开始识别' : '已开始识别');
+    } catch (error) {
+      toast.error(String(error));
+    }
+  }
+
+  async function handleOcrTaskAction(
+    item: ResourceDTO,
+    action: 'pause' | 'resume' | 'cancel' | 'retry'
+  ): Promise<void> {
+    const task = getOcrView(item)?.task;
+    if (!task) return;
+
+    const result: TaskOpResult = await useTaskStore.getState()[action](task.id);
+    if (result.ok) {
+      const message =
+        action === 'pause'
+          ? '已暂停'
+          : action === 'resume'
+            ? '已继续'
+            : action === 'cancel'
+              ? '已取消识别'
+              : '已重新排队';
+      toast.success(message);
+    } else {
+      toast.error(describeOcrTaskFailure(result.reason));
+    }
   }
 
   function renderMenuItems(item: ResourceDTO): ReactNode {
+    const ocr = getOcrView(item);
     return (
       <>
         <ContextMenuItem onSelect={() => openRename(item)}>
@@ -381,6 +440,52 @@ export function LibraryBrowser() {
           <Star className="h-4 w-4" />
           {item.starred ? '取消收藏' : '收藏'}
         </ContextMenuItem>
+        {ocr && (
+          <>
+            {!ocr.task && (ocr.status === 'idle' || ocr.status === 'partial') && (
+              <ContextMenuItem onSelect={() => void handleOcrStart(item)}>
+                <ScanText className="h-4 w-4" />
+                {ocr.status === 'idle' ? '识别文字' : '继续识别'}
+              </ContextMenuItem>
+            )}
+            {ocr.task?.status === 'running' && (
+              <>
+                <ContextMenuItem onSelect={() => void handleOcrTaskAction(item, 'pause')}>
+                  <Pause className="h-4 w-4" />
+                  暂停识别
+                </ContextMenuItem>
+                <ContextMenuItem onSelect={() => void handleOcrTaskAction(item, 'cancel')}>
+                  <Square className="h-4 w-4" />
+                  取消识别
+                </ContextMenuItem>
+              </>
+            )}
+            {ocr.task?.status === 'paused' && (
+              <>
+                <ContextMenuItem onSelect={() => void handleOcrTaskAction(item, 'resume')}>
+                  <Play className="h-4 w-4" />
+                  继续识别
+                </ContextMenuItem>
+                <ContextMenuItem onSelect={() => void handleOcrTaskAction(item, 'cancel')}>
+                  <Square className="h-4 w-4" />
+                  取消识别
+                </ContextMenuItem>
+              </>
+            )}
+            {ocr.task?.status === 'queued' && (
+              <ContextMenuItem onSelect={() => void handleOcrTaskAction(item, 'cancel')}>
+                <Square className="h-4 w-4" />
+                取消识别
+              </ContextMenuItem>
+            )}
+            {ocr.task?.status === 'failed' && (
+              <ContextMenuItem onSelect={() => void handleOcrTaskAction(item, 'retry')}>
+                <RotateCcw className="h-4 w-4" />
+                重试识别
+              </ContextMenuItem>
+            )}
+          </>
+        )}
         <ContextMenuSeparator />
         <ContextMenuItem className="text-destructive" onSelect={() => openDelete(item)}>
           <Trash2 className="h-4 w-4" />
@@ -500,177 +605,196 @@ export function LibraryBrowser() {
         </div>
       </div>
 
-      <div ref={contentRef} className="relative min-h-0 flex-1 overflow-auto p-3">
-        {loading ? (
-          <div className="text-sm text-muted-foreground">正在加载…</div>
-        ) : error ? (
-          <div className="flex items-center gap-2 text-sm text-destructive">
-            {error}
-            <Button variant="ghost" size="sm" onClick={() => void load()}>
-              重试
-            </Button>
-          </div>
-        ) : items.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
-            <span>这里还没有内容</span>
-            <div className="flex gap-2">
-              <Button variant="solid" size="sm" onClick={() => void handleImport()}>
-                导入文件
-              </Button>
-              <Button variant="outline" size="sm" onClick={openCreate}>
-                新建文件夹
+      <div className="relative min-h-0 flex-1">
+        <div className="relative h-full overflow-auto p-3">
+          {loading ? (
+            <div className="text-sm text-muted-foreground">正在加载…</div>
+          ) : error ? (
+            <div className="flex items-center gap-2 text-sm text-destructive">
+              {error}
+              <Button variant="ghost" size="sm" onClick={() => void load()}>
+                重试
               </Button>
             </div>
-          </div>
-        ) : viewMode === 'grid' ? (
-          <div className="flex flex-wrap gap-1">
-            {items.map(item => (
-              <ContextMenu key={item.id}>
-                <ContextMenuTrigger asChild>
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    className={cn(
-                      'group relative flex h-28 w-28 flex-col items-center justify-center gap-2 rounded-lg p-1.5 hover:bg-secondary',
-                      selectedIds.includes(item.id) && 'bg-secondary'
-                    )}
-                    onClick={() => select([item.id])}
-                    onDoubleClick={() => {
-                      if (item.kind === 'folder') {
-                        handleHoverEnd();
-                        void openFolder(item.id);
-                      }
-                    }}
-                    onKeyDown={event => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault();
-                        select([item.id]);
-                      }
-                    }}
-                    onMouseEnter={event => handleHoverStart(item, event.currentTarget)}
-                    onMouseLeave={handleHoverEnd}
-                  >
-                    <ResourceIcon kind={item.kind} format={item.format} />
-                    <span className="w-full shrink-0 truncate text-center text-xs">
-                      {item.name}
-                    </span>
+          ) : items.length === 0 ? (
+            <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
+              <span>这里还没有内容</span>
+              <div className="flex gap-2">
+                <Button variant="solid" size="sm" onClick={() => void handleImport()}>
+                  导入文件
+                </Button>
+                <Button variant="outline" size="sm" onClick={openCreate}>
+                  新建文件夹
+                </Button>
+              </div>
+            </div>
+          ) : viewMode === 'grid' ? (
+            <div className="flex flex-wrap gap-1">
+              {items.map(item => {
+                const ocr = getOcrView(item);
+                return (
+                  <ContextMenu key={item.id}>
+                    <ContextMenuTrigger asChild>
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        className={cn(
+                          'group relative flex h-32 w-28 flex-col items-center justify-center gap-1 rounded-lg p-1.5 hover:bg-secondary',
+                          selectedIds.includes(item.id) && 'bg-secondary'
+                        )}
+                        onClick={() => select([item.id])}
+                        onDoubleClick={() => {
+                          if (item.kind === 'folder') {
+                            void openFolder(item.id);
+                          }
+                        }}
+                        onKeyDown={event => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            select([item.id]);
+                          }
+                        }}
+                      >
+                        <ResourceIcon kind={item.kind} format={item.format} />
+                        <span className="w-full shrink-0 truncate text-center text-xs">
+                          {item.name}
+                        </span>
+                        {ocr && (
+                          <span
+                            className={cn(
+                              'w-full shrink-0 truncate text-center text-[11px]',
+                              ocr.status === 'failed'
+                                ? 'text-destructive'
+                                : ocr.status === 'running'
+                                  ? 'text-primary'
+                                  : ocr.status === 'partial'
+                                    ? 'text-warn-ink'
+                                    : 'text-muted-foreground'
+                            )}
+                          >
+                            {ocr.label}
+                          </span>
+                        )}
 
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          icon
-                          aria-label="更多"
-                          className="absolute right-0.5 top-0.5 opacity-0 group-hover:opacity-100"
-                        >
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onSelect={() => openRename(item)}>
-                          <Pencil className="h-4 w-4" />
-                          重命名
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => openMove(item)}>
-                          <FolderInput className="h-4 w-4" />
-                          移动到…
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => void toggleStarred(item)}>
-                          <Star className="h-4 w-4" />
-                          {item.starred ? '取消收藏' : '收藏'}
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          className="text-destructive"
-                          onSelect={() => openDelete(item)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          删除
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </ContextMenuTrigger>
-                <ContextMenuContent>{renderMenuItems(item)}</ContextMenuContent>
-              </ContextMenu>
-            ))}
-          </div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-xs text-muted-foreground">
-                <th className="px-2 py-2 text-left font-medium">名称</th>
-                <th className="px-2 py-2 text-left font-medium">类型</th>
-                <th className="px-2 py-2 text-left font-medium">大小</th>
-                <th className="px-2 py-2 text-left font-medium">修改时间</th>
-                <th className="px-2 py-2 text-left font-medium">分片</th>
-                <th className="px-2 py-2 text-left font-medium">向量化</th>
-                <th className="px-2 py-2 text-left font-medium">OCR</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map(item => (
-                <tr
-                  key={item.id}
-                  className={cn(
-                    'hover:bg-secondary',
-                    selectedIds.includes(item.id) && 'bg-secondary'
-                  )}
-                  onClick={() => select([item.id])}
-                  onDoubleClick={() => {
-                    if (item.kind === 'folder') {
-                      handleHoverEnd();
-                      void openFolder(item.id);
-                    }
-                  }}
-                >
-                  <td className="px-2 py-2">
-                    <div className="flex items-center gap-2">
-                      {item.kind === 'folder' ? (
-                        <ResourceIcon kind="folder" size="sm" />
-                      ) : (
-                        <ResourceIcon kind="file" format={item.format} size="sm" />
-                      )}
-                      <span className="truncate">{item.name}</span>
-                    </div>
-                  </td>
-                  <td className="px-2 py-2 text-muted-foreground">
-                    {item.kind === 'folder'
-                      ? '文件夹'
-                      : item.format
-                        ? FORMAT_LABEL[item.format]
-                        : '—'}
-                  </td>
-                  <td className="px-2 py-2 text-muted-foreground">
-                    {item.kind === 'folder' ? '—' : formatBytes(item.sizeBytes)}
-                  </td>
-                  <td className="px-2 py-2 text-muted-foreground">{formatDate(item.updatedAt)}</td>
-                  <td className="px-2 py-2 text-muted-foreground">—</td>
-                  <td className="px-2 py-2 text-muted-foreground">—</td>
-                  <td className="px-2 py-2 text-muted-foreground">—</td>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              icon
+                              aria-label="更多"
+                              className="absolute right-0.5 top-0.5 opacity-0 group-hover:opacity-100"
+                              onClick={event => event.stopPropagation()}
+                            >
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onSelect={() => openRename(item)}>
+                              <Pencil className="h-4 w-4" />
+                              重命名
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => openMove(item)}>
+                              <FolderInput className="h-4 w-4" />
+                              移动到…
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => void toggleStarred(item)}>
+                              <Star className="h-4 w-4" />
+                              {item.starred ? '取消收藏' : '收藏'}
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-destructive"
+                              onSelect={() => openDelete(item)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              删除
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </ContextMenuTrigger>
+                    <ContextMenuContent>{renderMenuItems(item)}</ContextMenuContent>
+                  </ContextMenu>
+                );
+              })}
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-xs text-muted-foreground">
+                  <th className="px-2 py-2 text-left font-medium">名称</th>
+                  <th className="px-2 py-2 text-left font-medium">类型</th>
+                  <th className="px-2 py-2 text-left font-medium">大小</th>
+                  <th className="px-2 py-2 text-left font-medium">修改时间</th>
+                  <th className="px-2 py-2 text-left font-medium">分片</th>
+                  <th className="px-2 py-2 text-left font-medium">向量化</th>
+                  <th className="px-2 py-2 text-left font-medium">OCR</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+              </thead>
+              <tbody>
+                {items.map(item => {
+                  const ocr = getOcrView(item);
+                  return (
+                    <tr
+                      key={item.id}
+                      className={cn(
+                        'hover:bg-secondary',
+                        selectedIds.includes(item.id) && 'bg-secondary'
+                      )}
+                      onClick={() => select([item.id])}
+                      onDoubleClick={() => {
+                        if (item.kind === 'folder') {
+                          void openFolder(item.id);
+                        }
+                      }}
+                    >
+                      <td className="px-2 py-2">
+                        <div className="flex items-center gap-2">
+                          {item.kind === 'folder' ? (
+                            <ResourceIcon kind="folder" size="sm" />
+                          ) : (
+                            <ResourceIcon kind="file" format={item.format} size="sm" />
+                          )}
+                          <span className="truncate">{item.name}</span>
+                        </div>
+                      </td>
+                      <td className="px-2 py-2 text-muted-foreground">
+                        {item.kind === 'folder'
+                          ? '文件夹'
+                          : item.format
+                            ? FORMAT_LABEL[item.format]
+                            : '—'}
+                      </td>
+                      <td className="px-2 py-2 text-muted-foreground">
+                        {item.kind === 'folder' ? '—' : formatBytes(item.sizeBytes)}
+                      </td>
+                      <td className="px-2 py-2 text-muted-foreground">
+                        {formatDate(item.updatedAt)}
+                      </td>
+                      <td className="px-2 py-2 text-muted-foreground">
+                        {ocr?.state?.chunkCount ?? '—'}
+                      </td>
+                      <td className="px-2 py-2 text-muted-foreground">—</td>
+                      <td className="px-2 py-2">
+                        {ocr ? (
+                          <Badge variant="outline" tone={ocr.tone}>
+                            {ocr.label}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
 
-        {hover && items.some(item => item.id === hover.item.id) && (
-          <div
-            className="pointer-events-none absolute z-10 w-64 rounded-lg border border-stroke-3 bg-card p-3 text-sm shadow-panel"
-            style={{ left: hover.left, top: hover.top }}
-          >
-            <div className="truncate font-medium">{hover.item.name}</div>
-            <div className="mt-1 text-xs text-muted-foreground">
-              {hover.item.kind === 'folder'
-                ? `文件夹 · ${hover.item.childrenCount ?? 0} 项`
-                : `${hover.item.format ? FORMAT_LABEL[hover.item.format] : ''} · ${formatBytes(hover.item.sizeBytes)}`}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              修改于 {formatDate(hover.item.updatedAt)}
-            </div>
-            <div className="mt-2 text-xs text-muted-foreground">分片 — · 向量化 — · OCR —</div>
-          </div>
+        {selectedFile && (
+          <ResourceDetailDrawer resource={selectedFile} onClose={() => select([])} />
         )}
       </div>
 

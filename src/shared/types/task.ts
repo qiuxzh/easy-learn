@@ -5,8 +5,12 @@
  */
 export type TaskStatus = 'queued' | 'running' | 'paused' | 'failed';
 
-/** 任务进度。首版只有比例，后续形态按 `kind` 扩展，旧行不需要迁移。 */
-export type TaskProgress = { kind: 'ratio'; ratio: number };
+/** 任务进度：已完成量与总量；比例由消费方按需计算。 */
+export type TaskProgress = {
+  kind: 'ratio';
+  finished: number;
+  total: number;
+};
 
 /** 失败码的闭集；未覆盖的错误统一按 `FAILED` 记录。 */
 export type TaskErrorCode =
@@ -65,8 +69,6 @@ export type TaskEventPayload =
       type: 'progress';
       taskId: string;
       progress: TaskProgress;
-      finished: number;
-      total: number;
     }
   | {
       type: 'settled';

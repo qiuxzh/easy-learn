@@ -1,4 +1,5 @@
 import {
+  APIError,
   AuthError,
   FileNotFoundError,
   InvalidRequestError,
@@ -174,14 +175,15 @@ export class OcrClient {
 }
 
 /**
- * 这些错误说明请求本身可以重来：限流、服务不可用、网络。
+ * 这些错误说明请求本身可以重来：限流、服务不可用、网络，以及 5xx。
  * 鉴权、参数非法、文件不存在等重试也不会变。
  */
 export function isRetryableOcrError(error: unknown): boolean {
   return (
     error instanceof RateLimitError ||
     error instanceof ServiceUnavailableError ||
-    error instanceof NetworkError
+    error instanceof NetworkError ||
+    (error instanceof APIError && error.statusCode >= 500)
   );
 }
 

@@ -274,7 +274,7 @@ describe('TaskScheduler 暂停与恢复', () => {
     scheduler.start();
     const task = scheduler.enqueue({ taskType: 'demo', payload: {} });
 
-    await waitFor(() => (repo.findById(task.id)?.progress?.ratio ?? 0) > 0);
+    await waitFor(() => (repo.findById(task.id)?.progress?.finished ?? 0) > 0);
     expect(await scheduler.pause(task.id)).toEqual({ ok: true });
 
     const paused = repo.findById(task.id);
@@ -346,13 +346,17 @@ describe('TaskScheduler 取消与重试', () => {
       id: 'failed-1',
       taskType: 'demo',
       status: 'failed',
-      progress: { kind: 'ratio', ratio: 0.5 },
+      progress: { kind: 'ratio', finished: 5, total: 10 },
       error: { code: 'FAILED', message: '网络错误', retryable: true },
     });
 
     expect(await scheduler.retry('failed-1')).toEqual({ ok: true });
     expect(repo.findById('failed-1')?.status).toBe('queued');
-    expect(repo.findById('failed-1')?.progress).toEqual({ kind: 'ratio', ratio: 0.5 });
+    expect(repo.findById('failed-1')?.progress).toEqual({
+      kind: 'ratio',
+      finished: 5,
+      total: 10,
+    });
     expect(repo.findById('failed-1')?.error).toBeNull();
   });
 

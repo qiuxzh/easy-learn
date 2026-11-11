@@ -48,12 +48,13 @@ export enum IpcChannel {
   /** 设置收藏状态 */
   Library_SetStarred = 'library:setStarred',
   /** 取目录到根的路径，用于面包屑 */
-  Library_GetResourcePath = 'library:getResourcePath' /** 读取一个资料的识别状态 */,
+  Library_GetResourcePath = 'library:getResourcePath',
+  /** 读取一个资料的识别状态 */
   Library_OcrGetState = 'library:ocrGetState',
+  /** 批量读取资料的识别状态，供列表展示 */
+  Library_OcrGetStates = 'library:ocrGetStates',
   /** 启动识别；`restart` 为 true 时清掉旧页块与分片 */
   Library_OcrStart = 'library:ocrStart',
-  /** 取消该资料正在进行的识别任务 */
-  Library_OcrCancel = 'library:ocrCancel',
 
   // 后台任务（任务编排器）
   /** 全部任务：排队、运行、暂停与失败 */

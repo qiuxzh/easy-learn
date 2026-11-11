@@ -33,7 +33,7 @@ export interface TaskContext {
   signal: AbortSignal;
   /** 任务专属临时目录，由调度器按任务行生命周期创建与删除。 */
   workspaceDir: string;
-  /** 上报进度；调度器负责节流落库，比例由 finished / total 得出。 */
+  /** 上报进度；调度器负责节流落库。 */
   report(finished: number, total: number): void;
 }
 
@@ -70,8 +70,6 @@ export type TaskEvent =
       type: 'progress';
       taskId: string;
       progress: TaskProgress;
-      finished: number;
-      total: number;
     }
   | {
       type: 'settled';

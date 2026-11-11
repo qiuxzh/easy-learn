@@ -29,8 +29,6 @@ export function toTaskEventPayload(event: TaskEvent): TaskEventPayload {
         type: 'progress',
         taskId: event.taskId,
         progress: event.progress,
-        finished: event.finished,
-        total: event.total,
       };
     case 'settled':
       return {

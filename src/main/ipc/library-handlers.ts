@@ -12,7 +12,7 @@ import type {
   ReparentResourceInput,
   SetStarredInput,
 } from '@shared/types/library';
-import type { OcrCancelInput, OcrGetStateInput, OcrStartInput } from '@shared/types/ocr';
+import type { OcrGetStateInput, OcrGetStatesInput, OcrStartInput } from '@shared/types/ocr';
 import type { LibraryService } from '@main/service/library/library-service';
 import type { LibraryOcrService } from '@main/service/library/library-ocr-service';
 import { pickLibraryFiles } from './dialogs';
@@ -94,13 +94,13 @@ export function registerLibraryHandlers(library: LibraryService, ocr: LibraryOcr
     ocr.getState(request.resourceId)
   );
 
+  // 批量读取资料的识别状态，供列表展示
+  registerDirectHandler(IpcChannel.Library_OcrGetStates, (request: OcrGetStatesInput) =>
+    ocr.getStates(request.resourceIds)
+  );
+
   // 启动识别；restart 为 true 时清掉旧页块与分片
   registerDirectHandler(IpcChannel.Library_OcrStart, (request: OcrStartInput) =>
     ocr.start(request.resourceId, { restart: request.restart })
-  );
-
-  // 取消该资料正在进行的识别任务
-  registerDirectHandler(IpcChannel.Library_OcrCancel, (request: OcrCancelInput) =>
-    ocr.cancel(request.resourceId)
   );
 }

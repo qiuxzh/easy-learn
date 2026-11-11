@@ -8,6 +8,7 @@ import type {
   ResourceSort,
   SortDirection,
 } from '@shared/types/library';
+import type { ResourceOcrStateDTO } from '@shared/types/ocr';
 
 /** 资料库当前打开的真实目录；根目录的 parentId 为 null。 */
 export interface LibraryLocation {
@@ -76,6 +77,12 @@ interface LibraryState {
   lastImport: ImportFilesResult | null;
   /** 目录树结构变化时递增，侧栏据此重新拉取展开的目录。 */
   treeRevision: number;
+  /** 按资源 id 缓存的 OCR 域状态。 */
+  ocrStates: Record<string, ResourceOcrStateDTO>;
+  /** 每个资源的 OCR 状态加载态。 */
+  ocrLoading: Record<string, boolean>;
+  /** 每个资源的 OCR 状态读取错误。 */
+  ocrErrors: Record<string, string | null>;
 
   /** 按当前目录重新取数。 */
   load: () => Promise<string | null>;
@@ -108,6 +115,12 @@ interface LibraryState {
   setStarred: (id: string, starred: boolean) => Promise<string | null>;
   /** 读取存储占用。 */
   loadStorageUsage: () => Promise<void>;
+  /** 读取单个资源的 OCR 域状态。 */
+  loadOcrState: (resourceId: string) => Promise<void>;
+  /** 批量读取资源的 OCR 域状态，供列表展示。 */
+  loadOcrStates: (resourceIds: readonly string[]) => Promise<void>;
+  /** 启动识别，返回任务 id。 */
+  startOcr: (resourceId: string, restart?: boolean) => Promise<string>;
 }
 
 /** 资料库状态仓库。 */
@@ -130,6 +143,9 @@ export const useLibraryStore = create<LibraryState>()(
     importing: false,
     lastImport: null,
     treeRevision: 0,
+    ocrStates: {},
+    ocrLoading: {},
+    ocrErrors: {},
 
     load: async () => {
       const { view, sort, direction, formats } = get();
@@ -376,6 +392,63 @@ export const useLibraryStore = create<LibraryState>()(
       } catch (e) {
         console.warn('[library] loadStorageUsage failed:', e);
       }
+    },
+
+    loadOcrState: async resourceId => {
+      set(state => {
+        state.ocrLoading[resourceId] = true;
+        state.ocrErrors[resourceId] = null;
+      });
+
+      try {
+        const value = await window.api.library.ocrGetState({ resourceId });
+        set(state => {
+          state.ocrStates[resourceId] = value;
+        });
+      } catch (e) {
+        set(state => {
+          state.ocrErrors[resourceId] = String(e);
+        });
+      } finally {
+        set(state => {
+          state.ocrLoading[resourceId] = false;
+        });
+      }
+    },
+
+    loadOcrStates: async resourceIds => {
+      const ids = [...new Set(resourceIds)];
+      if (ids.length === 0) return;
+
+      set(state => {
+        for (const id of ids) {
+          state.ocrLoading[id] = true;
+          state.ocrErrors[id] = null;
+        }
+      });
+
+      try {
+        const values = await window.api.library.ocrGetStates({ resourceIds: ids });
+        set(state => {
+          for (const [resourceId, value] of Object.entries(values)) {
+            state.ocrStates[resourceId] = value;
+          }
+        });
+      } catch (e) {
+        set(state => {
+          for (const id of ids) state.ocrErrors[id] = String(e);
+        });
+      } finally {
+        set(state => {
+          for (const id of ids) state.ocrLoading[id] = false;
+        });
+      }
+    },
+
+    startOcr: async (resourceId, restart = false) => {
+      const { taskId } = await window.api.library.ocrStart({ resourceId, restart });
+      await get().loadOcrState(resourceId);
+      return taskId;
     },
   }))
 );

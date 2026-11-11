@@ -45,7 +45,7 @@ function createTask(overrides: Partial<TaskEntity> = {}): TaskEntity {
     id: 'task-1',
     taskType: 'ocr-pdf',
     status: 'running',
-    progress: { kind: 'ratio', ratio: 0.4 },
+    progress: { kind: 'ratio', finished: 4, total: 10 },
     payload: { resourceId: 'r-1' },
     error: null,
     createdAt: 1,
@@ -59,7 +59,7 @@ function createTask(overrides: Partial<TaskEntity> = {}): TaskEntity {
 function createFakeResourceRepo(resource: ResourceEntity | undefined): ResourceRepo {
   return {
     create: vi.fn(),
-    findById: vi.fn(() => resource),
+    findById: vi.fn((id: string) => (resource?.id === id ? resource : undefined)),
     listChildren: vi.fn(() => []),
     countChildrenByParents: vi.fn(() => ({})),
     listStarredResources: vi.fn(() => []),
@@ -202,20 +202,21 @@ describe('LibraryOcrService 状态', () => {
     expect(state.hasTextLayer).toBe(true);
   });
 
-  it('把当前识别任务折叠进状态', async () => {
-    const { service } = createService({ tasks: [createTask({ id: 'task-9', status: 'paused' })] });
+  it('批量读取按资源返回，未缓存的页数留空', async () => {
+    const { service } = createService({});
 
-    const state = await service.getState('r-1');
+    const states = await service.getStates(['r-1', 'missing']);
 
-    expect(state.task).toEqual({
-      id: 'task-9',
-      status: 'paused',
-      progress: { kind: 'ratio', ratio: 0.4 },
+    expect(states['r-1']).toMatchObject({ applicable: true, pageCount: null });
+    expect(states.missing).toMatchObject({
+      applicable: false,
+      hasTextLayer: null,
+      pageCount: null,
     });
   });
 });
 
-describe('LibraryOcrService 启动与取消', () => {
+describe('LibraryOcrService 启动', () => {
   it('启动时按 resourceId 入队', async () => {
     const { service, taskService } = createService({});
 
@@ -248,19 +249,5 @@ describe('LibraryOcrService 启动与取消', () => {
     await service.start('r-1', { restart: true });
 
     expect(pageRepo.pages.size).toBe(0);
-  });
-
-  it('取消按 resourceId 找到当前任务', async () => {
-    const { service, taskService } = createService({ tasks: [createTask({ id: 'task-7' })] });
-
-    await service.cancel('r-1');
-
-    expect(taskService.cancelled).toEqual(['task-7']);
-  });
-
-  it('没有识别任务时取消报错', async () => {
-    const { service } = createService({});
-
-    await expect(service.cancel('r-1')).rejects.toThrow('没有正在进行的识别任务');
   });
 });

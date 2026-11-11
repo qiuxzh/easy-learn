@@ -69,10 +69,10 @@ import type {
 import { ipcRenderer, type IpcRendererEvent } from 'electron';
 import { IpcChannel } from '@shared/ipc-channels';
 import type {
-  OcrCancelInput,
   OcrCommandResult,
   OcrEvent,
   OcrGetStateInput,
+  OcrGetStatesInput,
   OcrRuntime,
   OcrStartInput,
   OcrStartResult,
@@ -214,10 +214,12 @@ export const api = {
       ipcRenderer.invoke(IpcChannel.Library_DeleteFolderRecursive, request) as Promise<void>,
     ocrGetState: (request: OcrGetStateInput) =>
       ipcRenderer.invoke(IpcChannel.Library_OcrGetState, request) as Promise<ResourceOcrStateDTO>,
+    ocrGetStates: (request: OcrGetStatesInput) =>
+      ipcRenderer.invoke(IpcChannel.Library_OcrGetStates, request) as Promise<
+        Record<string, ResourceOcrStateDTO>
+      >,
     ocrStart: (request: OcrStartInput) =>
       ipcRenderer.invoke(IpcChannel.Library_OcrStart, request) as Promise<OcrStartResult>,
-    ocrCancel: (request: OcrCancelInput) =>
-      ipcRenderer.invoke(IpcChannel.Library_OcrCancel, request) as Promise<void>,
   },
 
   // 附件（聊天输入）

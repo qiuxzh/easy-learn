@@ -31,7 +31,7 @@ export interface LibraryOcrServiceDeps {
 }
 
 /**
- * 资料 OCR 的用例层：检查是否适用、启动与取消识别、给界面提供状态。
+ * 资料 OCR 的用例层：检查是否适用、启动识别、给界面提供状态。
  *
  * 不直接跑识别：真正的执行在 `ocr-pdf` 任务里，进度与暂停/取消由任务系统负责。
  */
@@ -66,26 +66,36 @@ export class LibraryOcrService {
    */
   async getState(resourceId: string): Promise<ResourceOcrState> {
     const resource = this.resourceRepo.findById(resourceId);
+
     if (!resource || resource.kind !== 'file' || resource.format !== 'pdf') {
-      return {
-        applicable: false,
-        hasTextLayer: null,
-        pageCount: null,
-        donePages: 0,
-        chunkCount: 0,
-        task: this.toTaskState(this.findActiveTask(resourceId)),
-      };
+      return this.buildState(resource, null);
     }
 
     const meta = await this.ensureDocMeta(resource);
-    return {
-      applicable: true,
-      hasTextLayer: meta.hasTextLayer,
-      pageCount: meta.pageCount,
-      donePages: this.pageRepo.countPages(resourceId),
-      chunkCount: this.chunkRepo.count(resourceId),
-      task: this.toTaskState(this.findActiveTask(resourceId)),
-    };
+    return this.buildState(resource, meta);
+  }
+
+  /**
+   * 批量读取识别状态，供列表展示。
+   *
+   * 只读 `doc_meta` 的缓存，不解析 PDF：没有缓存时页数和文本层返回 null，
+   * 等抽屉打开 `getState` 时再算。
+   *
+   * @param resourceIds 要查询的资料 id
+   */
+  async getStates(resourceIds: readonly string[]): Promise<Record<string, ResourceOcrState>> {
+    const result: Record<string, ResourceOcrState> = {};
+
+    for (const resourceId of new Set(resourceIds)) {
+      const resource = this.resourceRepo.findById(resourceId);
+      const meta =
+        resource && resource.kind === 'file' && resource.format === 'pdf'
+          ? parseDocMeta(this.resourceRepo.findDocMeta(resourceId))
+          : null;
+      result[resourceId] = this.buildState(resource, meta);
+    }
+
+    return result;
   }
 
   /**
@@ -124,21 +134,6 @@ export class LibraryOcrService {
     }
   }
 
-  /**
-   * 取消一个资料正在进行的识别任务。
-   *
-   * @throws 没有正在进行的任务时抛 {@link DomainError}
-   */
-  async cancel(resourceId: string): Promise<void> {
-    const task = this.findActiveTask(resourceId);
-    if (!task) throw new DomainError('没有正在进行的识别任务');
-
-    const result = await this.taskService.cancel(task.id);
-    if (!result.ok && result.reason !== 'not_found') {
-      throw new DomainError('取消失败，请稍后再试');
-    }
-  }
-
   /** 确保缓存里有 PDF 元数据；没有时读取并写回。 */
   private async ensureDocMeta(resource: ResourceEntity): Promise<ResourceDocMeta> {
     const cached = parseDocMeta(this.resourceRepo.findDocMeta(resource.id));
@@ -153,6 +148,21 @@ export class LibraryOcrService {
       const message = error instanceof Error ? error.message : String(error);
       throw new DomainError(`无法读取 PDF：${message}`);
     }
+  }
+
+  /** 把资源与元数据拼成界面要的状态。 */
+  private buildState(
+    resource: ResourceEntity | undefined,
+    meta: ResourceDocMeta | null
+  ): ResourceOcrState {
+    const isPdf = !!resource && resource.kind === 'file' && resource.format === 'pdf';
+    return {
+      applicable: isPdf,
+      hasTextLayer: isPdf ? (meta?.hasTextLayer ?? null) : null,
+      pageCount: isPdf ? (meta?.pageCount ?? null) : null,
+      donePages: resource?.kind === 'file' ? this.pageRepo.countPages(resource.id) : 0,
+      chunkCount: resource?.kind === 'file' ? this.chunkRepo.count(resource.id) : 0,
+    };
   }
 
   /** 校验并返回 PDF 资料；其它格式直接拒绝。 */
@@ -173,18 +183,7 @@ export class LibraryOcrService {
   private findActiveTask(resourceId: string): TaskEntity | undefined {
     return this.taskService
       .listByType(LIBRARY_OCR_TASK_TYPE)
-      .find(
-        task =>
-          task.taskType === LIBRARY_OCR_TASK_TYPE &&
-          isActive(task) &&
-          readPayloadResourceId(task.payload) === resourceId
-      );
-  }
-
-  /** 任务记录只暴露界面需要的三个字段。 */
-  private toTaskState(task: TaskEntity | undefined): ResourceOcrState['task'] {
-    if (!task) return null;
-    return { id: task.id, status: task.status, progress: task.progress };
+      .find(task => isActive(task) && readPayloadResourceId(task.payload) === resourceId);
   }
 }
 

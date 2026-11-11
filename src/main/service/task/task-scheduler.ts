@@ -400,10 +400,9 @@ export class TaskScheduler {
         const now = Date.now();
         if (finished < total && now - execution.lastProgressAt < this.progressFlushMs) return;
         execution.lastProgressAt = now;
-        const ratio = total > 0 ? Math.min(finished / total, 1) : 0;
-        const progress: TaskProgress = { kind: 'ratio', ratio };
+        const progress: TaskProgress = { kind: 'ratio', finished, total };
         this.taskRepo.updateProgress(task.id, progress);
-        this.emit({ type: 'progress', taskId: task.id, progress, finished, total });
+        this.emit({ type: 'progress', taskId: task.id, progress });
       },
     };
 
@@ -493,6 +492,7 @@ export class TaskScheduler {
     this.emit({ type: 'settled', taskId: id, status: 'failed', error });
   }
 
+  // 优雅等待promise结束，最多等5秒。返回是否优雅结束
   private waitSettled(done: Promise<void>): Promise<boolean> {
     return new Promise(resolve => {
       const timer = setTimeout(() => resolve(false), this.abortGraceMs);
