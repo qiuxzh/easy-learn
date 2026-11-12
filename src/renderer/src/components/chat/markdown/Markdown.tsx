@@ -1,17 +1,21 @@
-// 引入 KaTeX 公式渲染所需的样式表
-import 'katex/dist/katex.min.css';
-// 复制含公式的选区时把 KaTeX 还原成 $...$ / $$...$$ 文本
+// 复制含公式的选区时把 KaTeX 还原成 $...$ / $$...$$ 文本；KaTeX 运行时与样式改为按需加载
 import 'katex/dist/contrib/copy-tex';
 
-import { Streamdown, type Components, type PluginConfig } from 'streamdown';
+import { useEffect } from 'react';
+import { Streamdown, type Components, type MathPlugin, type PluginConfig } from 'streamdown';
+import remarkMath from 'remark-math';
 import { MermaidBlock } from '@/components/chat/markdown/MermaidBlock';
 import { SvgBlock } from '@/components/chat/markdown/SvgBlock';
 import { MarkmapBlock } from '@/components/chat/markdown/MarkmapBlock';
+import { LazyMath } from '@/components/chat/markdown/LazyMath';
+import {
+  MATH_PLACEHOLDER_CLASS,
+  rehypeLazyMath,
+  scheduleKatexPrefetch,
+} from '@/components/chat/markdown/katex-lazy';
 
 import { cjk } from '@streamdown/cjk';
 import { createCodePlugin } from '@streamdown/code';
-// 启用单 $ 行内公式，解析失败时降级为 errorColor 文字（流式渲染友好）
-import { createMathPlugin } from '@streamdown/math';
 import { cn } from '@/lib/utils';
 
 function fixNumberedListBreaks(text: string): string {
@@ -38,7 +42,21 @@ export type MarkdownProps = {
 };
 
 const code = createCodePlugin({ themes: ['github-light', 'github-dark'] });
-const math = createMathPlugin({ singleDollarTextMath: true });
+
+/** 公式解析沿用 remark-math；KaTeX 渲染推迟到 LazyMath 的按需加载。 */
+const math: MathPlugin = {
+  name: 'katex',
+  type: 'math',
+  remarkPlugin: [remarkMath, { singleDollarTextMath: true }],
+  rehypePlugin: rehypeLazyMath,
+};
+
+/**
+ * remend 的 htmlTags 规则把 `<` + 字母当作未闭合 HTML 标签，从 `<` 一直删到文本结尾，
+ * 公式（`$k<d$`）与正文（`x<y`）都会中招，关掉。
+ */
+const remendOptions = { htmlTags: false };
+
 const plugins: PluginConfig = {
   code,
   math,
@@ -49,6 +67,14 @@ const plugins: PluginConfig = {
     { language: 'svg', component: SvgBlock },
     { language: 'markmap', component: MarkmapBlock },
   ],
+};
+
+const isMathPlaceholder = (className: unknown): boolean =>
+  typeof className === 'string' && className.split(/\s+/).includes(MATH_PLACEHOLDER_CLASS);
+
+const placeholderLatex = (node: { properties?: Record<string, unknown> } | undefined): string => {
+  const value = node?.properties?.dataLatex;
+  return typeof value === 'string' ? value : '';
 };
 
 /** 表放在模块作用域：streamdown 的 Block 按组件身份做 memo，渲染中重建这张表会让所有块重新解析。 */
@@ -146,9 +172,25 @@ const components: Components = {
       {children}
     </td>
   ),
+  span: ({ node, ...props }) => {
+    if (isMathPlaceholder(props.className)) {
+      return <LazyMath latex={placeholderLatex(node)} displayMode={false} />;
+    }
+    return <span {...props} />;
+  },
+  div: ({ node, ...props }) => {
+    if (isMathPlaceholder(props.className)) {
+      return <LazyMath latex={placeholderLatex(node)} displayMode />;
+    }
+    return <div {...props} />;
+  },
 };
 
 export function Markdown({ content, className, isStreaming, raw }: MarkdownProps) {
+  useEffect(() => {
+    scheduleKatexPrefetch();
+  }, []);
+
   if (raw) {
     return (
       <pre
@@ -173,7 +215,14 @@ export function Markdown({ content, className, isStreaming, raw }: MarkdownProps
         className
       )}
     >
-      <Streamdown components={components} plugins={plugins} isAnimating={isStreaming} animated>
+      <Streamdown
+        components={components}
+        plugins={plugins}
+        isAnimating={isStreaming}
+        parseIncompleteMarkdown={isStreaming === true}
+        remend={remendOptions}
+        animated
+      >
         {safeContent}
       </Streamdown>
     </div>

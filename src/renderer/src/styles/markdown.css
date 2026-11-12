@@ -109,6 +109,11 @@
   margin-top: var(--md-block-gap);
   margin-bottom: var(--md-block-gap);
 }
+/* KaTeX 懒加载给公式加了 .katex-lazy 外层，间距判断改用这个直接子元素 */
+.chat-markdown p:has(> .katex-lazy:only-child) {
+  margin-top: var(--md-block-gap);
+  margin-bottom: var(--md-block-gap);
+}
 /* 备选：公式被识别为 katex-display 块时也加间距 */
 .chat-markdown .katex-display {
   margin-top: var(--md-block-gap) !important;
