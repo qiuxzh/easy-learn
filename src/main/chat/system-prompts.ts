@@ -1,6 +1,6 @@
 import { buildSystemPrompt } from '@main/agent/common-agent/prompt/build-system-prompt';
 import type { SessionTool } from '@main/agent/common-agent/agent-definition';
-import { buildBookSection, READING_AGENT_SYSTEM_PROMPT } from '@main/chat/reading-agent';
+import { READING_AGENT_SYSTEM_PROMPT } from '@main/chat/reading-agent';
 
 export const DiagramPrompt = `
 绘制图表时遵守以下规则：
@@ -39,10 +39,10 @@ export const ContentStylePrompt = `
 - 行内公式使用“$...$”报告，公式块使用“$$...$$包裹。不使用latex的\\[...\\]等其他语法”
 `;
 
-export async function buildChatSystemPrompt(tools: SessionTool[], bookId?: string) {
+export async function buildChatSystemPrompt(tools: SessionTool[]) {
   return buildSystemPrompt({
     basePrompt: READING_AGENT_SYSTEM_PROMPT,
     tools,
-    sections: [bookId ? buildBookSection(bookId) : undefined, DiagramPrompt, ContentStylePrompt],
+    sections: [DiagramPrompt, ContentStylePrompt],
   });
 }

@@ -29,6 +29,11 @@ function formatCondition(formats: ResourceListOptions['formats']) {
   );
 }
 
+/** 转义 LIKE 通配符，让用户输入的 %、_、! 按字面匹配。 */
+function escapeLike(value: string): string {
+  return value.replace(/[!%_]/g, char => `!${char}`);
+}
+
 /**
  * 创建资料库条目仓储。
  *
@@ -74,6 +79,19 @@ export function createResourceRepo(handle: DbHandle): ResourceRepo {
         .orderBy(
           sql`CASE WHEN ${resourceTable.kind} = 'folder' THEN 0 ELSE 1 END`,
           direction(sortColumn(options?.sort))
+        )
+        .all();
+    },
+
+    searchByName: query => {
+      const pattern = `%${escapeLike(query)}%`;
+      return handle.db
+        .select()
+        .from(resourceTable)
+        .where(sql`${resourceTable.name} LIKE ${pattern} ESCAPE '!'`)
+        .orderBy(
+          sql`CASE WHEN ${resourceTable.kind} = 'folder' THEN 0 ELSE 1 END`,
+          asc(resourceTable.name)
         )
         .all();
     },

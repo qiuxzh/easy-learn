@@ -16,10 +16,21 @@ export interface ToolPresentation {
 
 /** 工具名 → 展示信息。未登记的工具回退显示原始工具名。 */
 export const TOOL_PRESENTATION: Record<string, ToolPresentation> = {
-  // 阅读
+  // 资料
+  resource_list: { label: '查看资料库', summaryFrom: 'query' },
+  resource_pdf_get_toc: { label: '查看 PDF 目录' },
+  resource_pdf_read_text: { label: '读取 PDF 文字层' },
+  resource_pdf_read_ocr_text: { label: '读取 PDF OCR 文字' },
+  resource_pdf_read_page_image: { label: '查看 PDF 页面图' },
+  resource_epub_get_toc: { label: '查看 EPUB 目录' },
+  resource_epub_read_section: { label: '读取 EPUB 章节' },
+  resource_md_read: { label: '读取 Markdown 原文' },
+  resource_txt_read: { label: '读取纯文本原文' },
+
+  // 阅读（历史会话里的 book_* 工具名）
   get_book_tocs: { label: '读取目录' },
   read_book_toc_text: { label: '读取章节' },
-  // 改名前的旧工具名：历史会话里存的还是它，留着让旧对话仍能显示中文标签
+  // 历史会话里的旧工具名，保留中文标签
   read_book_toc_section: { label: '读取章节' },
   search_book_bm25: { label: '检索书中内容', summaryFrom: 'query' },
   search_book_vector: { label: '语义检索书中内容', summaryFrom: 'query' },

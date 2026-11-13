@@ -160,6 +160,9 @@ export const DOC_META_SCHEMA_VERSION = 1;
 /** PDF 目录解析器版本；解析算法升级后旧的 toc 缓存失效重算。 */
 export const PDF_TOC_PARSER_VERSION = 1;
 
+/** EPUB 结构解析器版本；解析算法升级后旧的目录与 section 缓存失效重算。 */
+export const EPUB_STRUCTURE_PARSER_VERSION = 1;
+
 /** PDF 目录里的单个条目。 */
 export interface PdfTocItem {
   /** 目录标题；空标题在解析时过滤。 */
@@ -195,9 +198,48 @@ export interface PdfDocMeta extends DocMetaBase<'pdf'> {
   pageLabels: string[] | null;
 }
 
-/** 其它格式的 viewer 落地时各自补自己的目录形状，这里先只占位。 */
-export type EpubDocMeta = DocMetaBase<'epub'>;
+/** EPUB 目录里的单个条目。 */
+export interface EpubTocItem {
+  /** 目录项 id，由目录顺序生成。 */
+  id: string;
+  /** 目录标题。 */
+  title: string;
+  /** 层级，从 0 开始。 */
+  level: number;
+  /** 书内位置，形如 `OEBPS/Text/ch1.xhtml#start`。 */
+  href?: string;
+  /** 子条目。 */
+  subitems?: EpubTocItem[];
+}
+
+/** EPUB 的 spine 阅读单元；一个 xhtml 一节。 */
+export interface EpubSectionMeta {
+  /** spine 下标，从 0 开始。 */
+  index: number;
+  /** 书内路径，形如 `OEBPS/Text/ch1.xhtml`。 */
+  href: string;
+  /** 展示标题。 */
+  title: string;
+  /** 未压缩字节数；未知为 null。 */
+  sizeBytes: number | null;
+  /** false 表示出版方标记 linear="no"，不在正常阅读顺序。 */
+  linear: boolean;
+}
+
+/** EPUB 的文档元数据：原书目录树 + spine 阅读单元。 */
+export interface EpubDocMeta extends DocMetaBase<'epub'> {
+  /** 原书目录树；null = 尚未解析，[] = 解析过但没有目录。 */
+  toc: EpubTocItem[] | null;
+  /** spine 的 xhtml 列表；null = 尚未解析。 */
+  sections: EpubSectionMeta[] | null;
+  /** 结构解析器版本；与当前版本不一致时 toc 与 sections 一并作废。 */
+  parserVersion: number;
+}
+
+/** Markdown 的文档元数据；读取时直接使用源文件，不解析结构。 */
 export type MarkdownDocMeta = DocMetaBase<'md'>;
+
+/** 纯文本的文档元数据；读取时直接使用源文件，不解析结构。 */
 export type TextDocMeta = DocMetaBase<'txt'>;
 
 export type ResourceDocMeta = PdfDocMeta | EpubDocMeta | MarkdownDocMeta | TextDocMeta;

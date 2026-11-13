@@ -16,6 +16,12 @@ export const DEFAULT_MAX_LINES = 2000;
 /** 默认保留的最大字节数 */
 export const DEFAULT_MAX_BYTES = 50 * 1024;
 
+/** 文本窗口默认读取的字符数 */
+export const DEFAULT_TEXT_LENGTH = 12000;
+
+/** 文本窗口允许的最大字符数 */
+export const MAX_TEXT_LENGTH = 30000;
+
 /** 截断结果，供工具拼接续读提示、界面展示使用。 */
 export interface TruncationResult {
   /** 头部保留的内容；未截断时即全文 */
@@ -54,6 +60,28 @@ export interface TruncationOptions {
   maxLines?: number;
   /** 最大字节数，默认 50KB */
   maxBytes?: number;
+}
+
+/** 字符窗口的选项。 */
+export interface TextWindowOptions {
+  /** 起始字符下标，负数按 0 处理。 */
+  offset?: number;
+  /** 本次最多读取的字符数；省略时用 defaultLength。 */
+  length?: number;
+  /** 省略 length 时的默认值。 */
+  defaultLength?: number;
+  /** length 的硬上限。 */
+  maxLength?: number;
+}
+
+/** 字符窗口的结果。 */
+export interface TextWindowResult {
+  text: string;
+  offset: number;
+  length: number;
+  totalChars: number;
+  truncated: boolean;
+  nextOffset: number | null;
 }
 
 /** 按行拆分用于计数；结尾的换行不算作多出一行。 */
@@ -164,4 +192,48 @@ export function truncateHeadTail(
     maxLines,
     maxBytes,
   };
+}
+
+/**
+ * 从文本中截取一个字符窗口。
+ *
+ * offset 小于 0 按 0 处理；length 省略时用 defaultLength，超过 maxLength 时夹到 maxLength。
+ * truncated 表示窗口之后还有内容，nextOffset 是下一次读取的起点。
+ *
+ * @param content 完整文本
+ * @param options 窗口参数
+ * @returns 截取结果
+ */
+export function sliceTextWindow(
+  content: string,
+  options: TextWindowOptions = {}
+): TextWindowResult {
+  const totalChars = content.length;
+  const offset = normalizeOffset(options.offset);
+  const length = normalizeLength(
+    options.length,
+    options.defaultLength ?? DEFAULT_TEXT_LENGTH,
+    options.maxLength ?? MAX_TEXT_LENGTH
+  );
+  const text = content.slice(offset, offset + length);
+  const truncated = offset + text.length < totalChars;
+
+  return {
+    text,
+    offset,
+    length,
+    totalChars,
+    truncated,
+    nextOffset: truncated ? offset + text.length : null,
+  };
+}
+
+function normalizeOffset(value: number | undefined): number {
+  if (value === undefined || !Number.isFinite(value) || value < 0) return 0;
+  return Math.trunc(value);
+}
+
+function normalizeLength(value: number | undefined, fallback: number, max: number): number {
+  if (value === undefined || !Number.isFinite(value) || value <= 0) return fallback;
+  return Math.min(Math.trunc(value), max);
 }

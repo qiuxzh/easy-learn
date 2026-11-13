@@ -12,6 +12,9 @@ export interface ResourceRepo {
   /** 列出某目录的直接子项：文件夹在前，同类按条件排序；`parentId` 为 null 表示顶层。 */
   listChildren(parentId: string | null, options?: ResourceListOptions): ResourceEntity[];
 
+  /** 按名称模糊查询；返回全部匹配，由调用方做范围过滤与分页。 */
+  searchByName(query: string): ResourceEntity[];
+
   /** 批量统计文件夹的直接子项数，按父目录 id 索引。 */
   countChildrenByParents(parentIds: string[]): Record<string, number>;
 

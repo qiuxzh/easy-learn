@@ -5,8 +5,8 @@ export interface ResourceOcrPageRepo {
   /** 已落库的页号，用于跳过已识别的页。 */
   listPageNumbers(resourceId: string): number[];
 
-  /** 全部页块，按页号升序；用于分片。 */
-  listPages(resourceId: string): ResourceOcrPage[];
+  /** 全部页块，按页号升序；传 pages 时只取这些页。 */
+  listPages(resourceId: string, pages?: readonly number[]): ResourceOcrPage[];
 
   /** 已落库的页数。 */
   countPages(resourceId: string): number;

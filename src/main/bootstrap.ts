@@ -22,6 +22,7 @@ import { EmbeddingService } from './service/embedding-service';
 import { AttachmentService } from './service/attachment-service';
 import { LibraryService } from './service/library/library-service';
 import { LibraryStorage } from './service/library/library-storage';
+import { ResourceReaderService } from './service/library/resource-reader-service';
 import { TaskScheduler } from './service/task/task-scheduler';
 import { createTaskWorkspace } from './service/task/task-workspace';
 import { LibraryOcrService } from './service/library/library-ocr-service';
@@ -99,6 +100,12 @@ export function bootstrap(deps: AppDeps): App {
     storage: new LibraryStorage(deps.paths),
     transaction: fn => db.transaction(fn),
   });
+  const resourceReaderService = new ResourceReaderService({
+    paths: deps.paths,
+    resourceRepo: repos.resourceRepo,
+    ocrPageRepo: repos.resourceOcrPageRepo,
+    attachmentService,
+  });
 
   const libraryOcrTask = createLibraryOcrTask({
     paths: deps.paths,
@@ -141,9 +148,9 @@ export function bootstrap(deps: AppDeps): App {
   const chatModule = createChatModule({
     repos,
     attachmentService,
-    bookModule,
+    libraryService,
+    resourceReaderService,
     cardModule,
-    readingService: readingModule.readingService,
     modelConfig,
     events,
   });

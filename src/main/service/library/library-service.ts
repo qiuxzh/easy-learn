@@ -17,6 +17,7 @@ import type { ResourceRepo } from '@main/contracts/resource-repo';
 import type { TransactionRunner } from '@main/contracts/transaction';
 import { DomainError } from '@main/domain-error';
 import { parseDocMeta, serializeDocMeta } from './doc-meta';
+import { readEpubDocMeta } from './epub-doc-meta';
 import { readPdfDocMeta } from './pdf-doc-meta';
 import type { LibraryFileStore } from './library-storage';
 
@@ -79,8 +80,31 @@ export interface LibraryServiceDeps {
   now?: () => number;
 }
 
+/** 资料列表的一行；供 AI 工具识别资料与选择读取工具。 */
+export interface ResourceListEntry {
+  id: string;
+  name: string;
+  kind: 'folder' | 'file';
+  format: ResourceFormat | null;
+  sizeBytes: number | null;
+  folderId: string | null;
+  path: string;
+  childrenCount: number | null;
+  pageCount: number | null;
+  sectionCount: number | null;
+  starred: boolean;
+}
+
+/** 资料列表的查询条件；分页由工具层处理。 */
+export interface ListResourcesInput {
+  folderId?: string;
+  query?: string;
+  format?: ResourceFormat;
+  recursive?: boolean;
+}
+
 /**
- * 资料库用例服务：目录树的增删改查与文件导入。
+ * 资料库用例服务：目录树的增删改查、文件导入与 AI 资料列表查询。
  *
  * 所有名称冲突、越界移动与格式校验都在这里拒绝；仓储只负责行，磁盘只由 storage 负责。
  */
@@ -100,6 +124,26 @@ export class LibraryService {
   /** 列出某目录的直接子项；`parentId` 为 null 表示顶层。 */
   listChildren(parentId: string | null, options?: ResourceListOptions): ResourceDTO[] {
     return this.toDtos(this.resourceRepo.listChildren(parentId, options));
+  }
+
+  /**
+   * 列出匹配的资料
+   *
+   * 有 `query` 时在 `folderId` 子树内按名称搜索（省略 `folderId` 搜整个资料库）；
+   * 没有 `query` 时浏览文件夹，`recursive` 展开整棵子树。指定 `format` 时只返回文件。
+   *
+   * @param input 浏览或搜索条件
+   * @returns 文件夹在前、同类按名称升序的全部匹配
+   * @throws 文件夹不存在或 `folderId` 指向文件时抛出
+   */
+  listResources(input: ListResourcesInput = {}): ResourceListEntry[] {
+    const folder = this.requireListFolder(input.folderId);
+    const query = input.query?.trim();
+    const matched = query
+      ? this.searchResources(query, folder, input.format)
+      : this.browseResources(folder, input.recursive === true, input.format);
+
+    return this.toListEntries(matched);
   }
 
   /**
@@ -162,14 +206,20 @@ export class LibraryService {
         continue;
       }
 
-      // 按资料类型分派：首版只有 PDF 需要解析元数据，其它格式不加工。
-      // 直接用源文件 sourcePath，落盘副本与它内容一致，不需要再拼 dataDir。
+      // PDF 算页数、文本层与目录，EPUB 算目录与 spine 阅读单元；其它格式不加工。
+      // 直接用源文件 sourcePath：落盘副本与它内容一致，不需要再拼 dataDir。
       let docMeta: string | null = null;
       if (format === 'pdf') {
         try {
           docMeta = serializeDocMeta(await readPdfDocMeta(sourcePath));
         } catch (e) {
           console.error('[LibraryService] doc meta parse failed:', sourcePath, e);
+        }
+      } else if (format === 'epub') {
+        try {
+          docMeta = serializeDocMeta(await readEpubDocMeta(sourcePath));
+        } catch (e) {
+          console.error('[LibraryService] epub doc meta parse failed:', sourcePath, e);
         }
       }
 
@@ -328,6 +378,133 @@ export class LibraryService {
     };
   }
 
+  /** 校验列表的文件夹参数；省略表示顶层，指向文件时拒绝。 */
+  private requireListFolder(folderId: string | undefined): ResourceEntity | null {
+    if (!folderId) return null;
+    const folder = this.resourceRepo.findById(folderId);
+    if (!folder) throw new DomainError('文件夹不存在');
+    if (folder.kind !== 'folder') throw new DomainError('该 id 不是文件夹');
+    return folder;
+  }
+
+  /** 按名称搜索；有 folder 时限定在它的子树内。 */
+  private searchResources(
+    query: string,
+    folder: ResourceEntity | null,
+    format: ResourceFormat | undefined
+  ): ResourceEntity[] {
+    let matches = this.resourceRepo.searchByName(query);
+
+    if (folder) {
+      const scope = this.collectDescendantIds(folder.id);
+      matches = matches.filter(item => scope.has(item.id));
+    }
+    if (format) {
+      matches = matches.filter(item => item.kind === 'file' && item.format === format);
+    }
+    return sortByFolderThenName(matches);
+  }
+
+  /** 浏览；递归时按深度优先展开，保持“文件夹在前、同类按名称”的顺序。 */
+  private browseResources(
+    folder: ResourceEntity | null,
+    recursive: boolean,
+    format: ResourceFormat | undefined
+  ): ResourceEntity[] {
+    const entities = recursive
+      ? this.collectDescendants(folder?.id ?? null)
+      : this.resourceRepo.listChildren(folder?.id ?? null);
+
+    if (!format) return entities;
+    return entities.filter(item => item.kind === 'file' && item.format === format);
+  }
+
+  /** 收集一个文件夹的全部后代 id（不含自己）。 */
+  private collectDescendantIds(folderId: string): Set<string> {
+    const ids = new Set<string>();
+    const stack = [folderId];
+    while (stack.length > 0) {
+      const current = stack.pop();
+      if (!current) continue;
+      for (const child of this.resourceRepo.listChildren(current)) {
+        ids.add(child.id);
+        if (child.kind === 'folder') stack.push(child.id);
+      }
+    }
+    return ids;
+  }
+
+  /** 按文件夹在前、同类名称升序的深度优先顺序收集子树。 */
+  private collectDescendants(parentId: string | null): ResourceEntity[] {
+    const result: ResourceEntity[] = [];
+    const walk = (currentParentId: string | null): void => {
+      for (const child of this.resourceRepo.listChildren(currentParentId)) {
+        result.push(child);
+        if (child.kind === 'folder') walk(child.id);
+      }
+    };
+    walk(parentId);
+    return result;
+  }
+
+  /** 文档规模只读已缓存的 doc_meta，不在这里解析文件。 */
+  private toListEntries(entities: readonly ResourceEntity[]): ResourceListEntry[] {
+    const dtos = this.toDtos([...entities]);
+    const paths = this.buildPaths(entities);
+
+    return dtos.map(dto => {
+      let pageCount: number | null = null;
+      let sectionCount: number | null = null;
+      if (dto.kind === 'file') {
+        const meta = parseDocMeta(this.resourceRepo.findDocMeta(dto.id));
+        if (meta?.format === 'pdf') pageCount = meta.pageCount;
+        else if (meta?.format === 'epub') sectionCount = meta.sections?.length ?? null;
+      }
+
+      return {
+        id: dto.id,
+        name: dto.name,
+        kind: dto.kind,
+        format: dto.format,
+        sizeBytes: dto.sizeBytes,
+        folderId: dto.parentId,
+        path: paths.get(dto.id) ?? dto.name,
+        childrenCount: dto.childrenCount,
+        pageCount,
+        sectionCount,
+        starred: dto.starred,
+      };
+    });
+  }
+
+  /** 为一批行计算从顶层到自己的路径；祖先名在同一次调用内缓存。 */
+  private buildPaths(entities: readonly ResourceEntity[]): Map<string, string> {
+    const repo = this.resourceRepo;
+    const paths = new Map<string, string>();
+    const cache = new Map<string, string>();
+
+    function resolveById(id: string): string {
+      const cached = cache.get(id);
+      if (cached !== undefined) return cached;
+      const entity = repo.findById(id);
+      return entity ? resolveEntity(entity) : '';
+    }
+
+    function resolveEntity(entity: ResourceEntity): string {
+      const cached = cache.get(entity.id);
+      if (cached !== undefined) return cached;
+      const parentPath = entity.parentId ? resolveById(entity.parentId) : '';
+      const value = parentPath ? `${parentPath}/${entity.name}` : entity.name;
+      cache.set(entity.id, value);
+      return value;
+    }
+
+    for (const entity of entities) {
+      paths.set(entity.id, resolveEntity(entity));
+    }
+    return paths;
+  }
+
   /** 递归收集一棵子树的行，先序。 */
   private collectSubtree(root: ResourceEntity): ResourceEntity[] {
     const entities: ResourceEntity[] = [root];
@@ -425,4 +602,13 @@ export class LibraryService {
       updatedAt: entity.updatedAt,
     };
   }
+}
+
+/** 文件夹在前、同类按名称升序。 */
+function sortByFolderThenName(items: readonly ResourceEntity[]): ResourceEntity[] {
+  return [...items].sort((left, right) => {
+    if (left.kind !== right.kind) return left.kind === 'folder' ? -1 : 1;
+    if (left.name === right.name) return 0;
+    return left.name < right.name ? -1 : 1;
+  });
 }

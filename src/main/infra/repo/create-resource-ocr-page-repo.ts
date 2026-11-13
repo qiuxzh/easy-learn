@@ -24,11 +24,19 @@ class ResourceOcrPageRepo {
       .map(row => row.page);
   }
 
-  listPages(resourceId: string): ResourceOcrPage[] {
+  listPages(resourceId: string, pages?: readonly number[]): ResourceOcrPage[] {
+    if (pages && pages.length === 0) return [];
+    const condition = pages
+      ? and(
+          eq(resourceOcrPageTable.resourceId, resourceId),
+          inArray(resourceOcrPageTable.page, [...pages])
+        )
+      : eq(resourceOcrPageTable.resourceId, resourceId);
+
     return this.handle.db
       .select()
       .from(resourceOcrPageTable)
-      .where(eq(resourceOcrPageTable.resourceId, resourceId))
+      .where(condition)
       .orderBy(asc(resourceOcrPageTable.page))
       .all()
       .map(toPage);

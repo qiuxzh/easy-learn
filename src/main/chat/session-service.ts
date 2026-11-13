@@ -206,10 +206,8 @@ export class SessionService {
       throw new DomainError('会话正在运行中，请等待本轮结束后再发送');
     }
     session.setThinkingLevel(thinkingLevel);
-    // 系统提示按本次请求现算：换书后下一轮即刻生效，无书时段落为空、回落基础提示
-    session.setSystemPrompt(
-      await buildChatSystemPrompt(this.definition.tools ?? [], request.bookId)
-    );
+    // 系统提示按本次请求现算：工具集或基础提示变化后下一轮即刻生效
+    session.setSystemPrompt(await buildChatSystemPrompt(this.definition.tools ?? []));
 
     // prompt() 直到运行结束才 resolve，因此不 await：请求需要立即返回。
     // 启动失败时补一个 agent_end，让前端从等待态里退出。
